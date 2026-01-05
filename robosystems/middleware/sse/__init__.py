@@ -32,6 +32,12 @@ from .dagster_monitor import (
   run_and_monitor_dagster_job,
   submit_dagster_job_sync,
 )
+from .direct_monitor import (
+  ProgressEmitter,
+  run_entity_graph_creation,
+  run_graph_creation,
+  run_subgraph_creation,
+)
 from .event_storage import (
   EventType,
   OperationMetadata,
@@ -54,17 +60,14 @@ from .streaming import (
 )
 
 __all__ = [
-  # Dagster Integration
   "DagsterRunMonitor",
   "EventType",
-  # Operation Management
   "OperationManager",
   "OperationMetadata",
   "OperationStatus",
-  # Streaming
+  "ProgressEmitter",
   "SSEConnectionManager",
   "SSEEvent",
-  # Event Storage
   "SSEEventStorage",
   "build_email_job_config",
   "build_graph_job_config",
@@ -76,5 +79,8 @@ __all__ = [
   "get_event_storage",
   "get_operation_manager",
   "run_and_monitor_dagster_job",
+  "run_entity_graph_creation",
+  "run_graph_creation",
+  "run_subgraph_creation",
   "submit_dagster_job_sync",
 ]

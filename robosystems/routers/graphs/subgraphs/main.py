@@ -334,11 +334,6 @@ async def create_subgraph(
 
     # 6. Check if we need SSE for forking
     if request.fork_parent:
-      # Use SSE for fork operations via Dagster
-      from robosystems.middleware.sse import (
-        build_graph_job_config,
-        run_and_monitor_dagster_job,
-      )
       from robosystems.middleware.sse.operation_manager import create_operation_response
 
       # Create SSE operation
@@ -350,34 +345,55 @@ async def create_subgraph(
 
       operation_id = operation_response["operation_id"]
 
-      # Build Dagster job config for subgraph creation with fork
-      fork_options = request.metadata.get("fork_options") if request.metadata else {}
-      run_config = build_graph_job_config(
-        "create_subgraph_job",
-        user_id=str(current_user.id),
-        parent_graph_id=graph_id,
-        name=request.name,
-        description=request.display_name,
-        subgraph_type=request.subgraph_type.value
-        if request.subgraph_type
-        else "static",
-        fork_parent=True,
-        fork_tables=fork_options.get("tables", []),
-        fork_exclude_patterns=fork_options.get("exclude_patterns", []),
-        operation_id=operation_id,
-      )
+      # Check if direct execution is enabled (faster, no Dagster cold start)
+      if env.DIRECT_GRAPH_PROVISIONING_ENABLED:
+        # Direct execution - bypasses Dagster for 60s -> 3s latency improvement
+        from robosystems.middleware.sse.direct_monitor import run_subgraph_creation
 
-      # Run Dagster job with SSE monitoring in background
-      background_tasks.add_task(
-        run_and_monitor_dagster_job,
-        job_name="create_subgraph_job",
-        operation_id=operation_id,
-        run_config=run_config,
-      )
+        background_tasks.add_task(
+          run_subgraph_creation,
+          operation_id=operation_id,
+          user_id=str(current_user.id),
+          parent_graph_id=graph_id,
+          subgraph_name=request.name,
+          description=request.display_name,
+          fork_data=True,
+        )
+        logger.info(
+          f"Created SSE operation {operation_id} with direct subgraph fork execution"
+        )
+      else:
+        # Dagster execution - slower but useful for debugging
+        from robosystems.middleware.sse import (
+          build_graph_job_config,
+          run_and_monitor_dagster_job,
+        )
 
-      logger.info(
-        f"Created SSE operation {operation_id} and queued Dagster subgraph job with fork"
-      )
+        fork_options = request.metadata.get("fork_options") if request.metadata else {}
+        run_config = build_graph_job_config(
+          "create_subgraph_job",
+          user_id=str(current_user.id),
+          parent_graph_id=graph_id,
+          name=request.name,
+          description=request.display_name,
+          subgraph_type=request.subgraph_type.value
+          if request.subgraph_type
+          else "static",
+          fork_parent=True,
+          fork_tables=fork_options.get("tables", []),
+          fork_exclude_patterns=fork_options.get("exclude_patterns", []),
+          operation_id=operation_id,
+        )
+
+        background_tasks.add_task(
+          run_and_monitor_dagster_job,
+          job_name="create_subgraph_job",
+          operation_id=operation_id,
+          run_config=run_config,
+        )
+        logger.info(
+          f"Created SSE operation {operation_id} and queued Dagster subgraph job with fork"
+        )
 
       # Record success metrics
       record_operation_metrics(

@@ -367,51 +367,92 @@ class SSEEventStorage:
   def _update_operation_metadata_sync(
     self, operation_id: str, event_type: EventType, data: dict[str, Any]
   ):
-    """Synchronous version to update operation metadata based on event type."""
+    """Synchronous version to update operation metadata based on event type.
+
+    Uses atomic Redis operations to prevent race conditions when multiple
+    events are stored concurrently. Only status-changing events (started,
+    completed, error, cancelled) update the full metadata. Progress events
+    are skipped to avoid overwriting status changes.
+    """
+    # Skip progress events - they don't change status and can cause race conditions
+    # where a progress event overwrites a completed/failed status
+    status_changing_events = {
+      EventType.OPERATION_STARTED,
+      EventType.OPERATION_COMPLETED,
+      EventType.OPERATION_ERROR,
+      EventType.OPERATION_CANCELLED,
+    }
+    if event_type not in status_changing_events:
+      return
+
     redis = self._get_sync_redis()
     metadata_key = f"{self.metadata_prefix}{operation_id}"
-    metadata_json = redis.get(metadata_key)
 
-    if not metadata_json:
-      # Create minimal metadata if it doesn't exist
-      metadata = OperationMetadata(
-        operation_id=operation_id,
-        operation_type="graph_creation",
-        user_id=data.get("user_id", "unknown"),
-        graph_id=data.get("graph_id"),
-        status=OperationStatus.RUNNING,
-        created_at=datetime.now(UTC).isoformat(),
-        updated_at=datetime.now(UTC).isoformat(),
-      )
-      metadata_dict = metadata.to_dict()
-    else:
-      metadata_dict = json.loads(str(metadata_json))
-      metadata = OperationMetadata(**metadata_dict)
+    # Use optimistic locking with WATCH to prevent race conditions
+    # between concurrent status-changing events
+    with redis.pipeline() as pipe:
+      try:
+        # Watch the key for changes
+        pipe.watch(metadata_key)
 
-    # Update metadata based on event type
-    metadata.updated_at = datetime.now(UTC).isoformat()
+        # Get current metadata
+        metadata_json = redis.get(metadata_key)
+        if not metadata_json:
+          pipe.unwatch()
+          return
 
-    if event_type == EventType.OPERATION_COMPLETED:
-      metadata.status = OperationStatus.COMPLETED
-      # Merge new data with existing result_data (preserves graph_id from Dagster job)
-      if metadata.result_data:
-        metadata.result_data.update(data)
-      else:
-        metadata.result_data = data
-    elif event_type == EventType.OPERATION_ERROR:
-      metadata.status = OperationStatus.FAILED
-      metadata.error_message = data.get("error")
-    elif event_type == EventType.OPERATION_CANCELLED:
-      metadata.status = OperationStatus.CANCELLED
-    elif event_type == EventType.OPERATION_STARTED:
-      metadata.status = OperationStatus.RUNNING
+        metadata_dict = json.loads(str(metadata_json))
+        metadata = OperationMetadata(**metadata_dict)
 
-    # Update in Redis
-    redis.setex(
-      metadata_key,
-      self.default_ttl,
-      json.dumps(metadata.to_dict()),
-    )
+        # Don't downgrade status (e.g., don't go from COMPLETED back to RUNNING)
+        status_priority = {
+          OperationStatus.PENDING: 0,
+          OperationStatus.RUNNING: 1,
+          OperationStatus.COMPLETED: 2,
+          OperationStatus.FAILED: 2,
+          OperationStatus.CANCELLED: 2,
+        }
+        new_status = None
+        if event_type == EventType.OPERATION_STARTED:
+          new_status = OperationStatus.RUNNING
+        elif event_type == EventType.OPERATION_COMPLETED:
+          new_status = OperationStatus.COMPLETED
+        elif event_type == EventType.OPERATION_ERROR:
+          new_status = OperationStatus.FAILED
+        elif event_type == EventType.OPERATION_CANCELLED:
+          new_status = OperationStatus.CANCELLED
+
+        # Only update if new status has higher or equal priority
+        if new_status and status_priority.get(new_status, 0) >= status_priority.get(
+          metadata.status, 0
+        ):
+          metadata.status = new_status
+          metadata.updated_at = datetime.now(UTC).isoformat()
+
+          # Handle result/error data
+          if event_type == EventType.OPERATION_COMPLETED:
+            # Merge new data with existing result_data (preserves graph_id from Dagster job)
+            new_result = data.get("result") or data
+            if metadata.result_data:
+              metadata.result_data.update(new_result)
+            else:
+              metadata.result_data = new_result
+          elif event_type == EventType.OPERATION_ERROR:
+            metadata.error_message = data.get("error", "Unknown error")
+
+          # Store atomically
+          pipe.multi()
+          pipe.setex(metadata_key, self.default_ttl, json.dumps(metadata.to_dict()))
+          pipe.execute()
+        else:
+          pipe.unwatch()
+
+      except Exception:
+        # Transaction failed (key was modified), which is fine - another
+        # status-changing event won. Just log and continue.
+        logger.debug(
+          f"[SYNC] Metadata update skipped for {operation_id} due to concurrent modification"
+        )
 
   def update_operation_result_sync(
     self, operation_id: str, result: dict[str, Any]
@@ -493,41 +534,90 @@ class SSEEventStorage:
   async def _update_operation_metadata(
     self, operation_id: str, event_type: EventType, data: dict[str, Any]
   ):
-    """Update operation metadata based on event type."""
-    redis = await self._get_redis()
-    metadata_key = f"{self.metadata_prefix}{operation_id}"
-    metadata_json = await redis.get(metadata_key)
+    """Update operation metadata based on event type.
 
-    if not metadata_json:
+    Uses atomic Redis operations to prevent race conditions when multiple
+    events are stored concurrently. Only status-changing events (started,
+    completed, error, cancelled) update the full metadata. Progress events
+    are skipped to avoid overwriting status changes.
+    """
+    # Skip progress events - they don't change status and can cause race conditions
+    # where a progress event overwrites a completed/failed status
+    status_changing_events = {
+      EventType.OPERATION_STARTED,
+      EventType.OPERATION_COMPLETED,
+      EventType.OPERATION_ERROR,
+      EventType.OPERATION_CANCELLED,
+    }
+    if event_type not in status_changing_events:
       return
 
-    metadata_dict = json.loads(metadata_json)
-    metadata = OperationMetadata(**metadata_dict)
+    redis = await self._get_redis()
+    metadata_key = f"{self.metadata_prefix}{operation_id}"
 
-    # Update timestamp
-    metadata.updated_at = datetime.now(UTC).isoformat()
+    try:
+      # Watch the key for changes - this enables optimistic locking
+      await redis.watch(metadata_key)
 
-    # Update status based on event type
-    if event_type == EventType.OPERATION_STARTED:
-      metadata.status = OperationStatus.RUNNING
-    elif event_type == EventType.OPERATION_COMPLETED:
-      metadata.status = OperationStatus.COMPLETED
-      # Merge new result with existing result_data (preserves graph_id from Dagster job)
-      new_result = data.get("result") or {}
-      if metadata.result_data:
-        metadata.result_data.update(new_result)
+      # Get current metadata
+      metadata_json = await redis.get(metadata_key)
+      if not metadata_json:
+        await redis.unwatch()
+        return
+
+      metadata_dict = json.loads(metadata_json)
+      metadata = OperationMetadata(**metadata_dict)
+
+      # Don't downgrade status (e.g., don't go from COMPLETED back to RUNNING)
+      status_priority = {
+        OperationStatus.PENDING: 0,
+        OperationStatus.RUNNING: 1,
+        OperationStatus.COMPLETED: 2,
+        OperationStatus.FAILED: 2,
+        OperationStatus.CANCELLED: 2,
+      }
+      new_status = None
+      if event_type == EventType.OPERATION_STARTED:
+        new_status = OperationStatus.RUNNING
+      elif event_type == EventType.OPERATION_COMPLETED:
+        new_status = OperationStatus.COMPLETED
+      elif event_type == EventType.OPERATION_ERROR:
+        new_status = OperationStatus.FAILED
+      elif event_type == EventType.OPERATION_CANCELLED:
+        new_status = OperationStatus.CANCELLED
+
+      # Only update if new status has higher or equal priority
+      if new_status and status_priority.get(new_status, 0) >= status_priority.get(
+        metadata.status, 0
+      ):
+        metadata.status = new_status
+        metadata.updated_at = datetime.now(UTC).isoformat()
+
+        # Handle result/error data
+        if event_type == EventType.OPERATION_COMPLETED:
+          new_result = data.get("result") or {}
+          if metadata.result_data:
+            metadata.result_data.update(new_result)
+          else:
+            metadata.result_data = new_result
+        elif event_type == EventType.OPERATION_ERROR:
+          metadata.error_message = data.get("error", "Unknown error")
+
+        # Get TTL and store atomically using pipeline
+        ttl = await redis.ttl(metadata_key)
+        if ttl > 0:
+          pipe = redis.pipeline()
+          pipe.setex(metadata_key, ttl, json.dumps(metadata.to_dict()))
+          await pipe.execute()
       else:
-        metadata.result_data = new_result
-    elif event_type == EventType.OPERATION_ERROR:
-      metadata.status = OperationStatus.FAILED
-      metadata.error_message = data.get("error", "Unknown error")
-    elif event_type == EventType.OPERATION_CANCELLED:
-      metadata.status = OperationStatus.CANCELLED
+        await redis.unwatch()
 
-    # Store updated metadata
-    ttl = await redis.ttl(metadata_key)
-    if ttl > 0:
-      await redis.setex(metadata_key, ttl, json.dumps(metadata.to_dict()))
+    except Exception:
+      # Transaction failed (key was modified), which is fine - another
+      # status-changing event won. Just log and continue.
+      logger.debug(
+        f"Metadata update skipped for {operation_id} due to concurrent modification"
+      )
 
   async def get_events(
     self, operation_id: str, from_sequence: int = 0, limit: int | None = None

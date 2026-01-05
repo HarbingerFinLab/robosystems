@@ -7,6 +7,12 @@ Assets represent data artifacts that are produced and consumed:
 - Staged files (observable source for direct API staging)
 """
 
+from robosystems.dagster.assets.graphs import (
+  graph_provisioning_source,
+  graphs_source,
+  repository_provisioning_source,
+  subgraphs_source,
+)
 from robosystems.dagster.assets.plaid import (
   plaid_accounts,
   plaid_graph_data,
@@ -36,28 +42,25 @@ from robosystems.dagster.assets.sec import (
 from robosystems.dagster.assets.staged_files import staged_files_source
 
 __all__ = [
-  # SEC config
   "SECDownloadConfig",
   "SECDuckDBConfig",
   "SECMaterializeConfig",
   "SECSingleFilingConfig",
-  # Plaid assets
+  "graph_provisioning_source",
+  "graphs_source",
   "plaid_accounts",
   "plaid_graph_data",
   "plaid_transactions",
-  # QuickBooks assets
   "qb_accounts",
   "qb_graph_data",
   "qb_transactions",
-  # SEC assets - staging and materialization
+  "repository_provisioning_source",
   "sec_duckdb_staging",
-  # SEC assets - dynamic partition processing
   "sec_filing_partitions",
   "sec_graph_materialized",
   "sec_process_filing",
   "sec_raw_filings",
-  # SEC partitions
   "sec_year_partitions",
-  # Direct staging observable source
   "staged_files_source",
+  "subgraphs_source",
 ]

@@ -32,7 +32,7 @@ echo ""
 # PRODUCTION (robosystems/prod):
 # - ENVIRONMENT: prod
 # - BILLING_ENABLED: Set to "false" for forked/self-hosted deployments
-# - ANTHROPIC_API_KEY, OPENAI_API_KEY: AI service keys
+# - AI service keys (managed via GitHub Secrets, not AWS Secrets Manager)
 # - INTUIT_*, PLAID_*: External service integrations (production)
 # - NEXTAUTH_*: Authentication configuration
 # - ROBOSYSTEMS_*: Internal API configuration
@@ -69,7 +69,6 @@ function create_production_secret() {
     aws secretsmanager put-secret-value \
         --secret-id "robosystems/prod" \
         --secret-string '{
-        "ANTHROPIC_API_KEY": "sk-ant-api03-your_anthropic_api_key_here",
         "BILLING_ENABLED": "false",
         "CONNECTION_CREDENTIALS_KEY": "your_connection_creds_key_here_use_openssl_rand_base64_32",
         "CONNECTION_PLAID_ENABLED": "true",
@@ -80,8 +79,6 @@ function create_production_secret() {
         "INTUIT_ENVIRONMENT": "production",
         "INTUIT_REDIRECT_URI": "https://api.robosystems.ai/auth/callback",
         "JWT_SECRET_KEY": "your_production_jwt_secret_key_here_use_openssl_rand_base64_32",
-        "LBUG_BACKUP_ENCRYPTION_KEY": "your_production_lbug_backup_encryption_key_here_use_openssl_rand_base64_32",
-        "LBUG_BACKUP_ENCRYPTION_PASSWORD": "your_production_lbug_backup_password_here",
         "LOAD_SHEDDING_ENABLED": "true",
         "ORG_GRAPHS_DEFAULT_LIMIT": "5",
         "OPENFIGI_API_KEY": "your_openfigi_api_key_here",
@@ -98,6 +95,13 @@ function create_production_secret() {
         "TURNSTILE_SECRET_KEY": "your_cloudflare_turnstile_secret_key",
         "TURNSTILE_SITE_KEY": "your_cloudflare_turnstile_site_key",
         "USER_REGISTRATION_ENABLED": "true",
+        "AGENT_POST_ENABLED": "true",
+        "BACKUP_CREATION_ENABLED": "true",
+        "CSP_TRUSTED_TYPES_ENABLED": "true",
+        "DIRECT_GRAPH_PROVISIONING_ENABLED": "true",
+        "ORG_MEMBER_INVITATIONS_ENABLED": "true",
+        "SHARED_MASTER_READS_ENABLED": "true",
+        "SUBGRAPH_CREATION_ENABLED": "true",
         "BILLING_SCHEDULES_ENABLED": "true",
         "INSTANCE_SCHEDULES_ENABLED": "true",
         "SEC_DOWNLOAD_SCHEDULE_ENABLED": "false",
@@ -129,7 +133,6 @@ function create_staging_secret() {
     aws secretsmanager put-secret-value \
         --secret-id "robosystems/staging" \
         --secret-string '{
-        "ANTHROPIC_API_KEY": "sk-ant-api03-your_anthropic_api_key_here",
         "BILLING_ENABLED": "false",
         "CONNECTION_CREDENTIALS_KEY": "dev-connection-creds-key-12345678901234567890abcdef",
         "CONNECTION_PLAID_ENABLED": "true",
@@ -140,8 +143,6 @@ function create_staging_secret() {
         "INTUIT_ENVIRONMENT": "sandbox",
         "INTUIT_REDIRECT_URI": "https://staging.api.robosystems.ai/auth/callback",
         "JWT_SECRET_KEY": "your_staging_jwt_secret_key_here_use_openssl_rand_base64_32",
-        "LBUG_BACKUP_ENCRYPTION_KEY": "your_staging_lbug_backup_encryption_key_here_use_openssl_rand_base64_32",
-        "LBUG_BACKUP_ENCRYPTION_PASSWORD": "your_staging_lbug_backup_password_here",
         "LOAD_SHEDDING_ENABLED": "true",
         "ORG_GRAPHS_DEFAULT_LIMIT": "5",
         "OPENFIGI_API_KEY": "your_openfigi_api_key_here",
@@ -158,6 +159,13 @@ function create_staging_secret() {
         "TURNSTILE_SECRET_KEY": "your_cloudflare_turnstile_secret_key",
         "TURNSTILE_SITE_KEY": "your_cloudflare_turnstile_site_key",
         "USER_REGISTRATION_ENABLED": "true",
+        "AGENT_POST_ENABLED": "true",
+        "BACKUP_CREATION_ENABLED": "true",
+        "CSP_TRUSTED_TYPES_ENABLED": "true",
+        "DIRECT_GRAPH_PROVISIONING_ENABLED": "true",
+        "ORG_MEMBER_INVITATIONS_ENABLED": "true",
+        "SHARED_MASTER_READS_ENABLED": "true",
+        "SUBGRAPH_CREATION_ENABLED": "true",
         "BILLING_SCHEDULES_ENABLED": "true",
         "INSTANCE_SCHEDULES_ENABLED": "true",
         "SEC_DOWNLOAD_SCHEDULE_ENABLED": "false",

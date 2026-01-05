@@ -17,7 +17,6 @@ from robosystems.middleware.sse.event_storage import (
   SSEEventStorage,
   get_event_storage,
 )
-from robosystems.middleware.sse.streaming import emit_event_to_operation
 
 
 class OperationManager:
@@ -60,14 +59,14 @@ class OperationManager:
       operation_id=operation_id,
     )
 
-    # Emit started event
+    # Store started event (updates status to RUNNING) and broadcast via Redis pub/sub
     start_data = {
       "operation_type": operation_type,
       "graph_id": graph_id,
       **(initial_data or {}),
     }
 
-    await emit_event_to_operation(op_id, EventType.OPERATION_STARTED, start_data)
+    await self.event_storage.store_event(op_id, EventType.OPERATION_STARTED, start_data)
 
     logger.info(
       f"Started operation {op_id} of type {operation_type} for user {user_id}"
@@ -96,7 +95,8 @@ class OperationManager:
       **(details or {}),
     }
 
-    await emit_event_to_operation(
+    # Store event and broadcast via Redis pub/sub
+    await self.event_storage.store_event(
       operation_id, EventType.OPERATION_PROGRESS, progress_data
     )
 
@@ -116,7 +116,8 @@ class OperationManager:
     """
     completion_data = {"message": message, "result": result}
 
-    await emit_event_to_operation(
+    # Store event (updates status to COMPLETED) and broadcast via Redis pub/sub
+    await self.event_storage.store_event(
       operation_id, EventType.OPERATION_COMPLETED, completion_data
     )
 
@@ -135,7 +136,10 @@ class OperationManager:
     """
     error_data = {"error": error, "error_details": error_details}
 
-    await emit_event_to_operation(operation_id, EventType.OPERATION_ERROR, error_data)
+    # Store event (updates status to FAILED) and broadcast via Redis pub/sub
+    await self.event_storage.store_event(
+      operation_id, EventType.OPERATION_ERROR, error_data
+    )
 
     logger.error(f"Failed operation {operation_id}: {error}")
 

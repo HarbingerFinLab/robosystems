@@ -371,6 +371,18 @@ class EnvConfig:
     bool(get_secret_value("AGENT_POST_ENABLED", "true").lower() == "true"),
   )
 
+  # Direct Graph Provisioning Feature Flag
+  # When enabled, graph creation and provisioning operations run directly
+  # in the API process instead of via Dagster jobs.
+  # This eliminates ECS cold start latency (60s -> 3s).
+  # Disable to fall back to Dagster job execution for debugging.
+  DIRECT_GRAPH_PROVISIONING_ENABLED = get_bool_env(
+    "DIRECT_GRAPH_PROVISIONING_ENABLED",
+    bool(
+      get_secret_value("DIRECT_GRAPH_PROVISIONING_ENABLED", "true").lower() == "true"
+    ),
+  )
+
   # Registration and Verification Feature Flags
   EMAIL_VERIFICATION_ENABLED = get_bool_env(
     "EMAIL_VERIFICATION_ENABLED",

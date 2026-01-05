@@ -441,6 +441,16 @@ class TestSSEEventStorage:
     mock_redis.incr.return_value = 3
     mock_redis.get.return_value = None  # No existing metadata
 
+    # Mock pipeline context manager for _update_operation_metadata_sync
+    mock_pipe = Mock()
+    mock_pipe.watch = Mock()
+    mock_pipe.unwatch = Mock()
+    mock_pipe.multi = Mock()
+    mock_pipe.setex = Mock()
+    mock_pipe.execute = Mock()
+    mock_redis.pipeline.return_value.__enter__ = Mock(return_value=mock_pipe)
+    mock_redis.pipeline.return_value.__exit__ = Mock(return_value=False)
+
     storage = SSEEventStorage()
     storage._sync_redis = mock_redis
 
@@ -471,6 +481,13 @@ class TestSSEEventStorage:
     mock_redis.exists.return_value = False
     mock_redis.incr.return_value = 1
     mock_redis.get.return_value = None  # No existing metadata
+
+    # Mock pipeline context manager for _update_operation_metadata_sync
+    mock_pipe = Mock()
+    mock_pipe.watch = Mock()
+    mock_pipe.unwatch = Mock()
+    mock_redis.pipeline.return_value.__enter__ = Mock(return_value=mock_pipe)
+    mock_redis.pipeline.return_value.__exit__ = Mock(return_value=False)
 
     storage = SSEEventStorage()
     storage._sync_redis = mock_redis
@@ -668,6 +685,16 @@ class TestSSEEventStorage:
 
     mock_redis.get.return_value = json.dumps(existing_metadata)
 
+    # Mock pipeline context manager
+    mock_pipe = Mock()
+    mock_pipe.watch = Mock()
+    mock_pipe.unwatch = Mock()
+    mock_pipe.multi = Mock()
+    mock_pipe.setex = Mock()
+    mock_pipe.execute = Mock()
+    mock_redis.pipeline.return_value.__enter__ = Mock(return_value=mock_pipe)
+    mock_redis.pipeline.return_value.__exit__ = Mock(return_value=False)
+
     storage = SSEEventStorage()
     storage._sync_redis = mock_redis
 
@@ -679,12 +706,17 @@ class TestSSEEventStorage:
       storage._update_operation_metadata_sync(
         "op123",
         EventType.OPERATION_COMPLETED,
-        {"result": "success", "processed_items": 100},
+        {"result": {"result": "success", "processed_items": 100}},
       )
 
-      # Verify metadata was updated
-      mock_redis.setex.assert_called_once()
-      call_args = mock_redis.setex.call_args
+      # Verify pipeline operations were called
+      mock_pipe.watch.assert_called_once()
+      mock_pipe.multi.assert_called_once()
+      mock_pipe.setex.assert_called_once()
+      mock_pipe.execute.assert_called_once()
+
+      # Verify metadata was updated correctly
+      call_args = mock_pipe.setex.call_args
       stored_metadata = json.loads(call_args[0][2])
 
       assert stored_metadata["status"] == "completed"
@@ -695,9 +727,16 @@ class TestSSEEventStorage:
       }
 
   def test_update_operation_metadata_sync_no_existing_metadata(self):
-    """Test sync metadata update when no metadata exists."""
+    """Test sync metadata update when no metadata exists - returns early."""
     mock_redis = Mock()
     mock_redis.get.return_value = None
+
+    # Mock pipeline context manager
+    mock_pipe = Mock()
+    mock_pipe.watch = Mock()
+    mock_pipe.unwatch = Mock()
+    mock_redis.pipeline.return_value.__enter__ = Mock(return_value=mock_pipe)
+    mock_redis.pipeline.return_value.__exit__ = Mock(return_value=False)
 
     storage = SSEEventStorage()
     storage._sync_redis = mock_redis
@@ -713,16 +752,9 @@ class TestSSEEventStorage:
         {"user_id": "user123", "graph_id": "kg456"},
       )
 
-      # Should create new metadata
-      mock_redis.setex.assert_called_once()
-      call_args = mock_redis.setex.call_args
-      stored_metadata = json.loads(call_args[0][2])
-
-      assert stored_metadata["operation_id"] == "new_op"
-      assert stored_metadata["operation_type"] == "graph_creation"
-      assert stored_metadata["user_id"] == "user123"
-      assert stored_metadata["graph_id"] == "kg456"
-      assert stored_metadata["status"] == "running"
+      # With new implementation, should call unwatch and return early
+      # when no existing metadata is found
+      mock_pipe.unwatch.assert_called_once()
 
 
 class TestGetEventStorage:
