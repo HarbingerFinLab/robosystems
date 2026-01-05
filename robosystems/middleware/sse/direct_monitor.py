@@ -38,6 +38,7 @@ Usage:
 """
 
 import asyncio
+import os
 import time
 from typing import Any
 
@@ -45,8 +46,10 @@ from robosystems.logger import logger
 from robosystems.middleware.sse.operation_manager import get_operation_manager
 
 # Timeout for Dagster materialization reporting (seconds)
-# This prevents the API from hanging if Dagster is unreachable
-DAGSTER_REPORT_TIMEOUT = 5.0
+# This prevents the API from hanging if Dagster is unreachable.
+# Default: 15s to allow for cold Dagster instances under load.
+# Configurable via DAGSTER_MATERIALIZATION_TIMEOUT env var.
+DAGSTER_REPORT_TIMEOUT = float(os.getenv("DAGSTER_MATERIALIZATION_TIMEOUT", "15.0"))
 
 
 class ProgressEmitter:
@@ -706,7 +709,13 @@ async def run_graph_provisioning(
             subscription.subscription_metadata = metadata
           else:
             subscription.subscription_metadata = {"error": str(e)}
-          db.commit()
+          try:
+            db.commit()
+          except Exception as commit_error:
+            logger.error(
+              f"Failed to commit subscription failure status: {commit_error}"
+            )
+            db.rollback()
       finally:
         try:
           next(db_gen)
@@ -939,7 +948,13 @@ async def run_repository_provisioning(
             subscription.subscription_metadata = metadata
           else:
             subscription.subscription_metadata = {"error": str(e)}
-          db.commit()
+          try:
+            db.commit()
+          except Exception as commit_error:
+            logger.error(
+              f"Failed to commit subscription failure status: {commit_error}"
+            )
+            db.rollback()
       finally:
         try:
           next(db_gen)

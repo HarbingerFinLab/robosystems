@@ -269,7 +269,6 @@ class GenericGraphService:
         logger.info("Populating initial data")
         # This would be implementation-specific based on the data structure
         # For now, we'll skip this as it's highly dependent on use case
-        pass
 
       # Check for cancellation
       if cancellation_callback:
