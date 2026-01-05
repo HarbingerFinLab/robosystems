@@ -441,7 +441,14 @@ async def _handle_subscription_deleted(
 async def _trigger_resource_provisioning(
   subscription: Any, db_session: Any, context: OpExecutionContext
 ) -> None:
-  """Trigger resource provisioning after payment confirmation."""
+  """Trigger resource provisioning after payment confirmation.
+
+  When DIRECT_GRAPH_PROVISIONING_ENABLED is true, this function directly
+  provisions the resource, eliminating the sensor polling delay and second
+  ECS cold start. Otherwise, it sets status to 'provisioning' for sensors
+  to pick up.
+  """
+  from robosystems.config import env
   from robosystems.models.iam import OrgRole, OrgUser
 
   resource_config = subscription.subscription_metadata.get("resource_config", {})
@@ -467,33 +474,110 @@ async def _trigger_resource_provisioning(
 
   context.log.info(f"Triggering provisioning for {resource_type}")
 
-  if resource_type == "graph":
-    if not subscription.subscription_metadata:
-      subscription.subscription_metadata = {}
-    subscription.subscription_metadata.update(resource_config)
-    subscription.status = "provisioning"
-    db_session.commit()
+  # Check if direct provisioning is enabled
+  if env.DIRECT_GRAPH_PROVISIONING_ENABLED:
+    # Direct provisioning - eliminates sensor delay and second cold start
+    from robosystems.middleware.sse.direct_monitor import (
+      run_graph_provisioning,
+      run_repository_provisioning,
+    )
 
-    context.log.info(f"Subscription {subscription.id} set to provisioning")
+    if resource_type == "graph":
+      # Update metadata before provisioning
+      if not subscription.subscription_metadata:
+        subscription.subscription_metadata = {}
+      subscription.subscription_metadata.update(resource_config)
+      subscription.status = "provisioning"
+      db_session.commit()
 
-  elif resource_type == "repository":
-    repository_name = resource_config.get("repository_name")
+      # Extract tier from plan name (e.g., "ladybug-standard" -> "ladybug-standard")
+      tier = subscription.plan_name
 
-    if not subscription.subscription_metadata:
-      subscription.subscription_metadata = {}
-    subscription.subscription_metadata["repository_name"] = repository_name
-    subscription.status = "provisioning"
-    db_session.commit()
+      context.log.info(f"Direct provisioning graph for subscription {subscription.id}")
 
-    context.log.info(f"Repository subscription {subscription.id} set to provisioning")
+      try:
+        result = await run_graph_provisioning(
+          operation_id=None,  # No SSE tracking for webhook-triggered provisioning
+          subscription_id=str(subscription.id),
+          user_id=str(user_id),
+          tier=tier,
+        )
+        context.log.info(
+          f"Direct graph provisioning completed: graph_id={result.get('graph_id')}"
+        )
+      except Exception as e:
+        context.log.error(f"Direct graph provisioning failed: {e}")
+        # Error handling already done in run_graph_provisioning
+        raise
+
+    elif resource_type == "repository":
+      repository_name = resource_config.get("repository_name")
+
+      if not subscription.subscription_metadata:
+        subscription.subscription_metadata = {}
+      subscription.subscription_metadata["repository_name"] = repository_name
+      subscription.status = "provisioning"
+      db_session.commit()
+
+      context.log.info(
+        f"Direct provisioning repository {repository_name} for subscription {subscription.id}"
+      )
+
+      try:
+        result = await run_repository_provisioning(
+          operation_id=None,
+          subscription_id=str(subscription.id),
+          user_id=str(user_id),
+          repository_name=repository_name,
+        )
+        context.log.info(
+          f"Direct repository provisioning completed: {result.get('repository_name')}"
+        )
+      except Exception as e:
+        context.log.error(f"Direct repository provisioning failed: {e}")
+        raise
+
+    else:
+      context.log.error(f"Unknown resource type: {resource_type}")
+      subscription.status = "failed"
+      subscription.subscription_metadata["error"] = (
+        f"Unknown resource type: {resource_type}"
+      )
+      db_session.commit()
 
   else:
-    context.log.error(f"Unknown resource type: {resource_type}")
-    subscription.status = "failed"
-    subscription.subscription_metadata["error"] = (
-      f"Unknown resource type: {resource_type}"
-    )
-    db_session.commit()
+    # Legacy behavior: set status to provisioning and let sensors handle it
+    if resource_type == "graph":
+      if not subscription.subscription_metadata:
+        subscription.subscription_metadata = {}
+      subscription.subscription_metadata.update(resource_config)
+      subscription.status = "provisioning"
+      db_session.commit()
+
+      context.log.info(
+        f"Subscription {subscription.id} set to provisioning (sensor mode)"
+      )
+
+    elif resource_type == "repository":
+      repository_name = resource_config.get("repository_name")
+
+      if not subscription.subscription_metadata:
+        subscription.subscription_metadata = {}
+      subscription.subscription_metadata["repository_name"] = repository_name
+      subscription.status = "provisioning"
+      db_session.commit()
+
+      context.log.info(
+        f"Repository subscription {subscription.id} set to provisioning (sensor mode)"
+      )
+
+    else:
+      context.log.error(f"Unknown resource type: {resource_type}")
+      subscription.status = "failed"
+      subscription.subscription_metadata["error"] = (
+        f"Unknown resource type: {resource_type}"
+      )
+      db_session.commit()
 
 
 def _emit_webhook_result_to_sse(
