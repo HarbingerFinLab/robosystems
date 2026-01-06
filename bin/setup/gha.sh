@@ -249,6 +249,10 @@ function setup_minimum_config() {
     gh variable set DATABASE_MULTI_AZ_ENABLED_STAGING --body "false"
     gh variable set DATABASE_SECRETS_ROTATION_DAYS --body "90"
 
+    # Database Versions (pin to override template defaults)
+    gh variable set DATABASE_POSTGRES_VERSION_PROD --body "16.11"
+    gh variable set DATABASE_POSTGRES_VERSION_STAGING --body "16.11"
+
     # VPC Flow Logs Configuration (SOC 2 - VPC-level, not environment-specific)
     gh variable set VPC_FLOW_LOGS_ENABLED --body "true"
     gh variable set VPC_FLOW_LOGS_RETENTION_DAYS --body "30"
@@ -272,6 +276,9 @@ function setup_minimum_config() {
     gh variable set VALKEY_ROTATION_SCHEDULE_DAYS_STAGING --body "90"
     gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_PROD --body "7"
     gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_STAGING --body "0"
+
+    gh variable set DATABASE_VALKEY_VERSION_PROD --body "8.1"
+    gh variable set DATABASE_VALKEY_VERSION_STAGING --body "8.1"
 
     # LadybugDB Writer Configuration - Standard Tier
     gh variable set LBUG_STANDARD_ENABLED_PROD --body "true"
@@ -377,8 +384,10 @@ function setup_minimum_config() {
     echo "  🔍 VPC Flow Logs: Disabled (enable for SOC 2, ~\$10-15/month)"
     echo "  🔐 Graph API Key Rotation: Every 90 days"
     echo "  🔐 PostgreSQL Password Rotation: Every 90 days"
+    echo "  🐘 PostgreSQL Version: 16.11"
     echo "  🔐 Valkey Encryption: Enabled for both environments"
     echo "  🔐 Valkey Secret Rotation: Every 90 days (both environments)"
+    echo "  ⚡ Valkey Version: 8.1"
     echo "  💾 Valkey Snapshots: 7 days (prod), disabled (staging)"
     echo "  🔄 Database Migrations: Disabled (prod), Enabled (staging)"
     echo ""
@@ -509,6 +518,10 @@ function setup_full_config() {
     gh variable set DATABASE_MULTI_AZ_ENABLED_STAGING --body "false"
     gh variable set DATABASE_SECRETS_ROTATION_DAYS --body "90"
 
+    # Database Versions (pin to override template defaults)
+    gh variable set DATABASE_POSTGRES_VERSION_PROD --body "16.11"
+    gh variable set DATABASE_POSTGRES_VERSION_STAGING --body "16.11"
+
     # VPC Flow Logs Configuration (SOC 2 - VPC-level, not environment-specific)
     gh variable set VPC_FLOW_LOGS_ENABLED --body "true"
     gh variable set VPC_FLOW_LOGS_RETENTION_DAYS --body "30"
@@ -532,6 +545,9 @@ function setup_full_config() {
     gh variable set VALKEY_ROTATION_SCHEDULE_DAYS_STAGING --body "90"
     gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_PROD --body "7"
     gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_STAGING --body "0"
+
+    gh variable set DATABASE_VALKEY_VERSION_PROD --body "8.1"
+    gh variable set DATABASE_VALKEY_VERSION_STAGING --body "8.1"
 
     # LadybugDB Writer Configuration - Standard Tier
     gh variable set LBUG_STANDARD_ENABLED_PROD --body "true"
@@ -640,7 +656,7 @@ function setup_full_config() {
     echo "  🌐 Domains: api.$ROOT_DOMAIN, staging.api.$ROOT_DOMAIN"
     echo "  📦 Repository: $REPOSITORY_NAME"
     echo "  🐳 ECR: $ECR_REPOSITORY"
-    echo "  🔧 Total variables configured: 73"
+    echo "  🔧 Total variables configured: 81"
     echo ""
     echo "All variables have been set to their current production defaults."
 }

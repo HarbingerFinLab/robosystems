@@ -48,6 +48,15 @@ Parameters:
     MinValue: 1
     MaxValue: 6
 
+  # FORK NOTE: Pin version via DATABASE_VALKEY_VERSION_<ENV> GitHub variable
+  ValkeyEngineVersion:
+    Type: String
+    Description: Valkey engine version
+    Default: "8.1"
+    AllowedValues:
+      - "8.1"
+    ConstraintDescription: Must be a supported Valkey version
+
   # Security Configuration
   EnableEncryption:
     Type: String
@@ -117,6 +126,12 @@ Parameters:
     Type: String
     Description: Component tag for resource identification and billing
     Default: Valkey
+
+Mappings:
+  # Maps version to parameter group family (add entries when expanding AllowedValues)
+  ValkeyVersionToFamily:
+    "8.1":
+      Family: "valkey8"
 
 Conditions:
   IsProduction: !Equals [!Ref Environment, prod]
@@ -464,7 +479,7 @@ Resources:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
-      CacheParameterGroupFamily: valkey8
+      CacheParameterGroupFamily: !FindInMap [ValkeyVersionToFamily, !Ref ValkeyEngineVersion, Family]
       Description: Parameter group for RoboSystems Valkey ElastiCache
       Properties:
         # Memory management for application caches
@@ -501,7 +516,7 @@ Resources:
       # Node Configuration
       CacheNodeType: !Ref NodeType
       Engine: valkey
-      EngineVersion: 8.0
+      EngineVersion: !Ref ValkeyEngineVersion
       Port: 6379
       # Cluster Configuration
       NumCacheClusters: !Ref NumCacheNodes
@@ -620,15 +635,15 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-${Environment}-ValkeyReplicationGroupId"
 
-  ValkeyEngineVersion:
-    Description: Valkey engine version
-    Value: "8.0"
+  ValkeyEngineVersionConfigured:
+    Description: Valkey engine version configured for this deployment
+    Value: !Ref ValkeyEngineVersion
     Export:
       Name: !Sub "${AWS::StackName}-${Environment}-ValkeyEngineVersion"
 
-  ValkeyParameterGroupFamily:
-    Description: Valkey parameter group family
-    Value: "valkey8"
+  ValkeyParameterGroupFamilyConfigured:
+    Description: Valkey parameter group family configured for this deployment
+    Value: !FindInMap [ValkeyVersionToFamily, !Ref ValkeyEngineVersion, Family]
     Export:
       Name: !Sub "${AWS::StackName}-${Environment}-ValkeyParameterGroupFamily"
 
