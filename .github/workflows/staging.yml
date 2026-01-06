@@ -283,7 +283,7 @@ jobs:
       node_type: ${{ vars.VALKEY_NODE_TYPE_STAGING || 'cache.t4g.micro' }}
       num_cache_nodes: ${{ vars.VALKEY_NUM_NODES_STAGING || '1' }}
       # Valkey Version Configuration (set to pin version, empty uses template default)
-      valkey_version: ${{ vars.DATABASE_VALKEY_VERSION_STAGING || '' }}
+      valkey_version: ${{ vars.VALKEY_VERSION_STAGING || '' }}
       # Security Configuration
       encryption_enabled: ${{ vars.VALKEY_ENCRYPTION_ENABLED_STAGING || 'true' }}
       secret_rotation_enabled: ${{ vars.VALKEY_SECRET_ROTATION_ENABLED_STAGING || 'true' }}
