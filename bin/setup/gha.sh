@@ -277,8 +277,8 @@ function setup_minimum_config() {
     gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_PROD --body "7"
     gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_STAGING --body "0"
 
-    gh variable set DATABASE_VALKEY_VERSION_PROD --body "8.1"
-    gh variable set DATABASE_VALKEY_VERSION_STAGING --body "8.1"
+    gh variable set VALKEY_VERSION_PROD --body "8.1"
+    gh variable set VALKEY_VERSION_STAGING --body "8.1"
 
     # LadybugDB Writer Configuration - Standard Tier
     gh variable set LBUG_STANDARD_ENABLED_PROD --body "true"
@@ -546,8 +546,8 @@ function setup_full_config() {
     gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_PROD --body "7"
     gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_STAGING --body "0"
 
-    gh variable set DATABASE_VALKEY_VERSION_PROD --body "8.1"
-    gh variable set DATABASE_VALKEY_VERSION_STAGING --body "8.1"
+    gh variable set VALKEY_VERSION_PROD --body "8.1"
+    gh variable set VALKEY_VERSION_STAGING --body "8.1"
 
     # LadybugDB Writer Configuration - Standard Tier
     gh variable set LBUG_STANDARD_ENABLED_PROD --body "true"

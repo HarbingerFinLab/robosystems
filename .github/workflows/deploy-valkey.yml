@@ -47,7 +47,7 @@ on:
         default: "1"
 
       # Valkey Version Configuration
-      # FORK NOTE: Set DATABASE_VALKEY_VERSION_<ENV> to pin your version
+      # FORK NOTE: Set VALKEY_VERSION_<ENV> to pin your version
       valkey_version:
         description: "Valkey engine version (leave empty to use template default)"
         required: false

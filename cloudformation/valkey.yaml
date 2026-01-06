@@ -48,7 +48,7 @@ Parameters:
     MinValue: 1
     MaxValue: 6
 
-  # FORK NOTE: Pin version via DATABASE_VALKEY_VERSION_<ENV> GitHub variable
+  # FORK NOTE: Pin version via VALKEY_VERSION_<ENV> GitHub variable
   ValkeyEngineVersion:
     Type: String
     Description: Valkey engine version
@@ -517,6 +517,7 @@ Resources:
       CacheNodeType: !Ref NodeType
       Engine: valkey
       EngineVersion: !Ref ValkeyEngineVersion
+      AutoMinorVersionUpgrade: false
       Port: 6379
       # Cluster Configuration
       NumCacheClusters: !Ref NumCacheNodes
