@@ -604,7 +604,7 @@ Resources:
       BackupRetentionPeriod: 7
       PreferredBackupWindow: 03:00-04:00
       PreferredMaintenanceWindow: sun:04:30-sun:05:30
-      AutoMinorVersionUpgrade: true
+      AutoMinorVersionUpgrade: false
       CopyTagsToSnapshot: true
       DBInstanceIdentifier: !Sub ${DBInstanceName}-${Environment}
       DBParameterGroupName: !Ref RDSDBParameterGroup
