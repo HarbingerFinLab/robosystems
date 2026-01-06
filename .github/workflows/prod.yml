@@ -248,6 +248,8 @@ jobs:
       subnet_ids: ${{ needs.deploy-vpc.outputs.private_subnet_ids }}
       # Database Engine Configuration
       engine: ${{ vars.DATABASE_ENGINE_PROD || 'postgres' }}
+      # Database Version Configuration (set to pin version, empty uses template default)
+      postgres_version: ${{ vars.DATABASE_POSTGRES_VERSION_PROD || '' }}
       # Instance Configuration
       instance_size: ${{ vars.DATABASE_INSTANCE_SIZE_PROD || 'db.t4g.small' }}
       allocated_storage: ${{ vars.DATABASE_ALLOCATED_STORAGE_PROD || '20' }}
@@ -281,6 +283,8 @@ jobs:
       # Instance Configuration
       node_type: ${{ vars.VALKEY_NODE_TYPE_PROD || 'cache.m6g.large' }}
       num_cache_nodes: ${{ vars.VALKEY_NUM_NODES_PROD || '1' }}
+      # Valkey Version Configuration (set to pin version, empty uses template default)
+      valkey_version: ${{ vars.DATABASE_VALKEY_VERSION_PROD || '' }}
       # Security Configuration
       encryption_enabled: ${{ vars.VALKEY_ENCRYPTION_ENABLED_PROD || 'true' }}
       secret_rotation_enabled: ${{ vars.VALKEY_SECRET_ROTATION_ENABLED_PROD || 'true' }}

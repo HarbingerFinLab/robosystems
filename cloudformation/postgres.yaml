@@ -32,6 +32,15 @@ Parameters:
       - aurora-postgresql
     ConstraintDescription: Must be either postgres (RDS) or aurora-postgresql (Aurora)
 
+  # FORK NOTE: Pin version via DATABASE_POSTGRES_VERSION_<ENV> GitHub variable
+  PostgresEngineVersion:
+    Type: String
+    Description: PostgreSQL engine version
+    Default: "16.11"
+    AllowedValues:
+      - "16.11"
+    ConstraintDescription: Must be a supported PostgreSQL version
+
   # Instance & Database Configuration
   DBInstanceClass:
     Type: String
@@ -125,6 +134,13 @@ Parameters:
     Type: String
     Description: Component tag for resource identification and billing
     Default: Postgres
+
+Mappings:
+  # Maps version to parameter group family (add entries when expanding AllowedValues)
+  PostgresVersionToFamily:
+    "16.11":
+      RDS: "postgres16"
+      Aurora: "aurora-postgresql16"
 
 Conditions:
   IsAurora: !Equals [!Ref DatabaseEngine, "aurora-postgresql"]
@@ -398,7 +414,7 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       Description: !Sub Parameter group for ${DBInstanceName}-${Environment} database
-      Family: postgres14
+      Family: !FindInMap [PostgresVersionToFamily, !Ref PostgresEngineVersion, RDS]
       Parameters:
         rds.force_ssl: "1"
       Tags:
@@ -421,7 +437,7 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       Description: !Sub Parameter group for ${DBInstanceName}-${Environment} Aurora database
-      Family: aurora-postgresql14
+      Family: !FindInMap [PostgresVersionToFamily, !Ref PostgresEngineVersion, Aurora]
       Parameters:
         rds.force_ssl: "1"
       Tags:
@@ -444,7 +460,7 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       Description: !Sub Cluster parameter group for ${DBInstanceName}-${Environment} Aurora cluster
-      Family: aurora-postgresql14
+      Family: !FindInMap [PostgresVersionToFamily, !Ref PostgresEngineVersion, Aurora]
       Parameters:
         rds.force_ssl: "1"
       Tags:
@@ -516,7 +532,7 @@ Resources:
       DBClusterIdentifier: !Sub ${DBInstanceName}-${Environment}
       DatabaseName: !Ref DBName
       Engine: aurora-postgresql
-      EngineVersion: "14.17"
+      EngineVersion: !Ref PostgresEngineVersion
       EngineMode: provisioned
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Sub "{{resolve:secretsmanager:${DBPasswordSecret}:SecretString:password}}"
@@ -573,7 +589,7 @@ Resources:
     Properties:
       DBName: !Ref DBName
       Engine: postgres
-      EngineVersion: "14.17"
+      EngineVersion: !Ref PostgresEngineVersion
       DBInstanceClass: !Ref DBInstanceClass
       AllocatedStorage: !Ref DBAllocatedStorage
       MaxAllocatedStorage: !Ref DBMaxAllocatedStorage
@@ -588,7 +604,7 @@ Resources:
       BackupRetentionPeriod: 7
       PreferredBackupWindow: 03:00-04:00
       PreferredMaintenanceWindow: sun:04:30-sun:05:30
-      AutoMinorVersionUpgrade: true
+      AutoMinorVersionUpgrade: false
       CopyTagsToSnapshot: true
       DBInstanceIdentifier: !Sub ${DBInstanceName}-${Environment}
       DBParameterGroupName: !Ref RDSDBParameterGroup
@@ -1018,3 +1034,18 @@ Outputs:
     Value: !If [EnableMultiAZCondition, "true", "false"]
     Export:
       Name: !Sub ${AWS::StackName}-${Environment}-MultiAZEnabled
+
+  PostgresEngineVersionConfigured:
+    Description: PostgreSQL engine version configured for this deployment
+    Value: !Ref PostgresEngineVersion
+    Export:
+      Name: !Sub ${AWS::StackName}-${Environment}-PostgresEngineVersion
+
+  PostgresParameterGroupFamilyConfigured:
+    Description: PostgreSQL parameter group family configured for this deployment
+    Value: !If
+      - IsAurora
+      - !FindInMap [PostgresVersionToFamily, !Ref PostgresEngineVersion, Aurora]
+      - !FindInMap [PostgresVersionToFamily, !Ref PostgresEngineVersion, RDS]
+    Export:
+      Name: !Sub ${AWS::StackName}-${Environment}-PostgresParameterGroupFamily

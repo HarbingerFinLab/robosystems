@@ -247,6 +247,8 @@ jobs:
       subnet_ids: ${{ needs.deploy-vpc.outputs.private_subnet_ids }}
       # Database Engine Configuration
       engine: ${{ vars.DATABASE_ENGINE_STAGING || 'postgres' }}
+      # Database Version Configuration (set to pin version, empty uses template default)
+      postgres_version: ${{ vars.DATABASE_POSTGRES_VERSION_STAGING || '' }}
       # Instance Configuration
       instance_size: ${{ vars.DATABASE_INSTANCE_SIZE_STAGING || 'db.t4g.small' }}
       allocated_storage: ${{ vars.DATABASE_ALLOCATED_STORAGE_STAGING || '20' }}
@@ -280,6 +282,8 @@ jobs:
       # Instance Configuration
       node_type: ${{ vars.VALKEY_NODE_TYPE_STAGING || 'cache.t4g.micro' }}
       num_cache_nodes: ${{ vars.VALKEY_NUM_NODES_STAGING || '1' }}
+      # Valkey Version Configuration (set to pin version, empty uses template default)
+      valkey_version: ${{ vars.DATABASE_VALKEY_VERSION_STAGING || '' }}
       # Security Configuration
       encryption_enabled: ${{ vars.VALKEY_ENCRYPTION_ENABLED_STAGING || 'true' }}
       secret_rotation_enabled: ${{ vars.VALKEY_SECRET_ROTATION_ENABLED_STAGING || 'true' }}

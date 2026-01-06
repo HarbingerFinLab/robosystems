@@ -41,6 +41,14 @@ on:
         type: string
         default: "postgres"
 
+      # Database Version Configuration
+      # FORK NOTE: Set DATABASE_POSTGRES_VERSION_<ENV> to pin your version
+      postgres_version:
+        description: "PostgreSQL engine version (leave empty to use template default)"
+        required: false
+        type: string
+        default: ""
+
       # Instance Configuration
       instance_size:
         description: "Database instance type for PostgreSQL/Aurora"
@@ -102,7 +110,7 @@ on:
 jobs:
   action:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
-    timeout-minutes: 25  # RDS instance creation can take 10-15 min
+    timeout-minutes: 30  # RDS major version upgrades can take 20-30 min
     outputs:
       postgres_secret_arn: ${{ steps.stack-outputs.outputs.postgres_secret_arn }}
       database_sg_id: ${{ steps.stack-outputs.outputs.database_sg_id }}
@@ -147,6 +155,16 @@ jobs:
                 ParameterKey=SNSAlertEmail,ParameterValue=${{ inputs.aws_sns_alert_email }} \
                 ParameterKey=PostgresRotationDays,ParameterValue=${{ inputs.secrets_rotation_days }} \
                 ParameterKey=LambdaImageUri,ParameterValue=${{ inputs.lambda_image_uri }}"
+
+          # Add version parameter only if explicitly set (allows forks to pin versions)
+          # Parameter group family is auto-derived from version via CloudFormation Mappings
+          if [ -n "${{ inputs.postgres_version }}" ]; then
+            POSTGRES_STACK_PARAMS="$POSTGRES_STACK_PARAMS \
+                ParameterKey=PostgresEngineVersion,ParameterValue=${{ inputs.postgres_version }}"
+            echo "Using PostgreSQL version: ${{ inputs.postgres_version }}"
+          else
+            echo "Using template default PostgreSQL version"
+          fi
 
           # Deploy or update the stack
           if [ "$STACK_ACTION" = "create-stack" ]; then
