@@ -68,11 +68,12 @@ class TestProductionSSLHandling:
       # URL should NOT contain SSL params
       assert "ssl_cert_reqs=CERT_NONE" not in url
 
-      # But connection params should include SSL settings
+      # But connection params should include SSL context for ElastiCache
       kwargs = call_args[1]
-      assert "ssl_cert_reqs" in kwargs
-      assert kwargs["ssl_cert_reqs"] == ssl.CERT_NONE
-      assert kwargs["ssl_check_hostname"] is False
+      assert "ssl_context" in kwargs
+      ssl_ctx = kwargs["ssl_context"]
+      assert ssl_ctx.verify_mode == ssl.CERT_NONE
+      assert ssl_ctx.check_hostname is False
 
   def test_create_async_redis_client_production_no_ssl_in_url(self):
     """Test that create_async_redis_client doesn't include SSL params in URL."""
@@ -94,30 +95,30 @@ class TestProductionSSLHandling:
       # URL should NOT contain SSL params
       assert "ssl_cert_reqs=CERT_NONE" not in url
 
-      # But connection params should include SSL settings
+      # But connection params should include SSL context for ElastiCache
       kwargs = call_args[1]
-      assert "ssl_cert_reqs" in kwargs
-      assert kwargs["ssl_cert_reqs"] == ssl.CERT_NONE
+      assert "ssl_context" in kwargs
+      ssl_ctx = kwargs["ssl_context"]
+      assert ssl_ctx.verify_mode == ssl.CERT_NONE
 
   def test_get_redis_connection_params_production(self):
     """Test that connection params include SSL settings in production."""
     with patch.dict(os.environ, {"ENVIRONMENT": "prod"}):
       params = get_redis_connection_params()
 
-      # Should include SSL parameters for production
-      assert params["ssl_cert_reqs"] == ssl.CERT_NONE
-      assert params["ssl_check_hostname"] is False
-      assert params["ssl_ca_certs"] is None
+      # Should include SSL context for production (ElastiCache)
+      assert "ssl_context" in params
+      ssl_ctx = params["ssl_context"]
+      assert ssl_ctx.verify_mode == ssl.CERT_NONE
+      assert ssl_ctx.check_hostname is False
 
   def test_get_redis_connection_params_development(self):
     """Test that connection params don't include SSL settings in dev."""
     with patch.dict(os.environ, {"ENVIRONMENT": "dev"}):
       params = get_redis_connection_params()
 
-      # Should NOT include SSL parameters for dev
-      assert "ssl_cert_reqs" not in params
-      assert "ssl_check_hostname" not in params
-      assert "ssl_ca_certs" not in params
+      # Should NOT include SSL context for dev
+      assert "ssl_context" not in params
 
   def test_reserved_urls_include_ssl_params(self):
     """Test that reserved database URLs include SSL params in production."""
