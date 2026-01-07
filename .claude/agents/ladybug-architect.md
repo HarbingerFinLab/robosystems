@@ -144,7 +144,6 @@ Table names from environment variables:
 LBUG_NODE_TYPE=writer|shared_master|shared_replica
 CLUSTER_TIER=standard|enterprise|premium|shared
 LBUG_DATABASE_PATH=/data/lbug-dbs
-LBUG_HOME=/app/data/.ladybug
 
 # Capacity Settings
 LBUG_MAX_DATABASES_PER_NODE=10

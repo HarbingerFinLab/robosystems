@@ -24,7 +24,6 @@ async def materialize_table(
   ladybug_service=Depends(get_ladybug_service),
 ) -> TableMaterializationResponse:
   import time
-  from pathlib import Path as PathLib
 
   start_time = time.time()
 
@@ -40,9 +39,6 @@ async def materialize_table(
 
   try:
     duck_path = f"{env.DUCKDB_STAGING_PATH}/{graph_id}.duckdb"
-    duckdb_extension_path = (
-      PathLib.home() / ".ladybug" / "extension" / "duckdb" / "libduckdb.lbug_extension"
-    )
 
     # CRITICAL: Checkpoint DuckDB to flush WAL to main database BEFORE LadybugDB attaches
     # LadybugDB's DuckDB extension creates a new session that won't see uncommitted WAL data
@@ -147,9 +143,12 @@ async def materialize_table(
 
     try:
       with ladybug_service.db_manager.connection_pool.get_connection(graph_id) as conn:
+        # Install and load DuckDB extension - LadybugDB finds it at
+        # ~/.lbug/extension/{VERSION}/{PLATFORM}/duckdb/ (bundled in Docker image)
         try:
-          conn.execute(f"LOAD EXTENSION '{duckdb_extension_path}'")
-          logger.info(f"Loaded DuckDB extension from {duckdb_extension_path}")
+          conn.execute("INSTALL duckdb")
+          conn.execute("LOAD duckdb")
+          logger.info("Loaded DuckDB extension")
         except Exception as e:
           if "already loaded" not in str(e).lower():
             logger.warning(f"Failed to load DuckDB extension: {e}")
@@ -268,7 +267,6 @@ async def fork_from_parent_duckdb(
       ForkFromParentResponse with tables copied and row counts
   """
   import time
-  from pathlib import Path as PathLib
 
   start_time = time.time()
 
@@ -288,9 +286,6 @@ async def fork_from_parent_duckdb(
 
   try:
     parent_duck_path = f"{env.DUCKDB_STAGING_PATH}/{parent_graph_id}.duckdb"
-    duckdb_extension_path = (
-      PathLib.home() / ".ladybug" / "extension" / "duckdb" / "libduckdb.lbug_extension"
-    )
 
     # Checkpoint parent DuckDB to flush WAL and create views
     logger.info(f"Checkpointing parent DuckDB before fork: {parent_duck_path}")
@@ -384,9 +379,12 @@ async def fork_from_parent_duckdb(
       with ladybug_service.db_manager.connection_pool.get_connection(
         subgraph_id
       ) as conn:
+        # Install and load DuckDB extension - LadybugDB finds it at
+        # ~/.lbug/extension/{VERSION}/{PLATFORM}/duckdb/ (bundled in Docker image)
         try:
-          conn.execute(f"LOAD EXTENSION '{duckdb_extension_path}'")
-          logger.info(f"Loaded DuckDB extension from {duckdb_extension_path}")
+          conn.execute("INSTALL duckdb")
+          conn.execute("LOAD duckdb")
+          logger.info("Loaded DuckDB extension")
         except Exception as e:
           if "already loaded" not in str(e).lower():
             logger.warning(f"Failed to load DuckDB extension: {e}")
