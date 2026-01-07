@@ -131,6 +131,7 @@ RUN if [ ! -f "./robosystems/adapters/sec/arelle/bundles/arelle-schemas-latest.t
     fi
 
 # Extract schemas from bundle and fetch EDGAR plugin from GitHub
+# EDGAR is pinned to a specific commit in arelle_cache_manager.py for reproducible builds
 RUN python robosystems/scripts/arelle_cache_manager.py extract && \
     python robosystems/scripts/arelle_cache_manager.py fetch-edgar
 RUN uv sync --frozen --no-dev
