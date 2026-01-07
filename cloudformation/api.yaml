@@ -702,6 +702,15 @@ Resources:
                 awslogs-region: !Ref AWS::Region
                 awslogs-stream-prefix: adot-collector
           - !Ref AWS::NoValue
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !Ref ServiceTag
+        - Key: Component
+          Value: !Ref ComponentTag
+        - Key: CreatedBy
+          Value: CloudFormation
 
   # ECS Service
   ApiService:
