@@ -22,7 +22,10 @@ class LadybugBackend(GraphBackend):
     )
 
   def _load_httpfs_extension(self, conn) -> None:
-    """Load httpfs extension by name - LadybugDB finds it at ~/.lbug/extension/{VERSION}/{PLATFORM}/."""
+    """Install and load httpfs extension for S3 access."""
+    # LadybugDB 0.13.x requires INSTALL before LOAD for official extensions
+    # INSTALL downloads to home_directory path, LOAD activates for this session
+    conn.execute("INSTALL httpfs")
     conn.execute("LOAD httpfs")
     logger.debug("Loaded httpfs extension")
 
