@@ -198,9 +198,6 @@ Resources:
                 Resource:
                   - !Sub arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment/*
                   - !Sub arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment
-                  # User data bucket - required for DuckDB staging tables during controlled ingestion
-                  - !Sub arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*
-                  - !Sub arn:${AWS::Partition}:s3:::robosystems-user-${Environment}
               # DynamoDB for instance registration (read-only replicas still register)
               - Effect: Allow
                 Action:
