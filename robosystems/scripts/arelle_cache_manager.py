@@ -380,6 +380,8 @@ class ArelleCacheManager:
     try:
       # Use git to fetch EDGAR plugin at specific commit
       # The --prefix=EDGAR will create the EDGAR subdirectory
+      # Fetch the exact commit SHA with --depth=1 to guarantee availability
+      # regardless of how old the commit is relative to master
       commands = [
         ["git", "init"],
         [
@@ -389,8 +391,7 @@ class ArelleCacheManager:
           "edgar-upstream",
           "https://github.com/Arelle/EDGAR.git",
         ],
-        # Fetch the specific commit (need full fetch for SHA, then checkout)
-        ["git", "fetch", "edgar-upstream", "master", "--depth=100"],
+        ["git", "fetch", "edgar-upstream", self.EDGAR_COMMIT_SHA, "--depth=1"],
         ["git", "read-tree", "--prefix=EDGAR", "-u", self.EDGAR_COMMIT_SHA],
       ]
 
