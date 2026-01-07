@@ -212,15 +212,6 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/robosystems-graph-${Environment}-volume-registry/index/*"
               - Effect: Allow
                 Action:
-                  - s3:PutObject
-                  - s3:GetObject
-                  - s3:DeleteObject
-                  - s3:ListBucket
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::${AWS::StackName}-backups/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::${AWS::StackName}-backups"
-              - Effect: Allow
-                Action:
                   - secretsmanager:GetSecretValue
                   - secretsmanager:DescribeSecret
                 Resource:
@@ -263,6 +254,7 @@ Resources:
                   - ecr:GetDownloadUrlForLayer
                   - ecr:BatchGetImage
                 Resource: "*"
+              # Read-only access to deployment scripts and shared processed data
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -272,6 +264,16 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}/*"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}"
+              # Full access to user data bucket for backups and staging tables
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*"
               - Effect: Allow
                 Action:
                   - ec2:CreateSnapshot

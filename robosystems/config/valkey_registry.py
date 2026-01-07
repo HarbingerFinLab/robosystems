@@ -10,7 +10,6 @@ and use the next available database number.
 
 import logging
 import os
-import ssl
 from enum import IntEnum
 from pathlib import Path
 from typing import Any
@@ -488,7 +487,7 @@ def get_redis_connection_params(environment: str | None = None) -> dict[str, Any
   if environment is None:
     environment = os.getenv("ENVIRONMENT", "dev").lower()
 
-  params = {
+  params: dict[str, Any] = {
     "decode_responses": True,
     "socket_connect_timeout": 5,  # 5 second connection timeout
     "socket_timeout": 5,  # 5 second operation timeout
@@ -506,9 +505,11 @@ def get_redis_connection_params(environment: str | None = None) -> dict[str, Any
     # 1. Connection is within AWS VPC (not over public internet)
     # 2. ElastiCache endpoint DNS is managed by AWS
     # 3. Network security groups restrict access
-    params["ssl_cert_reqs"] = ssl.CERT_NONE  # Don't verify certificate
-    params["ssl_check_hostname"] = False  # Don't check hostname
-    params["ssl_ca_certs"] = None  # No CA certificate validation
+
+    # Use individual SSL parameters (redis-py async doesn't support ssl_context)
+    # Note: ssl_cert_reqs must be lowercase 'none' for redis-py (not ssl.CERT_NONE)
+    params["ssl_cert_reqs"] = "none"
+    params["ssl_check_hostname"] = False
 
   return params
 

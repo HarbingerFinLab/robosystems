@@ -247,20 +247,27 @@ class GraphClientFactory:
       # Create a new Redis client for each event loop to avoid "Event loop is closed" errors
       # This is necessary because background tasks may create new event loops
       # Use async factory method to handle SSL params correctly
+      import socket
+
       from robosystems.config.valkey_registry import create_async_redis_client
+
+      # Build keepalive options using socket module constants for cross-platform compatibility
+      # Linux: TCP_KEEPIDLE=4, TCP_KEEPINTVL=5, TCP_KEEPCNT=6
+      keepalive_options = {}
+      if env.ENVIRONMENT in ["prod", "staging"]:
+        if hasattr(socket, "TCP_KEEPIDLE"):
+          keepalive_options[socket.TCP_KEEPIDLE] = 30
+        if hasattr(socket, "TCP_KEEPINTVL"):
+          keepalive_options[socket.TCP_KEEPINTVL] = 10
+        if hasattr(socket, "TCP_KEEPCNT"):
+          keepalive_options[socket.TCP_KEEPCNT] = 6
 
       client = create_async_redis_client(
         ValkeyDatabase.LBUG_CACHE,
         decode_responses=True,
         max_connections=10,
         socket_keepalive=True,
-        socket_keepalive_options={
-          1: 30,  # TCP_KEEPIDLE
-          2: 10,  # TCP_KEEPINTVL
-          3: 6,  # TCP_KEEPCNT
-        }
-        if env.ENVIRONMENT in ["prod", "staging"]
-        else {},
+        socket_keepalive_options=keepalive_options if keepalive_options else None,
       )
 
       # Test the connection - handle connection state issues gracefully

@@ -109,9 +109,12 @@ class TestAsyncSyncClientUsage:
         # Should be called with correct parameters
         assert mock_sync.called
         call_kwargs = mock_sync.call_args[1]
-        assert "ssl_cert_reqs" in call_kwargs  # SSL params in kwargs
+        assert (
+          call_kwargs.get("ssl_cert_reqs") == "none"
+        )  # SSL settings for ElastiCache
+        assert call_kwargs.get("ssl_check_hostname") is False
 
-        # URL should not have SSL params
+        # URL should not have SSL params (handled via connection params)
         url = mock_sync.call_args[0][0]
         assert "ssl_cert_reqs=CERT_NONE" not in url
 
@@ -123,8 +126,11 @@ class TestAsyncSyncClientUsage:
         # Should be called with correct parameters
         assert mock_async.called
         call_kwargs = mock_async.call_args[1]
-        assert "ssl_cert_reqs" in call_kwargs  # SSL params in kwargs
+        assert (
+          call_kwargs.get("ssl_cert_reqs") == "none"
+        )  # SSL settings for ElastiCache
+        assert call_kwargs.get("ssl_check_hostname") is False
 
-        # URL should not have SSL params
+        # URL should not have SSL params (handled via connection params)
         url = mock_async.call_args[0][0]
         assert "ssl_cert_reqs=CERT_NONE" not in url

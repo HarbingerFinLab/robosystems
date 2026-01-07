@@ -380,15 +380,16 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/robosystems-graph-${Environment}-instance-registry/index/*"
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/robosystems-graph-${Environment}-graph-registry/index/*"
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/robosystems-graph-${Environment}-volume-registry/index/*"
+              # Full access to user data bucket for backups
               - Effect: Allow
                 Action:
-                  - s3:PutObject
                   - s3:GetObject
+                  - s3:PutObject
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::${AWS::StackName}-backups/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::${AWS::StackName}-backups"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*"
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
