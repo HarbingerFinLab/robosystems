@@ -200,17 +200,14 @@ class ArelleClient:
       except Exception as e:
         logger.warning(f"Could not load plugin {plugin}: {e}")
 
-    # Load EDGAR plugin - it has 'import': ('EDGAR/render', ) in __pluginInfo__
+    # Load only the EDGAR transform module (not the full EDGAR plugin)
+    # The main EDGAR module tries to load EDGAR/render which requires matplotlib
+    # We only need the SEC transforms, not the renderer
     try:
-      # Load the EDGAR plugin module directly
-      PluginManager.addPluginModule("EDGAR")
-      logger.debug("Added EDGAR plugin module")
-
-      # Also try loading the transform module specifically
       PluginManager.addPluginModule("EDGAR.transform")
       logger.debug("Added EDGAR.transform module")
     except Exception as e:
-      logger.warning(f"Could not load EDGAR plugin modules: {e}")
+      logger.warning(f"Could not load EDGAR.transform module: {e}")
 
     # Reset the plugin config to activate loaded plugins
     try:

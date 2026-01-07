@@ -359,9 +359,15 @@ class ArelleCacheManager:
     )
     return downloaded + skipped
 
+  # Pin EDGAR plugin to a specific commit for reproducible builds
+  # Update this SHA to pull in new EDGAR changes
+  EDGAR_COMMIT_SHA = "4c280cd2bf688dcf4aac59ecca385632e54aebe7"
+
   def fetch_edgar_plugin(self) -> bool:
-    """Fetch EDGAR plugin from GitHub."""
-    logger.info("Fetching EDGAR plugin from GitHub...")
+    """Fetch EDGAR plugin from GitHub at a pinned commit."""
+    logger.info(
+      f"Fetching EDGAR plugin from GitHub (commit: {self.EDGAR_COMMIT_SHA[:8]})"
+    )
 
     # Clean existing EDGAR directory
     if self.edgar_dir.exists():
@@ -372,7 +378,7 @@ class ArelleCacheManager:
     parent_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-      # Use git to fetch EDGAR plugin (shallow clone) in parent directory
+      # Use git to fetch EDGAR plugin at specific commit
       # The --prefix=EDGAR will create the EDGAR subdirectory
       commands = [
         ["git", "init"],
@@ -383,8 +389,9 @@ class ArelleCacheManager:
           "edgar-upstream",
           "https://github.com/Arelle/EDGAR.git",
         ],
-        ["git", "fetch", "edgar-upstream", "master", "--depth=1"],
-        ["git", "read-tree", "--prefix=EDGAR", "-u", "edgar-upstream/master"],
+        # Fetch the specific commit (need full fetch for SHA, then checkout)
+        ["git", "fetch", "edgar-upstream", "master", "--depth=100"],
+        ["git", "read-tree", "--prefix=EDGAR", "-u", self.EDGAR_COMMIT_SHA],
       ]
 
       for cmd in commands:
@@ -399,7 +406,9 @@ class ArelleCacheManager:
       if git_dir.exists():
         shutil.rmtree(git_dir)
 
-      logger.info("EDGAR plugin fetched successfully")
+      logger.info(
+        f"EDGAR plugin fetched successfully (commit: {self.EDGAR_COMMIT_SHA[:8]})"
+      )
       return True
 
     except Exception as e:
