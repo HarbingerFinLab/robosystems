@@ -21,10 +21,13 @@ class LadybugBackend(GraphBackend):
       f"Initialized LadybugBackend using global ConnectionPool at {data_path}"
     )
 
-  def _get_httpfs_extension_path(self) -> Path:
-    return (
-      Path.home() / ".ladybug" / "extension" / "httpfs" / "libhttpfs.lbug_extension"
-    )
+  def _load_httpfs_extension(self, conn) -> None:
+    """Install and load httpfs extension for S3 access."""
+    # LadybugDB 0.13.x requires INSTALL before LOAD for official extensions
+    # INSTALL downloads to home_directory path, LOAD activates for this session
+    conn.execute("INSTALL httpfs")
+    conn.execute("LOAD httpfs")
+    logger.debug("Loaded httpfs extension")
 
   async def execute_query(
     self,
@@ -153,19 +156,9 @@ class LadybugBackend(GraphBackend):
   ) -> dict[str, Any]:
     # Use ConnectionPool's context manager - this is the 1.0.1 pattern
     with self.connection_pool.get_connection(graph_id, read_only=False) as conn:
-      # Load httpfs extension (try bundled local file first, fallback to standard load)
+      # Load httpfs extension by name - LadybugDB finds it at ~/.lbug/extension/{VERSION}/{PLATFORM}/
       try:
-        result = conn.execute("CALL show_loaded_extensions() RETURN *")
-        loaded_extensions = []
-        while result.has_next():
-          loaded_extensions.append(str(result.get_next()).lower())
-
-        if "httpfs" not in loaded_extensions:
-          extension_path = self._get_httpfs_extension_path()
-          conn.execute(f"LOAD EXTENSION '{extension_path}'")
-          logger.debug(f"Loaded httpfs extension from {extension_path}")
-        else:
-          logger.debug("httpfs extension already loaded")
+        self._load_httpfs_extension(conn)
       except Exception as e:
         if "already loaded" not in str(e).lower():
           logger.error(f"Failed to load httpfs extension: {e}")

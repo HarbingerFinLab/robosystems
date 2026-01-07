@@ -294,14 +294,9 @@ class TestLadybugBackendS3Ingestion:
     mock_pool = MagicMock()
     mock_conn = MagicMock()
 
-    mock_extensions_result = MagicMock()
-    mock_extensions_result.has_next.side_effect = [True, False]
-    mock_extensions_result.get_next.return_value = ["other"]
-
-    mock_conn.execute.side_effect = [
-      mock_extensions_result,
-      RuntimeError("Failed to load extension"),
-    ]
+    # Extension loading pattern: INSTALL httpfs + LOAD httpfs
+    # Mock fails on first execute call (INSTALL httpfs)
+    mock_conn.execute.side_effect = RuntimeError("Failed to load httpfs extension")
 
     mock_pool.get_connection.return_value.__enter__.return_value = mock_conn
     mock_get_pool.return_value = mock_pool

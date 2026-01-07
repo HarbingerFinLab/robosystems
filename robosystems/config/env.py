@@ -485,7 +485,6 @@ class EnvConfig:
   LBUG_DATABASE_PATH = get_str_env("LBUG_DATABASE_PATH", "./data/lbug-dbs")
   LBUG_ACCESS_PATTERN = get_str_env("LBUG_ACCESS_PATTERN", "api_auto")
   LBUG_NODE_TYPE = get_str_env("LBUG_NODE_TYPE", "writer")
-  LBUG_HOME = get_str_env("LBUG_HOME", "/app/data/.ladybug")
 
   # DuckDB Staging Configuration (for data ingestion/materialization)
   DUCKDB_STAGING_PATH = get_str_env("DUCKDB_STAGING_PATH", "./data/staging")
