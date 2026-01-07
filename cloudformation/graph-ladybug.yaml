@@ -272,6 +272,9 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}/*"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}"
+                  # User data bucket - required for DuckDB staging tables during controlled ingestion
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}"
               - Effect: Allow
                 Action:
                   - ec2:CreateSnapshot

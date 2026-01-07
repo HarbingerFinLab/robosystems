@@ -473,6 +473,28 @@ legacy_url = ValkeyURLBuilder.build_url(database=ValkeyDatabase.AUTH_CACHE)
 # =============================================================================
 
 
+def _create_elasticache_ssl_context() -> ssl.SSLContext:
+  """
+  Create an SSL context configured for AWS ElastiCache connections.
+
+  IMPORTANT: The order of operations matters for Python's ssl module.
+  check_hostname must be set to False BEFORE verify_mode is set to CERT_NONE,
+  otherwise Python raises "Cannot set verify_mode to CERT_NONE when check_hostname is enabled".
+
+  Returns:
+      SSLContext configured for ElastiCache (TLS enabled, no cert verification)
+  """
+  # Use TLS client protocol
+  ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+  # MUST set check_hostname=False BEFORE setting verify_mode=CERT_NONE
+  # This is a Python ssl module requirement - the order matters!
+  ctx.check_hostname = False
+  ctx.verify_mode = ssl.CERT_NONE
+
+  return ctx
+
+
 def get_redis_connection_params(environment: str | None = None) -> dict[str, Any]:
   """
   Get Redis connection parameters based on environment.
@@ -488,7 +510,7 @@ def get_redis_connection_params(environment: str | None = None) -> dict[str, Any
   if environment is None:
     environment = os.getenv("ENVIRONMENT", "dev").lower()
 
-  params = {
+  params: dict[str, Any] = {
     "decode_responses": True,
     "socket_connect_timeout": 5,  # 5 second connection timeout
     "socket_timeout": 5,  # 5 second operation timeout
@@ -506,9 +528,10 @@ def get_redis_connection_params(environment: str | None = None) -> dict[str, Any
     # 1. Connection is within AWS VPC (not over public internet)
     # 2. ElastiCache endpoint DNS is managed by AWS
     # 3. Network security groups restrict access
-    params["ssl_cert_reqs"] = ssl.CERT_NONE  # Don't verify certificate
-    params["ssl_check_hostname"] = False  # Don't check hostname
-    params["ssl_ca_certs"] = None  # No CA certificate validation
+
+    # Use explicit SSLContext to ensure proper parameter ordering
+    # (check_hostname must be False before verify_mode=CERT_NONE)
+    params["ssl_context"] = _create_elasticache_ssl_context()
 
   return params
 

@@ -190,12 +190,17 @@ Resources:
                   - ecr:GetDownloadUrlForLayer
                   - ecr:BatchGetImage
                 Resource: "*"
-              # S3 read-only for deployment artifacts
+              # S3 read-only for deployment artifacts and user data (DuckDB staging tables)
               - Effect: Allow
                 Action:
                   - s3:GetObject
+                  - s3:ListBucket
                 Resource:
                   - !Sub arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment/*
+                  - !Sub arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment
+                  # User data bucket - required for DuckDB staging tables during controlled ingestion
+                  - !Sub arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*
+                  - !Sub arn:${AWS::Partition}:s3:::robosystems-user-${Environment}
               # DynamoDB for instance registration (read-only replicas still register)
               - Effect: Allow
                 Action:
