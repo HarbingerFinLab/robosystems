@@ -190,7 +190,7 @@ Resources:
                   - ecr:GetDownloadUrlForLayer
                   - ecr:BatchGetImage
                 Resource: "*"
-              # S3 read-only for deployment artifacts and user data (DuckDB staging tables)
+              # S3 read-only for deployment artifacts
               - Effect: Allow
                 Action:
                   - s3:GetObject
