@@ -370,14 +370,15 @@ Resources:
                   - ses:DescribeConfigurationSet
                 Resource: "*"
               # AWS Bedrock permissions for Claude AI operations
+              # Note: Cross-region access needed - models may be in us-east-1 or us-east-2
               - Effect: Allow
                 Action:
                   - bedrock:InvokeModel
                   - bedrock:InvokeModelWithResponseStream
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/anthropic.claude-*"
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/global.anthropic.claude-*"
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/global.anthropic.claude-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*"
               - Effect: Allow
                 Action:
                   - bedrock:GetFoundationModel
