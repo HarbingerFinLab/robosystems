@@ -329,6 +329,8 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment/*"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-public-data-${Environment}"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-public-data-${Environment}/*"
               # DynamoDB for graph registries (needed for shared master discovery)
               - Effect: Allow
                 Action:
