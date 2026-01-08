@@ -205,8 +205,9 @@ class TestSecProcessingSensor:
     context = build_sensor_context()
     result = list(sec_processing_sensor(context))
 
-    # Should return empty (no run requests, no skip reason)
-    assert len(result) == 0
+    # Should return SkipReason (no raw filings found)
+    assert len(result) == 1
+    assert "No raw filings found" in str(result[0])
 
   @patch("robosystems.dagster.sensors.sec._list_processed_partitions")
   @patch("robosystems.dagster.sensors.sec._get_s3_client")
@@ -231,5 +232,6 @@ class TestSecProcessingSensor:
     context = build_sensor_context()
     result = list(sec_processing_sensor(context))
 
-    # Should return empty (no run requests)
-    assert len(result) == 0
+    # Should return SkipReason (all filings already processed)
+    assert len(result) == 1
+    assert "already processed" in str(result[0])
