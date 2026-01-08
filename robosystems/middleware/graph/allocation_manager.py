@@ -1264,25 +1264,27 @@ class LadybugAllocationManager:
         return
 
       volume_id = items[0]["volume_id"]
-      current_databases = items[0].get("databases", [])
 
-      # Add database if not already in list
-      if graph_id not in current_databases:
-        updated_databases = [*current_databases, graph_id]
+      # Use atomic list_append to avoid lost updates from concurrent writes
+      # ConditionExpression prevents duplicates; ConditionalCheckFailedException means already exists
+      try:
         self.volume_table.update_item(
           Key={"volume_id": volume_id},
-          UpdateExpression="SET databases = :dbs, last_updated = :timestamp",
+          UpdateExpression="SET databases = list_append(if_not_exists(databases, :empty), :new_db), last_updated = :timestamp",
+          ConditionExpression="NOT contains(if_not_exists(databases, :empty), :gid)",
           ExpressionAttributeValues={
-            ":dbs": updated_databases,
+            ":empty": [],
+            ":new_db": [graph_id],
+            ":gid": graph_id,
             ":timestamp": datetime.now(UTC).isoformat(),
           },
         )
-        logger.info(
-          f"Added database {graph_id} to volume {volume_id} registry "
-          f"(now has {len(updated_databases)} databases)"
-        )
-      else:
-        logger.debug(f"Database {graph_id} already in volume {volume_id} registry")
+        logger.info(f"Added database {graph_id} to volume {volume_id} registry")
+      except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+          logger.debug(f"Database {graph_id} already in volume {volume_id} registry")
+        else:
+          raise
 
     except ClientError as e:
       logger.error(
@@ -1330,20 +1332,33 @@ class LadybugAllocationManager:
       current_databases = items[0].get("databases", [])
 
       # Remove database if in list
+      # Use conditional write with expected state to detect concurrent modifications
       if graph_id in current_databases:
         updated_databases = [db for db in current_databases if db != graph_id]
-        self.volume_table.update_item(
-          Key={"volume_id": volume_id},
-          UpdateExpression="SET databases = :dbs, last_updated = :timestamp",
-          ExpressionAttributeValues={
-            ":dbs": updated_databases,
-            ":timestamp": datetime.now(UTC).isoformat(),
-          },
-        )
-        logger.info(
-          f"Removed database {graph_id} from volume {volume_id} registry "
-          f"(now has {len(updated_databases)} databases)"
-        )
+        try:
+          self.volume_table.update_item(
+            Key={"volume_id": volume_id},
+            UpdateExpression="SET databases = :dbs, last_updated = :timestamp",
+            ConditionExpression="contains(databases, :gid)",
+            ExpressionAttributeValues={
+              ":dbs": updated_databases,
+              ":gid": graph_id,
+              ":timestamp": datetime.now(UTC).isoformat(),
+            },
+          )
+          logger.info(
+            f"Removed database {graph_id} from volume {volume_id} registry "
+            f"(now has {len(updated_databases)} databases)"
+          )
+        except ClientError as e:
+          if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            # Concurrent modification - database was already removed or list changed
+            logger.debug(
+              f"Database {graph_id} already removed from volume {volume_id} registry "
+              f"(concurrent modification detected)"
+            )
+          else:
+            raise
       else:
         logger.debug(f"Database {graph_id} was not in volume {volume_id} registry")
 
