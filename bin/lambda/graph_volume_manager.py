@@ -32,6 +32,9 @@ ssm = boto3.client("ssm")
 # Environment variables
 ENVIRONMENT = os.environ["ENVIRONMENT"]
 TABLE_NAME = os.environ["VOLUME_REGISTRY_TABLE"]
+GRAPH_REGISTRY_TABLE = os.environ.get(
+  "GRAPH_REGISTRY_TABLE", f"robosystems-graph-{ENVIRONMENT}-graph-registry"
+)
 ALERT_TOPIC = os.environ["ALERT_TOPIC_ARN"]
 DEFAULT_SIZE = int(os.environ.get("DEFAULT_VOLUME_SIZE", "50"))
 DEFAULT_TYPE = os.environ.get("DEFAULT_VOLUME_TYPE", "gp3")
@@ -39,8 +42,9 @@ DEFAULT_IOPS = int(os.environ.get("DEFAULT_VOLUME_IOPS", "3000"))
 DEFAULT_THROUGHPUT = int(os.environ.get("DEFAULT_VOLUME_THROUGHPUT", "125"))
 RETENTION_DAYS = int(os.environ.get("SNAPSHOT_RETENTION_DAYS", "7"))
 
-# DynamoDB table
-table = dynamodb.Table(TABLE_NAME)
+# DynamoDB tables
+table = dynamodb.Table(TABLE_NAME)  # Volume registry
+graph_table = dynamodb.Table(GRAPH_REGISTRY_TABLE)  # Graph registry
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -243,6 +247,103 @@ def find_volume_with_database(database: str, az: str, tier: str) -> dict | None:
   return None
 
 
+def update_graph_registry_for_instance(
+  instance_id: str, databases: list[str], private_ip: str | None = None
+) -> dict[str, int]:
+  """
+  Update graph registry entries when databases move to a new instance.
+
+  This is critical for routing - when an instance is replaced, we need to update
+  the graph registry so queries route to the correct IP address.
+
+  Args:
+    instance_id: The new instance ID
+    databases: List of database/graph IDs on this instance
+    private_ip: The new instance's private IP (will be fetched if not provided)
+
+  Returns:
+    Dict with counts of updated, skipped, and failed entries
+  """
+  if not databases:
+    logger.info("No databases to update in graph registry")
+    return {"updated": 0, "skipped": 0, "failed": 0}
+
+  # Get private IP if not provided
+  if not private_ip:
+    try:
+      response = ec2.describe_instances(InstanceIds=[instance_id])
+      if response["Reservations"] and response["Reservations"][0]["Instances"]:
+        private_ip = response["Reservations"][0]["Instances"][0].get("PrivateIpAddress")
+        if not private_ip:
+          logger.warning(f"Instance {instance_id} does not have a private IP yet")
+          # Don't fail - the instance might still be initializing
+    except Exception as e:
+      logger.error(f"Failed to get private IP for instance {instance_id}: {e}")
+
+  results = {"updated": 0, "skipped": 0, "failed": 0}
+
+  for db_id in databases:
+    try:
+      # Skip subgraph IDs (format: kg123_workspacename) - they're not in graph registry
+      # Subgraphs share their parent's instance, parent registry entry handles routing
+      if "_" in db_id and db_id.startswith("kg"):
+        logger.debug(f"Skipping subgraph {db_id} - not stored in graph registry")
+        results["skipped"] += 1
+        continue
+
+      # Check if database exists in graph registry
+      response = graph_table.get_item(Key={"graph_id": db_id})
+      if "Item" not in response:
+        logger.warning(
+          f"Database {db_id} not found in graph registry - may be new or deleted"
+        )
+        results["skipped"] += 1
+        continue
+
+      # Update the graph registry entry with new instance info
+      update_expr = "SET instance_id = :iid, last_updated = :timestamp"
+      expr_values: dict[str, Any] = {
+        ":iid": instance_id,
+        ":timestamp": datetime.now(UTC).isoformat(),
+      }
+
+      # Only update private_ip if we have it
+      if private_ip:
+        update_expr += ", private_ip = :ip"
+        expr_values[":ip"] = private_ip
+
+      graph_table.update_item(
+        Key={"graph_id": db_id},
+        UpdateExpression=update_expr,
+        ExpressionAttributeValues=expr_values,
+      )
+
+      logger.info(
+        f"Updated graph registry for {db_id}: instance={instance_id}, ip={private_ip}"
+      )
+      results["updated"] += 1
+
+    except Exception as e:
+      logger.error(f"Failed to update graph registry for {db_id}: {e}")
+      results["failed"] += 1
+
+  # Log summary
+  logger.info(
+    f"Graph registry update complete: {results['updated']} updated, "
+    f"{results['skipped']} skipped, {results['failed']} failed"
+  )
+
+  # Alert if any failures
+  if results["failed"] > 0:
+    send_alert(
+      "Graph Registry Update Failures",
+      f"Failed to update {results['failed']} graph registry entries for instance {instance_id}. "
+      f"Databases: {databases}. This may cause routing issues!",
+    )
+
+  return results
+
+
 def attach_and_register_volume(
   volume_id: str, instance_id: str, databases: Any
 ) -> dict[str, Any]:
@@ -302,6 +403,12 @@ def attach_and_register_volume(
   )
 
   logger.info(f"Successfully attached volume {volume_id} to instance {instance_id}")
+
+  # CRITICAL: Update graph registry with new instance info for routing
+  # This ensures queries route to the correct IP after instance replacement
+  db_list = databases if isinstance(databases, list) else [databases]
+  graph_update_result = update_graph_registry_for_instance(instance_id, db_list)
+  logger.info(f"Graph registry update result: {graph_update_result}")
 
   # Signal the instance that volume is ready
   try:
