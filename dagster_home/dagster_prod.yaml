@@ -97,3 +97,14 @@ run_monitoring:
   enabled: true
   poll_interval_seconds: 30
   max_resume_run_attempts: 0
+
+# Compute log storage - capture stdout/stderr from ECS run tasks
+# Logs are stored in S3 and viewable in the Dagster webserver UI
+compute_logs:
+  module: dagster_aws.s3.compute_log_manager
+  class: S3ComputeLogManager
+  config:
+    bucket:
+      env: DAGSTER_COMPUTE_LOGS_BUCKET
+    prefix: dagster
+    skip_empty_files: true

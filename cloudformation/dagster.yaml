@@ -331,6 +331,8 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-public-data-${Environment}"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-public-data-${Environment}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-logs-${Environment}"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-logs-${Environment}/*"
               # DynamoDB for graph registries (needed for shared master discovery)
               - Effect: Allow
                 Action:
@@ -535,6 +537,9 @@ Resources:
               Value: !Ref DagsterCluster
             - Name: DAGSTER_ECS_LAUNCH_TYPE
               Value: FARGATE
+            # S3 compute logs bucket for Dagster UI
+            - Name: DAGSTER_COMPUTE_LOGS_BUCKET
+              Value: !Sub robosystems-logs-${Environment}
 
   WebserverTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -603,6 +608,9 @@ Resources:
               Value: !Ref DagsterCluster
             - Name: DAGSTER_ECS_LAUNCH_TYPE
               Value: FARGATE
+            # S3 compute logs bucket for Dagster UI
+            - Name: DAGSTER_COMPUTE_LOGS_BUCKET
+              Value: !Sub robosystems-logs-${Environment}
           HealthCheck:
             Command:
               [
@@ -676,6 +684,9 @@ Resources:
                 Fn::ImportValue: !Sub
                   - "${S3StackName}-${Environment}-PublicDataCDNURL"
                   - S3StackName: !FindInMap [StackNames, !Ref Environment, S3]
+            # S3 compute logs bucket for Dagster UI
+            - Name: DAGSTER_COMPUTE_LOGS_BUCKET
+              Value: !Sub robosystems-logs-${Environment}
 
   # ========================================
   # ECS SERVICES

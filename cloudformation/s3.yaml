@@ -6,6 +6,7 @@ Description: RoboSystems File Storage Service - S3 Buckets and IAM Policies
 # - robosystems-user-{env}            : User uploads, staging tables, exports
 # - robosystems-public-data-{env}     : CloudFront-served public content
 # - robosystems-{env}-deployment      : Lambda packages, userdata scripts
+# - robosystems-logs-{env}            : Dagster compute logs (stdout/stderr from ECS runs)
 
 Parameters:
   # Environment
@@ -406,6 +407,50 @@ Resources:
         - Key: CreatedBy
           Value: CloudFormation
 
+  # Logs Bucket (Dagster compute logs from ECS runs)
+  S3BucketLogs:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        RestrictPublicBuckets: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        BlockPublicAcls: true
+      BucketName: !Sub robosystems-logs-${Environment}
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: false
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          # Dagster compute logs expire after 14 days (matches CloudWatch retention)
+          - Id: ExpireComputeLogs
+            Status: Enabled
+            Prefix: dagster/
+            ExpirationInDays: 14
+          # Cleanup incomplete uploads
+          - Id: CleanupIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-${Environment}-logs-bucket
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: !Ref ServiceTag
+        - Key: Component
+          Value: Logs
+        - Key: CreatedBy
+          Value: CloudFormation
+
   # IAM Managed Policy for Graph Writers (read shared data, write sync buckets)
   GraphWriterS3Policy:
     Type: AWS::IAM::ManagedPolicy
@@ -560,3 +605,16 @@ Outputs:
     Value: !Ref SharedDataWriterPolicy
     Export:
       Name: !Sub ${AWS::StackName}-${Environment}-SharedDataWriterPolicyArn
+
+  # Logs Bucket Outputs
+  LogsBucketName:
+    Description: Name of the logs bucket (Dagster compute logs)
+    Value: !Ref S3BucketLogs
+    Export:
+      Name: !Sub ${AWS::StackName}-${Environment}-LogsBucketName
+
+  LogsBucketArn:
+    Description: ARN of the logs bucket
+    Value: !GetAtt S3BucketLogs.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-${Environment}-LogsBucketArn
