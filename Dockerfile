@@ -35,7 +35,7 @@ ARG TARGETARCH=arm64
 # in the repo may not be ABI-compatible with their matching Python package versions.
 # Using vdev extensions with latest Python package provides best compatibility.
 ARG LADYBUG_EXT_REPO_VERSION=dev
-ARG LADYBUG_INTERNAL_VERSION=0.12.0
+ARG LADYBUG_INTERNAL_VERSION=0.13.0
 
 # Create extension directories using internal version (where LadybugDB looks)
 RUN mkdir -p /ladybug-extension/${LADYBUG_INTERNAL_VERSION}/linux_${TARGETARCH}/httpfs \
@@ -144,7 +144,7 @@ FROM python:3.13-slim
 ARG TARGETARCH=arm64
 # Internal extension version - where LadybugDB actually looks for extensions
 # Must match the builder stage's LADYBUG_INTERNAL_VERSION
-ARG LADYBUG_INTERNAL_VERSION=0.12.0
+ARG LADYBUG_INTERNAL_VERSION=0.13.0
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
