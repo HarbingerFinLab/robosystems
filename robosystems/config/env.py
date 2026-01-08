@@ -712,7 +712,7 @@ class EnvConfig:
     "PUBLIC_DATA_BUCKET", f"robosystems-public-data{_BUCKET_SUFFIX}"
   )
   DEPLOYMENT_BUCKET = get_str_env(
-    "DEPLOYMENT_BUCKET", f"robosystems{_BUCKET_SUFFIX}-deployment"
+    "DEPLOYMENT_BUCKET", f"robosystems-deployment{_BUCKET_SUFFIX}"
   )
 
   # CDN URL passed via ECS task definition (depends on CloudFront distribution)

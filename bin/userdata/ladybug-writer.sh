@@ -236,31 +236,31 @@ aws ec2 create-tags \
 echo "Downloading shared infrastructure scripts..."
 
 # Download common graph scripts
-aws s3 cp s3://robosystems-${ENVIRONMENT}-deployment/userdata/common/setup-cloudwatch-graph.sh \
+aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/setup-cloudwatch-graph.sh \
     /usr/local/bin/setup-cloudwatch-graph.sh || {
   echo "ERROR: Could not download CloudWatch setup script from S3"
   exit 1
 }
 
-aws s3 cp s3://robosystems-${ENVIRONMENT}-deployment/userdata/common/register-graph-instance.sh \
+aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/register-graph-instance.sh \
     /usr/local/bin/register-graph-instance.sh || {
   echo "ERROR: Could not download instance registration script from S3"
   exit 1
 }
 
-aws s3 cp s3://robosystems-${ENVIRONMENT}-deployment/userdata/common/run-graph-container.sh \
+aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/run-graph-container.sh \
     /usr/local/bin/run-graph-container.sh || {
   echo "ERROR: Could not download container runner script from S3"
   exit 1
 }
 
-aws s3 cp s3://robosystems-${ENVIRONMENT}-deployment/userdata/common/graph-health-check.sh \
+aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/graph-health-check.sh \
     /usr/local/bin/graph-health-check.sh || {
   echo "ERROR: Could not download health check script from S3"
   exit 1
 }
 
-aws s3 cp s3://robosystems-${ENVIRONMENT}-deployment/userdata/common/graph-lifecycle.sh \
+aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/graph-lifecycle.sh \
     /usr/local/bin/graph-lifecycle.sh || {
   echo "ERROR: Could not download lifecycle script from S3"
   exit 1
