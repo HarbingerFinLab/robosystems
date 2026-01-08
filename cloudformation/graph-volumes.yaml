@@ -149,6 +149,7 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
+                  # Volume registry table
                   - !If
                     - UseProvidedVolumeRegistry
                     - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VolumeRegistryTable}"
@@ -157,6 +158,8 @@ Resources:
                     - UseProvidedVolumeRegistry
                     - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VolumeRegistryTable}/index/*"
                     - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/robosystems-graph-${Environment}-volume-registry/index/*"
+                  # Graph registry table (for updating private_ip on instance replacement)
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/robosystems-graph-${Environment}-graph-registry"
               - Effect: Allow
                 Action:
                   - sns:Publish
@@ -221,6 +224,7 @@ Resources:
             - UseProvidedVolumeRegistry
             - !Ref VolumeRegistryTable
             - !Sub "robosystems-graph-${Environment}-volume-registry"
+          GRAPH_REGISTRY_TABLE: !Sub "robosystems-graph-${Environment}-graph-registry"
           ALERT_TOPIC_ARN: !Ref VolumeAlertTopic
           DEFAULT_VOLUME_SIZE:
             !FindInMap [VolumeDefaults, !Ref Environment, Size]

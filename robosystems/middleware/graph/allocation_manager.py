@@ -200,6 +200,7 @@ class LadybugAllocationManager:
     # DynamoDB tables - use centralized configuration
     self.graph_table = dynamodb.Table(env.GRAPH_REGISTRY_TABLE)
     self.instance_table = dynamodb.Table(env.INSTANCE_REGISTRY_TABLE)
+    self.volume_table = dynamodb.Table(env.VOLUME_REGISTRY_TABLE)
 
     # AWS clients with region configuration
     region = env.AWS_REGION
@@ -321,6 +322,11 @@ class LadybugAllocationManager:
       logger.info(
         f"Subgraph {graph_id} will use parent's instance {parent_location.instance_id} "
         f"({parent_location.private_ip})"
+      )
+
+      # Track subgraph in volume registry (subgraphs are real databases on disk)
+      await self._update_volume_registry_add_database(
+        parent_location.instance_id, graph_id
       )
 
       return DatabaseLocation(
@@ -512,6 +518,9 @@ class LadybugAllocationManager:
         f"- tier: {instance_tier.value if instance_tier else 'ladybug-standard'}, "
         f"entity: {entity_id}"
       )
+
+      # Update volume registry to track database on volume (critical for instance replacement)
+      await self._update_volume_registry_add_database(instance.instance_id, graph_id)
 
       # Enable instance protection now that it has a database (only in prod/staging)
       if self.environment not in ["dev", "test"]:
@@ -754,6 +763,9 @@ class LadybugAllocationManager:
       )
 
       logger.info(f"Deallocated database {graph_id} from instance {instance_id}")
+
+      # Update volume registry to remove database from volume tracking
+      await self._update_volume_registry_remove_database(instance_id, graph_id)
 
       # Check if instance now has zero databases and remove protection if so (only in prod/staging)
       if self.environment not in ["dev", "test"]:
@@ -1217,6 +1229,145 @@ class LadybugAllocationManager:
       self.cloudwatch.put_metric_data(Namespace=namespace, MetricData=metric_data)
     except Exception as e:
       logger.error(f"Failed to publish capacity metric: {e}")
+
+  async def _update_volume_registry_add_database(
+    self, instance_id: str, graph_id: str
+  ) -> None:
+    """
+    Add a database to the volume registry for the given instance.
+
+    This ensures the volume registry tracks which databases exist on each volume,
+    which is critical for proper volume reattachment during instance replacement.
+    """
+    # Skip in dev/test environments where volume registry may not exist
+    if self.environment in ["dev", "test"]:
+      logger.debug(f"Skipping volume registry update in {self.environment} environment")
+      return
+
+    try:
+      # Find the volume attached to this instance
+      response = self.volume_table.scan(
+        FilterExpression="instance_id = :iid AND #status = :status",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={
+          ":iid": instance_id,
+          ":status": "attached",
+        },
+      )
+
+      items = response.get("Items", [])
+      if not items:
+        logger.warning(
+          f"No attached volume found for instance {instance_id} - "
+          f"cannot update volume registry for database {graph_id}"
+        )
+        return
+
+      volume_id = items[0]["volume_id"]
+
+      # Use atomic list_append to avoid lost updates from concurrent writes
+      # ConditionExpression prevents duplicates; ConditionalCheckFailedException means already exists
+      try:
+        self.volume_table.update_item(
+          Key={"volume_id": volume_id},
+          UpdateExpression="SET databases = list_append(if_not_exists(databases, :empty), :new_db), last_updated = :timestamp",
+          ConditionExpression="NOT contains(if_not_exists(databases, :empty), :gid)",
+          ExpressionAttributeValues={
+            ":empty": [],
+            ":new_db": [graph_id],
+            ":gid": graph_id,
+            ":timestamp": datetime.now(UTC).isoformat(),
+          },
+        )
+        logger.info(f"Added database {graph_id} to volume {volume_id} registry")
+      except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+          logger.debug(f"Database {graph_id} already in volume {volume_id} registry")
+        else:
+          raise
+
+    except ClientError as e:
+      logger.error(
+        f"Failed to update volume registry for database {graph_id} "
+        f"on instance {instance_id}: {e}"
+      )
+      # Don't fail the allocation - volume registry is supplementary
+
+  async def _update_volume_registry_remove_database(
+    self, instance_id: str, graph_id: str
+  ) -> None:
+    """
+    Remove a database from the volume registry for the given instance.
+
+    This ensures the volume registry accurately reflects which databases exist
+    on each volume after deletion.
+    """
+    # Skip in dev/test environments where volume registry may not exist
+    if self.environment in ["dev", "test"]:
+      logger.debug(
+        f"Skipping volume registry removal in {self.environment} environment"
+      )
+      return
+
+    try:
+      # Find the volume attached to this instance
+      response = self.volume_table.scan(
+        FilterExpression="instance_id = :iid AND #status = :status",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={
+          ":iid": instance_id,
+          ":status": "attached",
+        },
+      )
+
+      items = response.get("Items", [])
+      if not items:
+        logger.warning(
+          f"No attached volume found for instance {instance_id} - "
+          f"cannot update volume registry for database {graph_id} removal"
+        )
+        return
+
+      volume_id = items[0]["volume_id"]
+      current_databases = items[0].get("databases", [])
+
+      # Remove database if in list
+      # Use conditional write with expected state to detect concurrent modifications
+      if graph_id in current_databases:
+        updated_databases = [db for db in current_databases if db != graph_id]
+        try:
+          self.volume_table.update_item(
+            Key={"volume_id": volume_id},
+            UpdateExpression="SET databases = :dbs, last_updated = :timestamp",
+            ConditionExpression="contains(databases, :gid)",
+            ExpressionAttributeValues={
+              ":dbs": updated_databases,
+              ":gid": graph_id,
+              ":timestamp": datetime.now(UTC).isoformat(),
+            },
+          )
+          logger.info(
+            f"Removed database {graph_id} from volume {volume_id} registry "
+            f"(now has {len(updated_databases)} databases)"
+          )
+        except ClientError as e:
+          if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            # Concurrent modification - database was already removed or list changed
+            logger.debug(
+              f"Database {graph_id} already removed from volume {volume_id} registry "
+              f"(concurrent modification detected)"
+            )
+          else:
+            raise
+      else:
+        logger.debug(f"Database {graph_id} was not in volume {volume_id} registry")
+
+    except ClientError as e:
+      logger.error(
+        f"Failed to update volume registry for database {graph_id} removal "
+        f"on instance {instance_id}: {e}"
+      )
+      # Don't fail the deallocation - volume registry is supplementary
 
 
 # Factory function for compatibility
