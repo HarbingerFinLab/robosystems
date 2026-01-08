@@ -170,10 +170,10 @@ Resources:
                   - HasDeploymentBucket
                   - - !Sub "arn:${AWS::Partition}:s3:::${DeploymentBucket}/*"
                     - !Sub "arn:${AWS::Partition}:s3:::${DeploymentBucket}"
-                    - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment/*"
-                    - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment"
-                  - - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment/*"
-                    - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment"
+                    - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
+                    - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
+                  - - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
+                    - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -288,7 +288,7 @@ Resources:
 
           # Use deployment bucket or environment-based default
           if [ -z "$SCRIPT_BUCKET" ]; then
-            SCRIPT_BUCKET="robosystems-${Environment}-deployment"
+            SCRIPT_BUCKET="robosystems-deployment-${Environment}"
           fi
 
           echo "Downloading UserData script from s3://$SCRIPT_BUCKET/$SCRIPT_KEY"

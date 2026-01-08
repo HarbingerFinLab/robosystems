@@ -260,8 +260,8 @@ Resources:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}/*"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}"
               # Full access to user data bucket for backups and staging tables
@@ -490,7 +490,7 @@ Resources:
             fi
 
             # Download and execute setup script
-            aws s3 cp s3://robosystems-${Environment}-deployment/userdata/ladybug-writer.sh /tmp/lbug-setup.sh || {
+            aws s3 cp s3://robosystems-deployment-${Environment}/userdata/ladybug-writer.sh /tmp/lbug-setup.sh || {
               echo "ERROR: Failed to download setup script from S3"
               exit 1
             }

@@ -6,7 +6,7 @@
 set -e
 
 ENVIRONMENT="${1:-prod}"
-BUCKET_NAME="robosystems-${ENVIRONMENT}-deployment"
+BUCKET_NAME="robosystems-deployment-${ENVIRONMENT}"
 REGION="${AWS_REGION:-us-east-1}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 

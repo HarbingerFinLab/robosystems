@@ -342,8 +342,8 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}"
                   - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
               # Read/Write access to user data bucket for uploads/temp files
               - Effect: Allow
                 Action:

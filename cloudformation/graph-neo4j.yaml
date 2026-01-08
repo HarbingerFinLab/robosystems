@@ -436,8 +436,8 @@ Resources:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
               - Effect: Allow
                 Action:
                   - ec2:CreateSnapshot
@@ -594,7 +594,7 @@ Resources:
             fi
 
             # Download and execute Neo4j setup script
-            aws s3 cp s3://robosystems-${Environment}-deployment/userdata/neo4j-writer.sh /tmp/neo4j-setup.sh || {
+            aws s3 cp s3://robosystems-deployment-${Environment}/userdata/neo4j-writer.sh /tmp/neo4j-setup.sh || {
               echo "ERROR: Failed to download Neo4j setup script from S3"
               exit 1
             }

@@ -196,8 +196,8 @@ Resources:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment/*
-                  - !Sub arn:${AWS::Partition}:s3:::robosystems-${Environment}-deployment
+                  - !Sub arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*
+                  - !Sub arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}
               # DynamoDB for instance registration (read-only replicas still register)
               - Effect: Allow
                 Action:

@@ -218,7 +218,7 @@ WAF_AWS_MANAGED_RULES_ENABLED="true"
 aws secretsmanager list-secrets --filters Key=name,Values=robosystems
 
 # Verify encryption status
-aws s3api get-bucket-encryption --bucket robosystems-prod-deployment
+aws s3api get-bucket-encryption --bucket robosystems-deployment-prod
 
 # Check WAF status
 aws wafv2 list-web-acls --scope REGIONAL
