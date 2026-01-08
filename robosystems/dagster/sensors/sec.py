@@ -187,6 +187,9 @@ def sec_processing_sensor(context: SensorEvaluationContext):
       if start_after:
         context.log.info("Completed full scan, resetting cursor")
         context.update_cursor("")
+        yield SkipReason("Completed full scan of raw filings, cursor reset")
+      else:
+        yield SkipReason("No raw filings found in S3")
       return
 
     context.log.info(
@@ -233,6 +236,7 @@ def sec_processing_sensor(context: SensorEvaluationContext):
 
     if not new_partitions:
       context.log.info("All filings in batch already processed")
+      yield SkipReason("All filings in batch already processed")
       return
 
     # Register dynamic partitions in batch
