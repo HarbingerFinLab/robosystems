@@ -8,11 +8,26 @@ and standardized filename generation for XBRL graph data.
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
 
 from robosystems.adapters.sec.processors.ids import (
   convert_schema_name_to_filename,
 )
 from robosystems.logger import logger
+
+
+def _convert_to_string_dtype(df: pd.DataFrame, col: str) -> pd.DataFrame:
+  """
+  Convert a column to proper string dtype that preserves NULL values
+  but ensures Parquet writes with string type (not null type).
+
+  This fixes DuckDB schema mismatch errors when reading multiple Parquet files
+  where some files have all NULL values in a string column.
+  """
+  # Convert to pyarrow-backed string type which properly handles nulls
+  # and writes correct type to Parquet even when all values are null
+  df[col] = df[col].astype(pd.ArrowDtype(pa.string()))
+  return df
 
 
 class ParquetWriter:
@@ -323,13 +338,13 @@ class ParquetWriter:
               if pd.notna(x) and str(x).strip() != ""
               else None
             )
-          df[col] = df[col].astype("object")
+          _convert_to_string_dtype(df, col)
 
     elif schema_name == "Unit":
       string_columns = ["numerator_uri", "denominator_uri", "uri", "measure", "value"]
       for col in string_columns:
         if col in df.columns:
-          df[col] = df[col].astype("object")
+          _convert_to_string_dtype(df, col)
 
     elif schema_name == "Report":
       string_columns = [
@@ -338,10 +353,14 @@ class ParquetWriter:
         "accession_number",
         "form",
         "xbrl_processor_version",
+        "filing_date",
+        "report_date",
+        "acceptance_date",
+        "period_end_date",
       ]
       for col in string_columns:
         if col in df.columns:
-          df[col] = df[col].astype("object")
+          _convert_to_string_dtype(df, col)
 
     elif schema_name == "Association":
       if "weight" in df.columns:

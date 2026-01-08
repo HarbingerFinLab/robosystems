@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 from robosystems.adapters.sec.processors.parquet import ParquetWriter
@@ -223,9 +224,11 @@ class TestFixColumnTypesBySchema:
 
     result = writer._fix_column_types_by_schema(df, "Entity")
 
-    assert result["name"].dtype == "object"
-    assert result["ein"].dtype == "object"
-    assert result["ticker"].dtype == "object"
+    # String columns now use pyarrow-backed string dtype for proper Parquet type handling
+    expected_dtype = pd.ArrowDtype(pa.string())
+    assert result["name"].dtype == expected_dtype
+    assert result["ein"].dtype == expected_dtype
+    assert result["ticker"].dtype == expected_dtype
     assert result["ein"].iloc[0] == "123456789"
 
   def test_entity_ein_padding(self, mock_dependencies):
@@ -252,8 +255,10 @@ class TestFixColumnTypesBySchema:
 
     result = writer._fix_column_types_by_schema(df, "Unit")
 
-    assert result["uri"].dtype == "object"
-    assert result["measure"].dtype == "object"
+    # String columns now use pyarrow-backed string dtype for proper Parquet type handling
+    expected_dtype = pd.ArrowDtype(pa.string())
+    assert result["uri"].dtype == expected_dtype
+    assert result["measure"].dtype == expected_dtype
 
   def test_report_column_types(self, mock_dependencies):
     schema_adapter, ingest_adapter, df_manager = mock_dependencies
@@ -270,9 +275,11 @@ class TestFixColumnTypesBySchema:
 
     result = writer._fix_column_types_by_schema(df, "Report")
 
-    assert result["name"].dtype == "object"
-    assert result["accession_number"].dtype == "object"
-    assert result["form"].dtype == "object"
+    # String columns now use pyarrow-backed string dtype for proper Parquet type handling
+    expected_dtype = pd.ArrowDtype(pa.string())
+    assert result["name"].dtype == expected_dtype
+    assert result["accession_number"].dtype == expected_dtype
+    assert result["form"].dtype == expected_dtype
 
   def test_association_weight_type(self, mock_dependencies):
     schema_adapter, ingest_adapter, df_manager = mock_dependencies

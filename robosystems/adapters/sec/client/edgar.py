@@ -179,6 +179,90 @@ class SECClient:
     logger.debug(f"Final submissions DataFrame size: {len(subs_db)} rows")
     return subs_db
 
+  def get_complete_submissions(self) -> dict:
+    """Fetch complete submissions including all pagination files.
+
+    Returns a merged submissions dict with ALL filings (not just recent).
+    The returned structure has the same format as SEC API but with all
+    filings merged into the 'filings' field (no pagination files).
+
+    Returns:
+        dict: Complete submissions with structure:
+            {
+                "cik": "...",
+                "name": "...",
+                ... (other company metadata)
+                "filings": {
+                    "accessionNumber": [...all filings...],
+                    "form": [...],
+                    "filingDate": [...],
+                    ... (other filing fields)
+                },
+                "_metadata": {
+                    "totalFilings": N,
+                    "lastUpdated": "ISO timestamp"
+                }
+            }
+    """
+    from datetime import UTC, datetime
+
+    logger.info(f"Fetching complete submissions for CIK: {self.cik}")
+
+    # Get main submissions file
+    main_subs = self.get_submissions()
+
+    # Extract company metadata (everything except filings)
+    result = {k: v for k, v in main_subs.items() if k != "filings"}
+
+    # Start with recent filings
+    recent = main_subs.get("filings", {}).get("recent", {})
+    filing_fields = list(recent.keys()) if recent else []
+
+    # Initialize merged filings with recent data
+    merged_filings: dict[str, list] = {
+      field: list(recent.get(field, [])) for field in filing_fields
+    }
+
+    # Fetch and merge all pagination files
+    pagination_files = main_subs.get("filings", {}).get("files", [])
+    if pagination_files:
+      logger.info(
+        f"Fetching {len(pagination_files)} pagination files for complete history"
+      )
+
+      for i, file_info in enumerate(pagination_files):
+        filename = file_info["name"]
+        logger.debug(
+          f"Fetching pagination file {i + 1}/{len(pagination_files)}: {filename}"
+        )
+
+        try:
+          page_data = self.get_submissions(filename)
+
+          # Pagination files have filings directly at root level (not nested)
+          for field in filing_fields:
+            if field in page_data:
+              merged_filings[field].extend(page_data[field])
+
+        except Exception as e:
+          logger.warning(f"Failed to fetch pagination file {filename}: {e}")
+          # Continue with other files
+
+    total_filings = len(merged_filings.get("accessionNumber", []))
+    logger.info(
+      f"Complete submissions: {total_filings} total filings for CIK {self.cik}"
+    )
+
+    # Build final structure
+    result["filings"] = merged_filings
+    result["_metadata"] = {
+      "totalFilings": total_filings,
+      "lastUpdated": datetime.now(UTC).isoformat(),
+      "paginationFilesMerged": len(pagination_files),
+    }
+
+    return result
+
   def get_report_url(self, sec_report):
     if self.cik is None:
       logger.error("Cannot generate report URL: CIK is not set")

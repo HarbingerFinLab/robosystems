@@ -190,9 +190,19 @@ def _get_sec_metadata(
     "phone": submissions.get("phone"),
   }
 
-  # Find the specific filing in recent filings
+  # Find the specific filing in filings
+  # Supports both new complete format (filings directly) and legacy format (filings.recent)
   sec_report: dict = {"accessionNumber": accession}
-  filings = submissions.get("filings", {}).get("recent", {})
+  filings_data = submissions.get("filings", {})
+
+  # New complete format: filings are directly in submissions["filings"]
+  # Legacy format: filings are in submissions["filings"]["recent"]
+  if "accessionNumber" in filings_data:
+    # New complete format - filings directly at this level
+    filings = filings_data
+  else:
+    # Legacy format - filings nested under "recent"
+    filings = filings_data.get("recent", {})
 
   def safe_get(field: str, idx: int, default=None):
     """Safely get value from filings list with bounds checking."""
@@ -406,10 +416,58 @@ def sec_raw_filings(
 
     if ciks_to_fetch:
       import json
+      from datetime import UTC, datetime
+
+      from robosystems.adapters.sec import SECClient
 
       # Rate limiter and semaphore for parallel fetching (configurable)
       submissions_limiter = AsyncRateLimiter(rate=config.submissions_rate)
       submissions_semaphore = asyncio.Semaphore(config.submissions_concurrency)
+
+      def build_complete_submissions_sync(cik: str) -> dict:
+        """Build complete master submissions file (all pagination files)."""
+        client = SECClient(cik=cik)
+        return client.get_complete_submissions()
+
+      def incremental_update_submissions(
+        existing: dict, cik: str, new_recent: dict
+      ) -> dict:
+        """Incrementally update existing submissions with new filings from recent page."""
+        # Get new filings from recent page
+        new_accessions = set(
+          new_recent.get("filings", {}).get("recent", {}).get("accessionNumber", [])
+        )
+        existing_accessions = set(
+          existing.get("filings", {}).get("accessionNumber", [])
+        )
+
+        # Find truly new accession numbers
+        new_only = new_accessions - existing_accessions
+        if not new_only:
+          return existing  # No new filings
+
+        # Find indices of new filings in the recent data
+        recent_data = new_recent.get("filings", {}).get("recent", {})
+        recent_accessions = recent_data.get("accessionNumber", [])
+
+        # Prepend new filings to existing (new filings go at the front)
+        for field in existing["filings"]:
+          if field in recent_data:
+            new_values = [
+              recent_data[field][i]
+              for i, acc in enumerate(recent_accessions)
+              if acc in new_only
+            ]
+            existing["filings"][field] = new_values + existing["filings"][field]
+
+        # Update metadata
+        existing["_metadata"] = existing.get("_metadata", {})
+        existing["_metadata"]["totalFilings"] = len(
+          existing["filings"].get("accessionNumber", [])
+        )
+        existing["_metadata"]["lastUpdated"] = datetime.now(UTC).isoformat()
+
+        return existing
 
       async def fetch_submission(cik: str) -> bool:
         nonlocal submissions_fetched, submissions_failed
@@ -418,20 +476,43 @@ def sec_raw_filings(
         async with submissions_semaphore:
           async with submissions_limiter:
             try:
-              # Use aiohttp for async HTTP
-              url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-              async with aiohttp.ClientSession(headers=SEC_HEADERS) as session:
-                async with session.get(url) as response:
-                  if response.status == 429:
-                    retry_after = int(response.headers.get("Retry-After", 60))
-                    context.log.warning(
-                      f"Rate limited on submissions, waiting {retry_after}s"
-                    )
-                    await asyncio.sleep(retry_after)
-                    return await fetch_submission(cik)
+              # Check if master file already exists
+              existing_data = None
+              try:
+                response = s3.client.get_object(Bucket=bucket, Key=submissions_key)
+                existing_data = json.loads(response["Body"].read().decode("utf-8"))
+              except Exception:
+                pass  # File doesn't exist
 
-                  response.raise_for_status()
-                  submissions_data = await response.json()
+              if existing_data is None:
+                # No existing file - build complete master (sync, fetches all pages)
+                context.log.info(
+                  f"Building complete submissions master for CIK {cik}..."
+                )
+                # Run sync function in thread pool to not block event loop
+                loop = asyncio.get_event_loop()
+                submissions_data = await loop.run_in_executor(
+                  None, build_complete_submissions_sync, cik
+                )
+              else:
+                # Existing file - do incremental update from recent page only
+                url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+                async with aiohttp.ClientSession(headers=SEC_HEADERS) as session:
+                  async with session.get(url) as response:
+                    if response.status == 429:
+                      retry_after = int(response.headers.get("Retry-After", 60))
+                      context.log.warning(
+                        f"Rate limited on submissions, waiting {retry_after}s"
+                      )
+                      await asyncio.sleep(retry_after)
+                      return await fetch_submission(cik)
+
+                    response.raise_for_status()
+                    new_recent = await response.json()
+
+                submissions_data = incremental_update_submissions(
+                  existing_data, cik, new_recent
+                )
 
               # Store to S3
               s3.client.put_object(
