@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 from dagster import build_sensor_context
 
 from robosystems.dagster.sensors.sec import (
-  _check_processed_exists,
+  _list_processed_partitions,
   _parse_raw_s3_key,
   sec_processing_sensor,
 )
@@ -46,33 +46,59 @@ class TestParseRawS3Key:
     assert result is None
 
 
-class TestCheckProcessedExists:
-  """Tests for _check_processed_exists helper."""
+class TestListProcessedPartitions:
+  """Tests for _list_processed_partitions helper."""
 
-  def test_processed_exists(self):
-    """Test when processed file exists."""
+  def test_finds_processed_partitions(self):
+    """Test listing processed partitions from S3."""
     mock_client = MagicMock()
-    mock_client.head_object.return_value = {}
+    mock_paginator = MagicMock()
+    mock_paginator.paginate.return_value = [
+      {
+        "Contents": [
+          {"Key": "sec/year=2024/nodes/Entity/320193_0000320193-24-000081.parquet"},
+          {"Key": "sec/year=2024/nodes/Entity/320193_0000320193-24-000082.parquet"},
+        ]
+      }
+    ]
+    mock_client.get_paginator.return_value = mock_paginator
 
-    result = _check_processed_exists(
-      mock_client, "test-bucket", "2024", "320193", "0000320193-24-000081"
-    )
+    result = _list_processed_partitions(mock_client, "test-bucket")
 
-    assert result is True
-    mock_client.head_object.assert_called_once()
+    assert len(result) == 2
+    assert "2024_320193_0000320193-24-000081" in result
+    assert "2024_320193_0000320193-24-000082" in result
 
-  def test_processed_not_exists(self):
-    """Test when processed file doesn't exist."""
+  def test_empty_bucket(self):
+    """Test listing from empty bucket."""
     mock_client = MagicMock()
-    mock_client.head_object.side_effect = ClientError(
-      {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
-    )
+    mock_paginator = MagicMock()
+    mock_paginator.paginate.return_value = [{"Contents": []}]
+    mock_client.get_paginator.return_value = mock_paginator
 
-    result = _check_processed_exists(
-      mock_client, "test-bucket", "2024", "320193", "0000320193-24-000081"
-    )
+    result = _list_processed_partitions(mock_client, "test-bucket")
 
-    assert result is False
+    assert len(result) == 0
+
+  def test_ignores_non_entity_files(self):
+    """Test that non-Entity files are ignored."""
+    mock_client = MagicMock()
+    mock_paginator = MagicMock()
+    mock_paginator.paginate.return_value = [
+      {
+        "Contents": [
+          {"Key": "sec/year=2024/nodes/Entity/320193_0000320193-24-000081.parquet"},
+          {"Key": "sec/year=2024/nodes/Fact/320193_0000320193-24-000081.parquet"},
+        ]
+      }
+    ]
+    mock_client.get_paginator.return_value = mock_paginator
+
+    result = _list_processed_partitions(mock_client, "test-bucket")
+
+    # Should only include Entity file
+    assert len(result) == 1
+    assert "2024_320193_0000320193-24-000081" in result
 
 
 class TestSecProcessingSensor:
@@ -124,18 +150,18 @@ class TestSecProcessingSensor:
     with pytest.raises(ClientError):
       list(sec_processing_sensor(context))
 
-  @patch("robosystems.dagster.sensors.sec._check_processed_exists")
+  @patch("robosystems.dagster.sensors.sec._list_processed_partitions")
   @patch("robosystems.dagster.sensors.sec._get_s3_client")
   @patch("robosystems.dagster.sensors.sec.env")
   def test_discovers_unprocessed_filings(
-    self, mock_env, mock_get_client, mock_check_processed
+    self, mock_env, mock_get_client, mock_list_processed
   ):
     """Test sensor discovers unprocessed filings and yields run requests."""
     mock_env.ENVIRONMENT = "prod"
     mock_env.SHARED_RAW_BUCKET = "test-raw"
     mock_env.SHARED_PROCESSED_BUCKET = "test-processed"
 
-    # Mock S3 listing
+    # Mock S3 listing for raw files
     mock_client = MagicMock()
     mock_paginator = MagicMock()
     mock_paginator.paginate.return_value = [
@@ -149,8 +175,8 @@ class TestSecProcessingSensor:
     mock_client.get_paginator.return_value = mock_paginator
     mock_get_client.return_value = mock_client
 
-    # First filing is unprocessed, second is processed
-    mock_check_processed.side_effect = [False, True]
+    # Second filing is already processed
+    mock_list_processed.return_value = {"2024_320193_0000320193-24-000082"}
 
     # Build context with mock instance
     context = build_sensor_context()
@@ -179,13 +205,14 @@ class TestSecProcessingSensor:
     context = build_sensor_context()
     result = list(sec_processing_sensor(context))
 
-    # Should return empty (no run requests, no skip reason)
-    assert len(result) == 0
+    # Should return SkipReason (no raw filings found)
+    assert len(result) == 1
+    assert "No raw filings found" in str(result[0])
 
-  @patch("robosystems.dagster.sensors.sec._check_processed_exists")
+  @patch("robosystems.dagster.sensors.sec._list_processed_partitions")
   @patch("robosystems.dagster.sensors.sec._get_s3_client")
   @patch("robosystems.dagster.sensors.sec.env")
-  def test_all_filings_processed(self, mock_env, mock_get_client, mock_check_processed):
+  def test_all_filings_processed(self, mock_env, mock_get_client, mock_list_processed):
     """Test sensor handles case where all filings are already processed."""
     mock_env.ENVIRONMENT = "prod"
     mock_env.SHARED_RAW_BUCKET = "test-raw"
@@ -200,10 +227,11 @@ class TestSecProcessingSensor:
     mock_get_client.return_value = mock_client
 
     # All filings are processed
-    mock_check_processed.return_value = True
+    mock_list_processed.return_value = {"2024_320193_0000320193-24-000081"}
 
     context = build_sensor_context()
     result = list(sec_processing_sensor(context))
 
-    # Should return empty (no run requests)
-    assert len(result) == 0
+    # Should return SkipReason (all filings already processed)
+    assert len(result) == 1
+    assert "already processed" in str(result[0])

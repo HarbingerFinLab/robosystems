@@ -76,33 +76,47 @@ def _parse_raw_s3_key(key: str) -> tuple[str, str, str] | None:
   return year, cik, accession
 
 
-def _check_processed_exists(
-  s3_client, bucket: str, year: str, cik: str, accession: str
-) -> bool:
-  """Check if parquet output exists for this filing.
-
-  We check for the Entity parquet file as a proxy for "fully processed".
-  """
-  processed_key = get_processed_key(
-    DataSourceType.SEC,
-    f"year={year}",
-    "nodes",
-    "Entity",
-    f"{cik}_{accession}.parquet",
-  )
-  try:
-    s3_client.head_object(Bucket=bucket, Key=processed_key)
-    return True
-  except Exception:
-    return False
-
-
 # Sensor status controlled by environment variable
 SEC_PARALLEL_SENSOR_STATUS = (
   DefaultSensorStatus.RUNNING
   if env.SEC_PARALLEL_SENSOR_ENABLED
   else DefaultSensorStatus.STOPPED
 )
+
+
+# Maximum files to process per sensor tick to avoid timeout
+MAX_FILES_PER_TICK = 500
+
+
+def _list_processed_partitions(s3_client, bucket: str) -> set[str]:
+  """List all processed partition keys from S3.
+
+  Returns set of partition keys in format: {year}_{cik}_{accession}
+  This is much faster than individual HEAD requests.
+  """
+  processed = set()
+  paginator = s3_client.get_paginator("list_objects_v2")
+
+  # List Entity parquet files as proxy for "fully processed"
+  # Format: sec/year=2024/nodes/Entity/{cik}_{accession}.parquet
+  processed_prefix = f"{get_processed_key(DataSourceType.SEC)}/"
+
+  for page in paginator.paginate(Bucket=bucket, Prefix=processed_prefix):
+    for obj in page.get("Contents", []):
+      key = obj["Key"]
+      if "/nodes/Entity/" in key and key.endswith(".parquet"):
+        # Extract partition key from filename: {cik}_{accession}.parquet
+        filename = key.split("/")[-1].replace(".parquet", "")
+        # Extract year from path: sec/year=2024/nodes/Entity/...
+        parts = key.split("/")
+        for part in parts:
+          if part.startswith("year="):
+            year = part.replace("year=", "")
+            partition_key = f"{year}_{filename}"
+            processed.add(partition_key)
+            break
+
+  return processed
 
 
 @sensor(
@@ -115,10 +129,11 @@ def sec_processing_sensor(context: SensorEvaluationContext):
   """Watch for raw SEC filings in S3 and trigger parallel processing.
 
   This sensor:
-  1. Lists raw XBRL ZIPs in S3 (sec/year=*/cik/*.zip)
-  2. Checks which don't have corresponding parquet output
+  1. Lists raw XBRL ZIPs in S3 (sec/year=*/cik/*.zip) in batches
+  2. Compares against processed files (set comparison, not individual HEAD requests)
   3. Registers dynamic partitions for unprocessed filings
   4. Yields RunRequest for each to trigger sec_process_job
+  5. Uses cursor to track progress and resume across ticks
 
   The QueuedRunCoordinator limits concurrent runs (default 20).
 
@@ -144,27 +159,55 @@ def sec_processing_sensor(context: SensorEvaluationContext):
   s3_client = _get_s3_client()
 
   try:
-    # List all raw ZIPs
+    # Get cursor for pagination (last processed S3 key)
+    start_after = context.cursor or ""
+
+    # List raw ZIPs in batches using cursor
     paginator = s3_client.get_paginator("list_objects_v2")
     raw_files = []
 
     sec_prefix = f"{get_raw_key(DataSourceType.SEC)}/"  # "sec/"
-    for page in paginator.paginate(Bucket=raw_bucket, Prefix=sec_prefix):
+
+    paginate_kwargs = {"Bucket": raw_bucket, "Prefix": sec_prefix}
+    if start_after:
+      paginate_kwargs["StartAfter"] = start_after
+
+    for page in paginator.paginate(**paginate_kwargs):
       for obj in page.get("Contents", []):
         key = obj["Key"]
         if key.endswith(".zip"):
           raw_files.append(key)
+          if len(raw_files) >= MAX_FILES_PER_TICK:
+            break
+      if len(raw_files) >= MAX_FILES_PER_TICK:
+        break
 
     if not raw_files:
+      # No more files to process - reset cursor to start fresh next time
+      if start_after:
+        context.log.info("Completed full scan, resetting cursor")
+        context.update_cursor("")
+        yield SkipReason("Completed full scan of raw filings, cursor reset")
+      else:
+        yield SkipReason("No raw filings found in S3")
       return
 
-    context.log.info(f"Found {len(raw_files)} raw filings to check")
+    context.log.info(
+      f"Processing batch of {len(raw_files)} raw filings "
+      f"(cursor: {start_after[:50] + '...' if start_after else 'start'})"
+    )
+
+    # Build set of already-processed partitions (single list operation, much faster)
+    processed_partitions = _list_processed_partitions(s3_client, processed_bucket)
+    context.log.info(f"Found {len(processed_partitions)} already-processed filings")
 
     # Track new partitions to register
     new_partitions = []
     run_requests = []
+    last_key = ""
 
     for raw_key in raw_files:
+      last_key = raw_key
       parsed = _parse_raw_s3_key(raw_key)
       if not parsed:
         continue
@@ -172,8 +215,8 @@ def sec_processing_sensor(context: SensorEvaluationContext):
       year, cik, accession = parsed
       partition_key = f"{year}_{cik}_{accession}"
 
-      # Check if already processed
-      if _check_processed_exists(s3_client, processed_bucket, year, cik, accession):
+      # Check if already processed using set lookup (O(1))
+      if partition_key in processed_partitions:
         continue
 
       # Add to new partitions list
@@ -187,8 +230,13 @@ def sec_processing_sensor(context: SensorEvaluationContext):
         )
       )
 
+    # Update cursor to last processed key for next tick
+    if last_key:
+      context.update_cursor(last_key)
+
     if not new_partitions:
-      context.log.info("All filings already processed")
+      context.log.info("All filings in batch already processed")
+      yield SkipReason("All filings in batch already processed")
       return
 
     # Register dynamic partitions in batch
