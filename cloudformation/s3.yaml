@@ -359,8 +359,8 @@ Resources:
         HostedZoneId: Z2FDTNDATAQYW2 # CloudFront's hosted zone ID
         EvaluateTargetHealth: false
 
-  # Deployment Bucket (Lambda packages, scripts, etc.)
-  S3BucketDeployment:
+  # NEW Deployment Bucket with consistent naming (robosystems-deployment-{env})
+  S3BucketDeploymentNew:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
@@ -407,9 +407,9 @@ Resources:
         - Key: CreatedBy
           Value: CloudFormation
 
-  # DEPRECATED: Old deployment bucket with non-standard naming
-  # Will be removed after contents are migrated to S3BucketDeployment
-  S3BucketDeploymentLegacy:
+  # DEPRECATED: Old deployment bucket with non-standard naming (robosystems-{env}-deployment)
+  # Will be removed after contents are migrated to S3BucketDeploymentNew
+  S3BucketDeployment:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
@@ -446,13 +446,13 @@ Resources:
                 StorageClass: STANDARD_IA
       Tags:
         - Key: Name
-          Value: !Sub ${AWS::StackName}-${Environment}-deployment-bucket
+          Value: !Sub ${AWS::StackName}-${Environment}-deployment-bucket-legacy
         - Key: Environment
           Value: !Ref Environment
         - Key: Service
           Value: !Ref ServiceTag
         - Key: Component
-          Value: Deployment
+          Value: DeploymentLegacy
         - Key: CreatedBy
           Value: CloudFormation
 
@@ -568,16 +568,16 @@ Outputs:
     Export:
       Name: !Sub ${AWS::StackName}-${Environment}-GraphWriterS3PolicyArn
 
-  # Deployment Bucket Outputs
+  # Deployment Bucket Outputs (points to new bucket with consistent naming)
   DeploymentBucketName:
     Description: Name of the deployment bucket
-    Value: !Ref S3BucketDeployment
+    Value: !Ref S3BucketDeploymentNew
     Export:
       Name: !Sub ${AWS::StackName}-${Environment}-DeploymentBucketName
 
   DeploymentBucketArn:
     Description: ARN of the deployment bucket
-    Value: !GetAtt S3BucketDeployment.Arn
+    Value: !GetAtt S3BucketDeploymentNew.Arn
     Export:
       Name: !Sub ${AWS::StackName}-${Environment}-DeploymentBucketArn
 
