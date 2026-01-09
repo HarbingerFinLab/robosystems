@@ -86,33 +86,19 @@ function check_prerequisites() {
 }
 
 function setup_secrets() {
-    echo "Setting up GitHub repository secrets..."
-
-    # Set GitHub Repository Secrets
-    echo "⚠️  NOTE: Update these commands with your actual secret values before running!"
+    echo "GitHub Secrets (all optional)"
     echo ""
-    echo "📋 Required secrets (CI/CD core functionality):"
-    echo "gh secret set AWS_ACCESS_KEY_ID --body \"your_aws_access_key_id\""
-    echo "gh secret set AWS_SECRET_ACCESS_KEY --body \"your_aws_secret_access_key\""
-    echo "gh secret set AWS_GITHUB_TOKEN --body \"your_github_token_for_aws_operations\""
-    echo "gh secret set RUNNER_GITHUB_TOKEN --body \"your_github_token_for_runner\""
+    echo "All secrets are optional. Basic deployments work with zero secrets."
     echo ""
-    echo "📋 Organization-level secrets (may be inherited, set if not present):"
-    echo "gh secret set ACTIONS_TOKEN --body \"your_github_token_for_workflow_automation\""
-    echo "gh secret set ANTHROPIC_API_KEY --body \"your_anthropic_api_key_here\""
+    echo "📋 Optional secrets:"
+    echo "   ACTIONS_TOKEN     - Enables auto-deploy on release, cross-workflow triggers"
+    echo "   ANTHROPIC_API_KEY - Enables AI-powered features"
     echo ""
-    echo "💡 ACTIONS_TOKEN enables:"
-    echo "   - Cross-workflow automation"
-    echo "   - Container registry refresh"
-    echo "   - Automated PR creation"
+    echo "Without ACTIONS_TOKEN, workflows use github.token which works for"
+    echo "all deployments but cannot trigger other workflows."
     echo ""
-    echo "💡 ANTHROPIC_API_KEY enables:"
-    echo "   - Claude-powered PR creation (./bin/tools/create-pr)"
-    echo "   - Intelligent code analysis and descriptions"
-    echo "   - Enhanced GitHub Actions workflows"
-    echo "   - AI-assisted development workflows"
-    echo ""
-    echo "Secrets setup completed!"
+    echo "Note: AWS credentials are handled via OIDC federation."
+    echo "Run 'just bootstrap' to set up AWS access."
 }
 
 
@@ -363,13 +349,12 @@ function setup_minimum_config() {
     echo "🚀 Your deployment is ready to run!"
     echo "💡 All settings use cost-optimized defaults."
     echo ""
-    echo "📋 Still need to set secrets:"
-    echo "  Required:"
-    echo "    - ACTIONS_TOKEN (GitHub token)"
-    echo "    - AWS_ACCESS_KEY_ID (AWS credentials)"
-    echo "    - AWS_SECRET_ACCESS_KEY (AWS credentials)"
-    echo "  Optional:"
+    echo "📋 Optional secrets (all deployments work without these):"
+    echo "    - ACTIONS_TOKEN (enables cross-workflow triggers)"
     echo "    - ANTHROPIC_API_KEY (enables AI-powered tools)"
+    echo ""
+    echo "💡 AWS credentials are handled via OIDC federation."
+    echo "   Run 'just bootstrap' if not already configured."
 }
 
 function setup_full_config() {

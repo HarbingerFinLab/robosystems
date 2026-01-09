@@ -1,0 +1,362 @@
+Description: RoboSystems Bootstrap - GitHub OIDC Federation for CI/CD
+
+Parameters:
+  # GitHub Configuration
+  GitHubOrg:
+    Type: String
+    Description: GitHub organization or username (e.g., HarbingerFinLab)
+    AllowedPattern: ^[a-zA-Z0-9-]+$
+    ConstraintDescription: Must be a valid GitHub organization or username
+
+  RepositoryName:
+    Type: String
+    Default: robosystems
+    Description: Repository name (use * for all repos in org)
+    AllowedPattern: ^[a-zA-Z0-9-_*]+$
+    ConstraintDescription: Must be a valid repository name or * for wildcard
+
+  AllowedBranches:
+    Type: String
+    Default: "main,release/*"
+    Description: Comma-separated branch patterns allowed to assume role (use * for all)
+    AllowedPattern: ^[a-zA-Z0-9-_,/*]+$
+    ConstraintDescription: Must be comma-separated branch patterns (supports wildcards like release/*)
+
+  # Tagging Configuration
+  ServiceTag:
+    Type: String
+    Default: RoboSystems
+    Description: Service tag for resource identification and billing
+
+  ComponentTag:
+    Type: String
+    Default: OIDC
+    Description: Component tag for resource identification
+
+Conditions:
+  AllowAllBranches: !Equals [!Ref AllowedBranches, "*"]
+
+Resources:
+  # OIDC Identity Provider
+  # Tells AWS to trust tokens issued by GitHub Actions
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # GitHub's OIDC thumbprints (AWS validates automatically)
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+      Tags:
+        - Key: Name
+          Value: github-actions-oidc-provider
+        - Key: Service
+          Value: !Ref ServiceTag
+        - Key: Component
+          Value: !Ref ComponentTag
+        - Key: CreatedBy
+          Value: CloudFormation
+
+  # IAM Role for GitHub Actions
+  # GitHub Actions assumes this role via OIDC federation
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RoleName: !Sub ${ServiceTag}GitHubActionsRole
+      Description: !Sub Role assumed by GitHub Actions for ${ServiceTag} deployments
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # Allow specified branches and tags
+                # Patterns: main, release/*, and version tags (v*)
+                token.actions.githubusercontent.com:sub: !If
+                  - AllowAllBranches
+                  - !Sub repo:${GitHubOrg}/${RepositoryName}:*
+                  - - !Sub repo:${GitHubOrg}/${RepositoryName}:ref:refs/heads/main
+                    - !Sub repo:${GitHubOrg}/${RepositoryName}:ref:refs/heads/release/*
+                    - !Sub repo:${GitHubOrg}/${RepositoryName}:ref:refs/tags/v*
+      Policies:
+        - PolicyName: !Sub ${ServiceTag}DeploymentPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # CloudFormation
+              - Sid: CloudFormation
+                Effect: Allow
+                Action:
+                  - cloudformation:*
+                Resource: "*"
+
+              # ECR
+              - Sid: ECR
+                Effect: Allow
+                Action:
+                  - ecr:*
+                Resource: "*"
+
+              # IAM Role/Policy Management
+              - Sid: IAM
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:UpdateRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:ListRoleTags
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:ListInstanceProfilesForRole
+                  - iam:PassRole
+                  - iam:CreateServiceLinkedRole
+                  - iam:DeleteServiceLinkedRole
+                  - iam:GetServiceLinkedRoleDeletionStatus
+                  - iam:CreatePolicy
+                  - iam:DeletePolicy
+                  - iam:GetPolicy
+                  - iam:GetPolicyVersion
+                  - iam:ListPolicyVersions
+                  - iam:CreatePolicyVersion
+                  - iam:DeletePolicyVersion
+                  - iam:SetDefaultPolicyVersion
+                  - iam:TagPolicy
+                  - iam:UntagPolicy
+                Resource: "*"
+
+              # EC2
+              - Sid: EC2
+                Effect: Allow
+                Action:
+                  - ec2:*
+                Resource: "*"
+
+              # RDS
+              - Sid: RDS
+                Effect: Allow
+                Action:
+                  - rds:*
+                Resource: "*"
+
+              # ElastiCache
+              - Sid: ElastiCache
+                Effect: Allow
+                Action:
+                  - elasticache:*
+                Resource: "*"
+
+              # ECS
+              - Sid: ECS
+                Effect: Allow
+                Action:
+                  - ecs:*
+                Resource: "*"
+
+              # ELB
+              - Sid: ELB
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:*
+                Resource: "*"
+
+              # Auto Scaling
+              - Sid: AutoScaling
+                Effect: Allow
+                Action:
+                  - autoscaling:*
+                  - application-autoscaling:*
+                Resource: "*"
+
+              # S3
+              - Sid: S3
+                Effect: Allow
+                Action:
+                  - s3:*
+                Resource: "*"
+
+              # DynamoDB
+              - Sid: DynamoDB
+                Effect: Allow
+                Action:
+                  - dynamodb:*
+                Resource: "*"
+
+              # Secrets Manager
+              - Sid: SecretsManager
+                Effect: Allow
+                Action:
+                  - secretsmanager:*
+                Resource: "*"
+
+              # KMS
+              - Sid: KMS
+                Effect: Allow
+                Action:
+                  - kms:*
+                Resource: "*"
+
+              # CloudWatch Logs
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:*
+                Resource: "*"
+
+              # Lambda
+              - Sid: Lambda
+                Effect: Allow
+                Action:
+                  - lambda:*
+                Resource: "*"
+
+              # Route53
+              - Sid: Route53
+                Effect: Allow
+                Action:
+                  - route53:*
+                  - route53domains:*
+                Resource: "*"
+
+              # ACM
+              - Sid: ACM
+                Effect: Allow
+                Action:
+                  - acm:*
+                Resource: "*"
+
+              # WAFv2
+              - Sid: WAFv2
+                Effect: Allow
+                Action:
+                  - wafv2:*
+                Resource: "*"
+
+              # CloudTrail
+              - Sid: CloudTrail
+                Effect: Allow
+                Action:
+                  - cloudtrail:*
+                Resource: "*"
+
+              # SNS
+              - Sid: SNS
+                Effect: Allow
+                Action:
+                  - sns:*
+                Resource: "*"
+
+              # SSM
+              - Sid: SSM
+                Effect: Allow
+                Action:
+                  - ssm:*
+                Resource: "*"
+
+              # CloudWatch
+              - Sid: CloudWatch
+                Effect: Allow
+                Action:
+                  - cloudwatch:*
+                Resource: "*"
+
+              # EventBridge
+              - Sid: Events
+                Effect: Allow
+                Action:
+                  - events:*
+                Resource: "*"
+
+              # STS
+              - Sid: STS
+                Effect: Allow
+                Action:
+                  - sts:GetCallerIdentity
+                Resource: "*"
+
+              # CloudFront
+              - Sid: CloudFront
+                Effect: Allow
+                Action:
+                  - cloudfront:*
+                Resource: "*"
+
+              # SES
+              - Sid: SES
+                Effect: Allow
+                Action:
+                  - ses:*
+                Resource: "*"
+
+              # Bedrock
+              - Sid: Bedrock
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: "*"
+      Tags:
+        - Key: Name
+          Value: !Sub ${ServiceTag}-github-actions-role
+        - Key: Service
+          Value: !Ref ServiceTag
+        - Key: Component
+          Value: !Ref ComponentTag
+        - Key: CreatedBy
+          Value: CloudFormation
+
+Outputs:
+  OIDCProviderArn:
+    Description: ARN of the GitHub OIDC Identity Provider
+    Value: !Ref GitHubOIDCProvider
+    Export:
+      Name: !Sub ${AWS::StackName}-OIDCProviderArn
+
+  GitHubActionsRoleArn:
+    Description: ARN of the IAM Role for GitHub Actions (use in workflow role-to-assume)
+    Value: !GetAtt GitHubActionsRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-GitHubActionsRoleArn
+
+  GitHubActionsRoleName:
+    Description: Name of the IAM Role for GitHub Actions
+    Value: !Ref GitHubActionsRole
+    Export:
+      Name: !Sub ${AWS::StackName}-GitHubActionsRoleName
+
+  WorkflowExample:
+    Description: Example workflow configuration for GitHub Actions
+    Value: !Sub |
+      permissions:
+        id-token: write
+        contents: read
+      steps:
+        - uses: aws-actions/configure-aws-credentials@v4
+          with:
+            role-to-assume: ${GitHubActionsRole.Arn}
+            aws-region: ${AWS::Region}
