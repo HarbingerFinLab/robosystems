@@ -92,6 +92,11 @@ on:
         required: false
         type: string
         default: "4096"
+      max_concurrent_runs:
+        description: "Maximum concurrent Dagster runs (QueuedRunCoordinator)"
+        required: false
+        type: string
+        default: "20"
 
       # Cache Configuration
       valkey_url:
@@ -189,6 +194,7 @@ jobs:
                 ParameterKey=WebserverMaxCapacity,ParameterValue=${{ inputs.webserver_max_capacity }} \
                 ParameterKey=RunJobCpu,ParameterValue=${{ inputs.run_job_cpu }} \
                 ParameterKey=RunJobMemory,ParameterValue=${{ inputs.run_job_memory }} \
+                ParameterKey=MaxConcurrentRuns,ParameterValue=${{ inputs.max_concurrent_runs }} \
                 ParameterKey=ValkeyUrl,ParameterValue=${{ inputs.valkey_url }} \
                 ParameterKey=ValkeyClientSecurityGroupId,ParameterValue=${{ inputs.valkey_sg_id }} \
                 ParameterKey=DatabaseSecurityGroupId,ParameterValue=${{ inputs.database_sg_id }} \

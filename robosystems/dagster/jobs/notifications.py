@@ -160,6 +160,7 @@ def _emit_email_result_to_sse(
 
 @job(
   tags={
+    "dagster/priority": "1",
     "dagster/max_runtime": 300,  # 5 minute max
     "category": "notification",
   },

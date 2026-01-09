@@ -197,10 +197,10 @@ function setup_minimum_config() {
     gh variable set API_ASG_REFRESH_STAGING --body "true"
 
     # Dagster Daemon Configuration
-    gh variable set DAGSTER_DAEMON_CPU_PROD --body "512"
-    gh variable set DAGSTER_DAEMON_CPU_STAGING --body "512"
-    gh variable set DAGSTER_DAEMON_MEMORY_PROD --body "1024"
-    gh variable set DAGSTER_DAEMON_MEMORY_STAGING --body "1024"
+    gh variable set DAGSTER_DAEMON_CPU_PROD --body "1024"
+    gh variable set DAGSTER_DAEMON_CPU_STAGING --body "1024"
+    gh variable set DAGSTER_DAEMON_MEMORY_PROD --body "2048"
+    gh variable set DAGSTER_DAEMON_MEMORY_STAGING --body "2048"
 
     # Dagster Webserver Configuration
     gh variable set DAGSTER_WEBSERVER_CPU_PROD --body "512"
@@ -219,6 +219,8 @@ function setup_minimum_config() {
     gh variable set DAGSTER_RUN_JOB_CPU_STAGING --body "1024"
     gh variable set DAGSTER_RUN_JOB_MEMORY_PROD --body "4096"
     gh variable set DAGSTER_RUN_JOB_MEMORY_STAGING --body "4096"
+    gh variable set DAGSTER_MAX_CONCURRENT_RUNS_PROD --body "20"
+    gh variable set DAGSTER_MAX_CONCURRENT_RUNS_STAGING --body "20"
 
     # Dagster Run Worker Configuration (EC2 - for heavy compute)
     gh variable set DAGSTER_RUN_WORKER_INSTANCE_TYPE_PROD --body "r7g.large"
@@ -243,8 +245,8 @@ function setup_minimum_config() {
     # Database Configuration
     gh variable set DATABASE_ENGINE_PROD --body "postgres"
     gh variable set DATABASE_ENGINE_STAGING --body "postgres"
-    gh variable set DATABASE_INSTANCE_SIZE_PROD --body "db.t4g.micro"
-    gh variable set DATABASE_INSTANCE_SIZE_STAGING --body "db.t4g.micro"
+    gh variable set DATABASE_INSTANCE_SIZE_PROD --body "db.t4g.small"
+    gh variable set DATABASE_INSTANCE_SIZE_STAGING --body "db.t4g.small"
     gh variable set DATABASE_ALLOCATED_STORAGE_PROD --body "20"
     gh variable set DATABASE_ALLOCATED_STORAGE_STAGING --body "20"
     gh variable set DATABASE_MAX_ALLOCATED_STORAGE_PROD --body "100"
@@ -470,10 +472,10 @@ function setup_full_config() {
     gh variable set API_ASG_REFRESH_STAGING --body "true"
 
     # Dagster Daemon Configuration
-    gh variable set DAGSTER_DAEMON_CPU_PROD --body "512"
-    gh variable set DAGSTER_DAEMON_CPU_STAGING --body "512"
-    gh variable set DAGSTER_DAEMON_MEMORY_PROD --body "1024"
-    gh variable set DAGSTER_DAEMON_MEMORY_STAGING --body "1024"
+    gh variable set DAGSTER_DAEMON_CPU_PROD --body "1024"
+    gh variable set DAGSTER_DAEMON_CPU_STAGING --body "1024"
+    gh variable set DAGSTER_DAEMON_MEMORY_PROD --body "2048"
+    gh variable set DAGSTER_DAEMON_MEMORY_STAGING --body "2048"
 
     # Dagster Webserver Configuration
     gh variable set DAGSTER_WEBSERVER_CPU_PROD --body "512"
@@ -492,6 +494,8 @@ function setup_full_config() {
     gh variable set DAGSTER_RUN_JOB_CPU_STAGING --body "1024"
     gh variable set DAGSTER_RUN_JOB_MEMORY_PROD --body "4096"
     gh variable set DAGSTER_RUN_JOB_MEMORY_STAGING --body "4096"
+    gh variable set DAGSTER_MAX_CONCURRENT_RUNS_PROD --body "20"
+    gh variable set DAGSTER_MAX_CONCURRENT_RUNS_STAGING --body "20"
 
     # Dagster Run Worker Configuration (EC2 - for heavy compute)
     gh variable set DAGSTER_RUN_WORKER_INSTANCE_TYPE_PROD --body "r7g.large"
@@ -516,8 +520,8 @@ function setup_full_config() {
     # Database Configuration
     gh variable set DATABASE_ENGINE_PROD --body "postgres"
     gh variable set DATABASE_ENGINE_STAGING --body "postgres"
-    gh variable set DATABASE_INSTANCE_SIZE_PROD --body "db.t4g.micro"
-    gh variable set DATABASE_INSTANCE_SIZE_STAGING --body "db.t4g.micro"
+    gh variable set DATABASE_INSTANCE_SIZE_PROD --body "db.t4g.small"
+    gh variable set DATABASE_INSTANCE_SIZE_STAGING --body "db.t4g.small"
     gh variable set DATABASE_ALLOCATED_STORAGE_PROD --body "20"
     gh variable set DATABASE_ALLOCATED_STORAGE_STAGING --body "20"
     gh variable set DATABASE_MAX_ALLOCATED_STORAGE_PROD --body "100"

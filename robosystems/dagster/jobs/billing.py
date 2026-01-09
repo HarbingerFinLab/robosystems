@@ -598,6 +598,7 @@ def _emit_webhook_result_to_sse(
 
 @job(
   tags={
+    "dagster/priority": "1",
     "dagster/max_runtime": 300,  # 5 minute max
     "category": "billing",
   },
@@ -810,7 +811,7 @@ def cleanup_old_credit_transactions(
     }
 
 
-@job
+@job(tags={"dagster/priority": "1"})
 def monthly_credit_allocation_job():
   """Monthly credit allocation and overage processing job."""
   graphs = get_graphs_with_negative_balance()
@@ -924,7 +925,7 @@ def bill_storage_credits(
   }
 
 
-@job
+@job(tags={"dagster/priority": "1"})
 def daily_storage_billing_job():
   """Daily storage billing job."""
   graphs = get_graphs_with_storage_usage()
@@ -992,7 +993,7 @@ def collect_graph_usage(
   }
 
 
-@job
+@job(tags={"dagster/priority": "1"})
 def hourly_usage_collection_job():
   """Hourly usage collection job."""
   collect_graph_usage()
@@ -1078,7 +1079,7 @@ def generate_usage_report(
   }
 
 
-@job
+@job(tags={"dagster/priority": "1"})
 def monthly_usage_report_job():
   """Monthly usage report generation job."""
   generate_usage_report()
