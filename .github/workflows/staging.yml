@@ -601,6 +601,8 @@ jobs:
       database_sg_id: ${{ needs.deploy-postgres.outputs.database_sg_id }}
       # Bastion Access (for internal UI access)
       bastion_sg_id: ${{ needs.deploy-bastion.outputs.bastion_sg_id }}
+      # Monitoring Configuration
+      container_insights_enabled: ${{ vars.DAGSTER_CONTAINER_INSIGHTS_STAGING || 'disabled' }}
       # Other Configuration
       refresh_ecs_service: ${{ vars.DAGSTER_REFRESH_ECS_STAGING || 'true' }}
     secrets:

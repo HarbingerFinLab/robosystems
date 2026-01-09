@@ -226,7 +226,7 @@ def handle_provisioning_failure(
       context.log.error(f"Marked subscription {subscription_id} as failed: {error}")
 
 
-@job
+@job(tags={"dagster/priority": "1"})
 def provision_graph_job():
   """Provision a graph database after payment confirmation."""
   details = get_subscription_details()
@@ -401,7 +401,7 @@ def activate_repository_subscription(
     }
 
 
-@job
+@job(tags={"dagster/priority": "1"})
 def provision_repository_job():
   """Provision repository access after payment confirmation."""
   info = get_repository_subscription()
