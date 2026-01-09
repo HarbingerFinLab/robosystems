@@ -353,6 +353,10 @@ setup-aws:
 setup-gha:
     @bin/setup/gha.sh
 
+# Bedrock local development setup (creates IAM user, updates .env)
+setup-bedrock:
+    @bin/setup/bedrock.sh
+
 # Generate secure random key for secrets
 generate-key:
     @echo "Generated secure 32-byte base64 key:"
