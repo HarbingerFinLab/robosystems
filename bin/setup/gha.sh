@@ -207,12 +207,6 @@ function setup_minimum_config() {
     gh variable set DAGSTER_WEBSERVER_CPU_STAGING --body "512"
     gh variable set DAGSTER_WEBSERVER_MEMORY_PROD --body "1024"
     gh variable set DAGSTER_WEBSERVER_MEMORY_STAGING --body "1024"
-    gh variable set DAGSTER_WEBSERVER_DESIRED_COUNT_PROD --body "1"
-    gh variable set DAGSTER_WEBSERVER_DESIRED_COUNT_STAGING --body "1"
-    gh variable set DAGSTER_WEBSERVER_MIN_CAPACITY_PROD --body "1"
-    gh variable set DAGSTER_WEBSERVER_MIN_CAPACITY_STAGING --body "1"
-    gh variable set DAGSTER_WEBSERVER_MAX_CAPACITY_PROD --body "3"
-    gh variable set DAGSTER_WEBSERVER_MAX_CAPACITY_STAGING --body "2"
 
     # Dagster Run Job Configuration (EcsRunLauncher - Fargate)
     gh variable set DAGSTER_RUN_JOB_CPU_PROD --body "1024"
@@ -221,16 +215,6 @@ function setup_minimum_config() {
     gh variable set DAGSTER_RUN_JOB_MEMORY_STAGING --body "4096"
     gh variable set DAGSTER_MAX_CONCURRENT_RUNS_PROD --body "20"
     gh variable set DAGSTER_MAX_CONCURRENT_RUNS_STAGING --body "20"
-
-    # Dagster Run Worker Configuration (EC2 - for heavy compute)
-    gh variable set DAGSTER_RUN_WORKER_INSTANCE_TYPE_PROD --body "r7g.large"
-    gh variable set DAGSTER_RUN_WORKER_INSTANCE_TYPE_STAGING --body "r7g.large"
-    gh variable set DAGSTER_RUN_WORKER_EBS_SIZE_PROD --body "500"
-    gh variable set DAGSTER_RUN_WORKER_EBS_SIZE_STAGING --body "100"
-    gh variable set DAGSTER_RUN_WORKER_MIN_INSTANCES_PROD --body "0"
-    gh variable set DAGSTER_RUN_WORKER_MIN_INSTANCES_STAGING --body "0"
-    gh variable set DAGSTER_RUN_WORKER_MAX_INSTANCES_PROD --body "5"
-    gh variable set DAGSTER_RUN_WORKER_MAX_INSTANCES_STAGING --body "2"
 
     # Dagster Deployment Options
     gh variable set DAGSTER_REFRESH_ECS_PROD --body "true"
@@ -482,12 +466,6 @@ function setup_full_config() {
     gh variable set DAGSTER_WEBSERVER_CPU_STAGING --body "512"
     gh variable set DAGSTER_WEBSERVER_MEMORY_PROD --body "1024"
     gh variable set DAGSTER_WEBSERVER_MEMORY_STAGING --body "1024"
-    gh variable set DAGSTER_WEBSERVER_DESIRED_COUNT_PROD --body "1"
-    gh variable set DAGSTER_WEBSERVER_DESIRED_COUNT_STAGING --body "1"
-    gh variable set DAGSTER_WEBSERVER_MIN_CAPACITY_PROD --body "1"
-    gh variable set DAGSTER_WEBSERVER_MIN_CAPACITY_STAGING --body "1"
-    gh variable set DAGSTER_WEBSERVER_MAX_CAPACITY_PROD --body "3"
-    gh variable set DAGSTER_WEBSERVER_MAX_CAPACITY_STAGING --body "2"
 
     # Dagster Run Job Configuration (EcsRunLauncher - Fargate)
     gh variable set DAGSTER_RUN_JOB_CPU_PROD --body "1024"
@@ -496,16 +474,6 @@ function setup_full_config() {
     gh variable set DAGSTER_RUN_JOB_MEMORY_STAGING --body "4096"
     gh variable set DAGSTER_MAX_CONCURRENT_RUNS_PROD --body "20"
     gh variable set DAGSTER_MAX_CONCURRENT_RUNS_STAGING --body "20"
-
-    # Dagster Run Worker Configuration (EC2 - for heavy compute)
-    gh variable set DAGSTER_RUN_WORKER_INSTANCE_TYPE_PROD --body "r7g.large"
-    gh variable set DAGSTER_RUN_WORKER_INSTANCE_TYPE_STAGING --body "r7g.large"
-    gh variable set DAGSTER_RUN_WORKER_EBS_SIZE_PROD --body "500"
-    gh variable set DAGSTER_RUN_WORKER_EBS_SIZE_STAGING --body "100"
-    gh variable set DAGSTER_RUN_WORKER_MIN_INSTANCES_PROD --body "0"
-    gh variable set DAGSTER_RUN_WORKER_MIN_INSTANCES_STAGING --body "0"
-    gh variable set DAGSTER_RUN_WORKER_MAX_INSTANCES_PROD --body "5"
-    gh variable set DAGSTER_RUN_WORKER_MAX_INSTANCES_STAGING --body "2"
 
     # Dagster Deployment Options
     gh variable set DAGSTER_REFRESH_ECS_PROD --body "true"

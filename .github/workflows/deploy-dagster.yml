@@ -65,22 +65,6 @@ on:
         required: false
         type: string
         default: "1024"
-      webserver_desired_count:
-        description: "Desired number of webserver tasks"
-        required: false
-        type: string
-        default: "1"
-      webserver_min_capacity:
-        description: "Minimum webserver tasks for auto scaling"
-        required: false
-        type: string
-        default: "1"
-      webserver_max_capacity:
-        description: "Maximum webserver tasks for auto scaling"
-        required: false
-        type: string
-        default: "3"
-
       # Run Job Configuration (for EcsRunLauncher)
       run_job_cpu:
         description: "CPU units for Dagster run jobs"
@@ -189,9 +173,6 @@ jobs:
                 ParameterKey=DaemonMemory,ParameterValue=${{ inputs.daemon_memory }} \
                 ParameterKey=WebserverCpu,ParameterValue=${{ inputs.webserver_cpu }} \
                 ParameterKey=WebserverMemory,ParameterValue=${{ inputs.webserver_memory }} \
-                ParameterKey=WebserverDesiredCount,ParameterValue=${{ inputs.webserver_desired_count }} \
-                ParameterKey=WebserverMinCapacity,ParameterValue=${{ inputs.webserver_min_capacity }} \
-                ParameterKey=WebserverMaxCapacity,ParameterValue=${{ inputs.webserver_max_capacity }} \
                 ParameterKey=RunJobCpu,ParameterValue=${{ inputs.run_job_cpu }} \
                 ParameterKey=RunJobMemory,ParameterValue=${{ inputs.run_job_memory }} \
                 ParameterKey=MaxConcurrentRuns,ParameterValue=${{ inputs.max_concurrent_runs }} \

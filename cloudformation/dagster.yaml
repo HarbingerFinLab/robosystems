@@ -53,25 +53,6 @@ Parameters:
     Default: "1024"
     Description: Memory in MiB for Dagster webserver
     AllowedValues: ["1024", "2048", "4096"]
-  WebserverDesiredCount:
-    Type: Number
-    Default: 1
-    MinValue: 1
-    MaxValue: 10
-    Description: Desired number of webserver tasks
-  WebserverMinCapacity:
-    Type: Number
-    Default: 1
-    MinValue: 1
-    MaxValue: 10
-    Description: Minimum webserver tasks for auto scaling
-  WebserverMaxCapacity:
-    Type: Number
-    Default: 3
-    MinValue: 1
-    MaxValue: 10
-    Description: Maximum webserver tasks for auto scaling
-
   # Run Job Configuration (Fargate)
   RunJobCpu:
     Type: String
@@ -748,7 +729,7 @@ Resources:
     Properties:
       ServiceName: !Sub robosystems-dagster-webserver-${Environment}
       Cluster: !Ref DagsterCluster
-      DesiredCount: !Ref WebserverDesiredCount
+      DesiredCount: 1  # Always 1 - no ALB for load distribution
       CapacityProviderStrategy:
         - CapacityProvider: FARGATE_SPOT
           Weight: 80
@@ -783,31 +764,6 @@ Resources:
           Value: !Ref ComponentTag
         - Key: CreatedBy
           Value: CloudFormation
-
-  # Auto Scaling for Webserver
-  WebserverScalingTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    DependsOn: WebserverService
-    Properties:
-      ServiceNamespace: ecs
-      ResourceId: !Sub service/${DagsterCluster}/robosystems-dagster-webserver-${Environment}
-      ScalableDimension: ecs:service:DesiredCount
-      MinCapacity: !Ref WebserverMinCapacity
-      MaxCapacity: !Ref WebserverMaxCapacity
-      RoleARN: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
-
-  WebserverCPUScalingPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Sub ${AWS::StackName}-webserver-cpu-scaling
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref WebserverScalingTarget
-      TargetTrackingScalingPolicyConfiguration:
-        PredefinedMetricSpecification:
-          PredefinedMetricType: ECSServiceAverageCPUUtilization
-        TargetValue: 70
-        ScaleOutCooldown: 60
-        ScaleInCooldown: 180
 
 Outputs:
   ClusterName:
