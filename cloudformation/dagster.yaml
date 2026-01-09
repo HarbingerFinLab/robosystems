@@ -1,4 +1,4 @@
-Description: RoboSystems Dagster Orchestration - ECS Fargate Only (Lightweight Orchestration)
+Description: RoboSystems Dagster Orchestration - ECS Fargate Only
 # Revised December 18, 2025: Removed EC2 capacity provider
 # Heavy compute (DuckDB + LadybugDB) delegated to shared master via Graph API
 
@@ -729,7 +729,7 @@ Resources:
     Properties:
       ServiceName: !Sub robosystems-dagster-webserver-${Environment}
       Cluster: !Ref DagsterCluster
-      DesiredCount: 1  # Always 1 - no ALB for load distribution
+      DesiredCount: 1 # Always 1 - no ALB for load distribution
       CapacityProviderStrategy:
         - CapacityProvider: FARGATE_SPOT
           Weight: 80

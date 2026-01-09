@@ -35,11 +35,8 @@ on:
         value: ${{ jobs.action.outputs.is_release }}
     secrets:
       ACTIONS_TOKEN:
-        required: true
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
-        required: true
+        description: "GitHub token for checkout (optional - falls back to github.token)"
+        required: false
       DOCKERHUB_USERNAME:
       DOCKERHUB_TOKEN:
 
@@ -50,6 +47,9 @@ concurrency:
 jobs:
   action:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       image: ${{ steps.build-and-push.outputs.image }}
       ecr_repository_url: ${{ steps.build-and-push.outputs.ecr_repository_url }}
@@ -61,7 +61,7 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -76,8 +76,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Login to Amazon ECR
@@ -181,6 +180,9 @@ jobs:
   # Build Lambda container image (runs in parallel with main build)
   lambda:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       lambda_image: ${{ steps.build-lambda.outputs.lambda_image }}
     steps:
@@ -189,7 +191,7 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -204,8 +206,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Login to Amazon ECR

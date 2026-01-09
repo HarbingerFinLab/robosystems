@@ -198,9 +198,9 @@ create-release version="patch" deploy="staging":
 deploy environment="prod" ref="":
     @bin/tools/deploy.sh {{environment}} {{ref}}
 
-# Bastion tunnel
-bastion-tunnel environment service key:
-    @bin/tools/tunnels.sh {{environment}} {{service}} --key ~/.ssh/{{key}}
+# Bastion tunnel (uses AWS SSM - no SSH keys required)
+bastion-tunnel environment service="all":
+    @bin/tools/tunnels.sh {{environment}} {{service}}
 
 
 ## Admin CLI ##
@@ -341,6 +341,10 @@ sec-health verbose="" json="" api_url="http://localhost:8001" env=_local_env:
 
 ## Setup ##
 
+# Bootstrap AWS OIDC federation for GitHub Actions
+bootstrap:
+    @bin/setup/bootstrap.sh
+
 # AWS Secrets Manager setup
 setup-aws:
     @bin/setup/aws.sh
@@ -348,6 +352,10 @@ setup-aws:
 # GitHub Repository setup
 setup-gha:
     @bin/setup/gha.sh
+
+# Bedrock local development setup (creates IAM user, updates .env)
+setup-bedrock:
+    @bin/setup/bedrock.sh
 
 # Generate secure random key for secrets
 generate-key:

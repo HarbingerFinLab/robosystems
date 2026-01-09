@@ -70,15 +70,15 @@ on:
         value: ${{ jobs.summary.outputs.instances_updated }}
     secrets:
       ACTIONS_TOKEN:
-        required: true
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
-        required: true
+        description: "GitHub token for checkout (optional - falls back to github.token)"
+        required: false
 
 jobs:
   collect-instances:
     runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || fromJSON(inputs.runner_config) }}
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       matrix: ${{ steps.collect.outputs.matrix }}
       has_instances: ${{ steps.collect.outputs.has_instances }}
@@ -86,8 +86,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ github.event_name == 'workflow_dispatch' && (vars.AWS_REGION || 'us-east-1') || inputs.aws_region }}
 
       - name: Collect instances to update
@@ -217,6 +216,9 @@ jobs:
     if: needs.collect-instances.outputs.has_instances == 'true'
     runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || fromJSON(inputs.runner_config) }}
     timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix: ${{ fromJSON(needs.collect-instances.outputs.matrix) }}
       max-parallel: 10
@@ -227,13 +229,12 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ github.event_name == 'workflow_dispatch' && (vars.AWS_REGION || 'us-east-1') || inputs.aws_region }}
 
       - name: Get AWS Account ID

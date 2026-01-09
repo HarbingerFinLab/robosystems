@@ -13,7 +13,8 @@ on:
         description: "Runner configuration JSON (from runner availability check)"
     secrets:
       ACTIONS_TOKEN:
-        required: true
+        description: "GitHub token for checkout (optional - falls back to github.token)"
+        required: false
 
 jobs:
   action:
@@ -37,9 +38,6 @@ jobs:
       # Valkey/Redis Configuration (with authentication)
       VALKEY_URL: redis://localhost:6379
       VALKEY_AUTH_TOKEN: valkey # Must match pytest.ini
-      # AI Configuration
-      ANTHROPIC_API_KEY: test-anthropic-key
-      ANTHROPIC_MODEL: claude-sonnet-4-20250514
       # External Service Configuration (test values)
       INTUIT_CLIENT_ID: test-intuit-client-id
       INTUIT_CLIENT_SECRET: test-intuit-secret
@@ -142,7 +140,7 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Setup Python (GitHub-hosted runners only)
         if: runner.os == 'Linux' && !contains(runner.name, 'robosystems')

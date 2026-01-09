@@ -86,33 +86,19 @@ function check_prerequisites() {
 }
 
 function setup_secrets() {
-    echo "Setting up GitHub repository secrets..."
-
-    # Set GitHub Repository Secrets
-    echo "⚠️  NOTE: Update these commands with your actual secret values before running!"
+    echo "GitHub Secrets (all optional)"
     echo ""
-    echo "📋 Required secrets (CI/CD core functionality):"
-    echo "gh secret set AWS_ACCESS_KEY_ID --body \"your_aws_access_key_id\""
-    echo "gh secret set AWS_SECRET_ACCESS_KEY --body \"your_aws_secret_access_key\""
-    echo "gh secret set AWS_GITHUB_TOKEN --body \"your_github_token_for_aws_operations\""
-    echo "gh secret set RUNNER_GITHUB_TOKEN --body \"your_github_token_for_runner\""
+    echo "All secrets are optional. Basic deployments work with zero secrets."
     echo ""
-    echo "📋 Organization-level secrets (may be inherited, set if not present):"
-    echo "gh secret set ACTIONS_TOKEN --body \"your_github_token_for_workflow_automation\""
-    echo "gh secret set ANTHROPIC_API_KEY --body \"your_anthropic_api_key_here\""
+    echo "📋 Optional secrets:"
+    echo "   ACTIONS_TOKEN     - Enables auto-deploy on release, cross-workflow triggers"
+    echo "   ANTHROPIC_API_KEY - Enables AI-powered features"
     echo ""
-    echo "💡 ACTIONS_TOKEN enables:"
-    echo "   - Cross-workflow automation"
-    echo "   - Container registry refresh"
-    echo "   - Automated PR creation"
+    echo "Without ACTIONS_TOKEN, workflows use github.token which works for"
+    echo "all deployments but cannot trigger other workflows."
     echo ""
-    echo "💡 ANTHROPIC_API_KEY enables:"
-    echo "   - Claude-powered PR creation (./bin/tools/create-pr)"
-    echo "   - Intelligent code analysis and descriptions"
-    echo "   - Enhanced GitHub Actions workflows"
-    echo "   - AI-assisted development workflows"
-    echo ""
-    echo "Secrets setup completed!"
+    echo "Note: AWS credentials are handled via OIDC federation."
+    echo "Run 'just bootstrap' to set up AWS access."
 }
 
 
@@ -142,26 +128,10 @@ function setup_minimum_config() {
     REPOSITORY_NAME="${GITHUB_ORG}/${REPO_NAME}"
     read -p "AWS Account ID [123456789012]: " AWS_ACCOUNT_ID
     AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-"123456789012"}
-    read -p "Bastion EC2 Key Pair Name [your-key-pair-name]: " BASTION_KEY_PAIR_NAME
-    BASTION_KEY_PAIR_NAME=${BASTION_KEY_PAIR_NAME:-"your-key-pair-name"}
     read -p "AWS SNS Alert Email [alerts@example.com]: " AWS_SNS_ALERT_EMAIL
     AWS_SNS_ALERT_EMAIL=${AWS_SNS_ALERT_EMAIL:-"alerts@example.com"}
     read -p "ECR Repository Name [robosystems]: " ECR_REPOSITORY
     ECR_REPOSITORY=${ECR_REPOSITORY:-"robosystems"}
-    echo ""
-    echo "🔑 SSH Keys (optional):"
-    echo "Enter additional SSH public keys for bastion access (one per line, press Ctrl+D when done):"
-    echo "Leave empty to skip."
-    BASTION_SSH_KEYS=""
-    while IFS= read -r line; do
-        if [[ -n "$line" ]]; then
-            if [[ -n "$BASTION_SSH_KEYS" ]]; then
-                BASTION_SSH_KEYS="$BASTION_SSH_KEYS"$'\n'"$line"
-            else
-                BASTION_SSH_KEYS="$line"
-            fi
-        fi
-    done
 
     # Set the essential variables
     echo ""
@@ -331,11 +301,7 @@ function setup_minimum_config() {
     # Notification Configuration
     gh variable set AWS_SNS_ALERT_EMAIL --body "$AWS_SNS_ALERT_EMAIL"
 
-    # Bastion Configuration
-    gh variable set BASTION_KEY_PAIR_NAME --body "$BASTION_KEY_PAIR_NAME"
-    # CIDR for SSH access to bastion (set to your IP)
-    gh variable set BASTION_ALLOWED_CIDR --body "0.0.0.0/32"
-    # CIDR for admin API access (set to your IP)
+    # Admin API access (set to your IP for restricted access)
     gh variable set ADMIN_ALLOWED_CIDRS --body "0.0.0.0/32"
 
     # Publishing Configuration
@@ -365,7 +331,6 @@ function setup_minimum_config() {
     echo "📋 Variables set:"
     echo "  🌐 Root Domain: $ROOT_DOMAIN"
     echo "  📦 Repository: $REPOSITORY_NAME"
-    echo "  🔑 Bastion Key Pair: $BASTION_KEY_PAIR_NAME"
     echo "  🐳 ECR Repository: $ECR_REPOSITORY"
     echo "  📊 Observability: Enabled for both prod & staging"
     echo "  🛡️ WAF Protection: Ready to enable (currently disabled)"
@@ -384,13 +349,12 @@ function setup_minimum_config() {
     echo "🚀 Your deployment is ready to run!"
     echo "💡 All settings use cost-optimized defaults."
     echo ""
-    echo "📋 Still need to set secrets:"
-    echo "  Required:"
-    echo "    - ACTIONS_TOKEN (GitHub token)"
-    echo "    - AWS_ACCESS_KEY_ID (AWS credentials)"
-    echo "    - AWS_SECRET_ACCESS_KEY (AWS credentials)"
-    echo "  Optional:"
+    echo "📋 Optional secrets (all deployments work without these):"
+    echo "    - ACTIONS_TOKEN (enables cross-workflow triggers)"
     echo "    - ANTHROPIC_API_KEY (enables AI-powered tools)"
+    echo ""
+    echo "💡 AWS credentials are handled via OIDC federation."
+    echo "   Run 'just bootstrap' if not already configured."
 }
 
 function setup_full_config() {
@@ -413,7 +377,6 @@ function setup_full_config() {
     REPO_NAME=${REPO_NAME:-"robosystems-service"}
     REPOSITORY_NAME="${GITHUB_ORG}/${REPO_NAME}"
     read -p "Enter AWS Account ID: " AWS_ACCOUNT_ID
-    read -p "Enter Bastion EC2 Key Pair Name: " BASTION_KEY_PAIR_NAME
     read -p "Enter AWS SNS Alert Email: " AWS_SNS_ALERT_EMAIL
     read -p "Enter ECR Repository Name [robosystems]: " ECR_REPOSITORY
     ECR_REPOSITORY=${ECR_REPOSITORY:-"robosystems"}
@@ -440,11 +403,7 @@ function setup_full_config() {
     gh variable set ROBOSYSTEMS_APP_URL_PROD --body "https://$ROOT_DOMAIN"
     gh variable set ROBOSYSTEMS_APP_URL_STAGING --body "https://staging.$ROOT_DOMAIN"
 
-    # Bastion Configuration
-    gh variable set BASTION_KEY_PAIR_NAME --body "$BASTION_KEY_PAIR_NAME"
-    # CIDR for SSH access to bastion (set to your IP)
-    gh variable set BASTION_ALLOWED_CIDR --body "0.0.0.0/32"
-    # CIDR for admin API access (set to your IP)
+    # Admin API access (set to your IP for restricted access)
     gh variable set ADMIN_ALLOWED_CIDRS --body "0.0.0.0/32"
 
     # API Scaling Configuration

@@ -295,7 +295,6 @@ SUBGRAPH_CREATION_ENABLED=true
 BACKUP_CREATION_ENABLED=true
 
 # Mock API keys
-ANTHROPIC_API_KEY=test-anthropic-key
 INTUIT_CLIENT_ID=test-intuit-client-id
 OPENFIGI_API_KEY=test-openfigi-key
 ```

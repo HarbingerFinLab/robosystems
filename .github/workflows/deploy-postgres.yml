@@ -101,16 +101,16 @@ on:
 
     secrets:
       ACTIONS_TOKEN:
-        required: true
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
-        required: true
+        description: "GitHub token for checkout (optional - falls back to github.token)"
+        required: false
 
 jobs:
   action:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 30  # RDS major version upgrades can take 20-30 min
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       postgres_secret_arn: ${{ steps.stack-outputs.outputs.postgres_secret_arn }}
       database_sg_id: ${{ steps.stack-outputs.outputs.database_sg_id }}
@@ -121,13 +121,12 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Deploy Postgres CloudFormation Stack

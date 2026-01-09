@@ -25,7 +25,7 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Select runner
         id: select
@@ -33,7 +33,7 @@ jobs:
         with:
           runner_labels: ${{ vars.RUNNER_LABELS || 'github-hosted' }}
           runner_scope: ${{ vars.RUNNER_SCOPE || 'both' }}
-          github_token: ${{ secrets.ACTIONS_TOKEN }}
+          github_token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   stack-config:
     needs: [runner]
@@ -61,7 +61,7 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Install PyYAML
         run: pip install --user pyyaml
@@ -94,7 +94,8 @@ jobs:
         shell: bash
         run: |
           # Domain and JWT configuration for prod
-          echo "domain_name_root=${{ vars.API_DOMAIN_NAME_ROOT || 'robosystems.ai' }}" >> $GITHUB_OUTPUT
+          # Leave API_DOMAIN_NAME_ROOT empty for isolated deployment (no custom domains)
+          echo "domain_name_root=${{ vars.API_DOMAIN_NAME_ROOT || '' }}" >> $GITHUB_OUTPUT
 
           # Strip https:// prefix from JWT issuer and audience URLs
           JWT_ISSUER="${{ vars.ROBOSYSTEMS_API_URL_PROD || '' }}"
@@ -122,7 +123,7 @@ jobs:
     with:
       runner_config: ${{ needs.runner.outputs.runner_config }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   build:
     needs: [runner]
@@ -136,9 +137,7 @@ jobs:
       # Supports: refs/tags/v*.*.* (releases) and refs/heads/release/* (hotfixes)
       publish_to_dockerhub: ${{ vars.DOCKERHUB_PUBLISHING_ENABLED == 'true' && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/')) }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
       DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
@@ -152,13 +151,13 @@ jobs:
         id: deployment
         uses: chrnorm/deployment-action@v2
         with:
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
           environment: production
           description: "Production Deployment Created"
       - name: Update Deployment Status
         uses: chrnorm/deployment-status@v2
         with:
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
           state: in_progress
           deployment-id: ${{ steps.deployment.outputs.deployment_id }}
           description: "Production Deployment In Progress"
@@ -186,9 +185,7 @@ jobs:
       cloudtrail_log_retention_days: ${{ vars.CLOUDTRAIL_LOG_RETENTION_DAYS || '90' }}
       cloudtrail_data_events_enabled: ${{ vars.CLOUDTRAIL_DATA_EVENTS_ENABLED || 'false' }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-s3:
     needs: [runner, create-deployment, stack-config]
@@ -202,29 +199,30 @@ jobs:
       # AWS Configuration
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       # Domain Configuration
-      public_domain_name: ${{ vars.PUBLIC_DOMAIN_NAME_PROD || 'public.robosystems.ai' }}
-      domain_name_root: ${{ vars.API_DOMAIN_NAME_ROOT || 'robosystems.ai' }}
+      # Leave PUBLIC_DOMAIN_NAME_PROD empty for default CloudFront domain (isolated deployment)
+      public_domain_name: ${{ vars.PUBLIC_DOMAIN_NAME_PROD || '' }}
+      domain_name_root: ${{ vars.API_DOMAIN_NAME_ROOT || '' }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   package-scripts:
     needs: [runner, deploy-s3]
     runs-on: ${{ fromJSON(needs.runner.outputs.runner_config) }}
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Package and upload scripts
@@ -263,9 +261,7 @@ jobs:
       # Other Configuration
       aws_sns_alert_email: ${{ vars.AWS_SNS_ALERT_EMAIL }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-valkey:
     needs: [runner, create-deployment, stack-config, build, deploy-vpc]
@@ -296,9 +292,7 @@ jobs:
       # Other Configuration
       aws_sns_alert_email: ${{ vars.AWS_SNS_ALERT_EMAIL }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-prometheus:
     if: vars.OBSERVABILITY_ENABLED_PROD != 'false'
@@ -313,9 +307,7 @@ jobs:
       # AWS Configuration
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-grafana:
     if: vars.OBSERVABILITY_ENABLED_PROD != 'false'
@@ -330,9 +322,7 @@ jobs:
       # AWS Configuration
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-bastion:
     needs:
@@ -355,14 +345,10 @@ jobs:
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       vpc_id: ${{ needs.deploy-vpc.outputs.vpc_id }}
       public_subnet_ids: ${{ needs.deploy-vpc.outputs.public_subnet_ids }}
-      bastion_allowed_cidr: ${{ vars.BASTION_ALLOWED_CIDR }}
-      bastion_key_pair_name: ${{ vars.BASTION_KEY_PAIR_NAME }}
-      # Security Groups
+      # Security Groups (SSM-only access - no SSH parameters needed)
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   # Graph Infrastructure - Step 1: Deploy DynamoDB, Secrets, Lambda monitoring
   deploy-graph-infra:
@@ -384,9 +370,7 @@ jobs:
       # Other Configuration
       aws_sns_alert_email: ${{ vars.AWS_SNS_ALERT_EMAIL }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   # Graph Infrastructure - Step 2: Deploy EBS volume management
   deploy-graph-volumes:
@@ -411,9 +395,7 @@ jobs:
       # Other Configuration
       aws_sns_alert_email: ${{ vars.AWS_SNS_ALERT_EMAIL }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-graph:
     needs:
@@ -465,9 +447,7 @@ jobs:
       # Other Configuration
       aws_sns_alert_email: ${{ vars.AWS_SNS_ALERT_EMAIL }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   graph-container-refresh:
     needs: [runner, create-deployment, build, deploy-graph]
@@ -482,9 +462,7 @@ jobs:
       rolling_update: "true"
       health_check_timeout: "30"
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-api:
     needs:
@@ -529,7 +507,8 @@ jobs:
       cpu_target_value: "70"
       memory_target_value: "80"
       # Domain & DNS Configuration
-      domain_name: ${{ vars.API_DOMAIN_NAME_PROD }}
+      # Leave API_DOMAIN_NAME_PROD empty for internal-only access via bastion tunnel
+      domain_name: ${{ vars.API_DOMAIN_NAME_PROD || '' }}
       domain_name_root: ${{ needs.stack-config.outputs.domain_name_root }}
       # JWT Configuration
       jwt_issuer: ${{ needs.stack-config.outputs.jwt_issuer }}
@@ -537,8 +516,8 @@ jobs:
       # Cache Configuration
       valkey_url: ${{ needs.deploy-valkey.outputs.valkey_url }}
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}
-      admin_allowed_cidrs: ${{ vars.ADMIN_ALLOWED_CIDRS }}
-      # WAF Configuration (environment-specific)
+      admin_allowed_cidrs: ${{ vars.ADMIN_ALLOWED_CIDRS || '' }}
+      # WAF Configuration (environment-specific, skipped for internal-only deployments)
       waf_enabled: ${{ vars.WAF_ENABLED_PROD || 'true' }}
       waf_stack_name: ${{ needs.stack-config.outputs.waf_stack }}
       waf_rate_limit_per_ip: ${{ vars.WAF_RATE_LIMIT_PER_IP || '10000' }}
@@ -549,9 +528,7 @@ jobs:
       aws_sns_alert_email: ${{ vars.AWS_SNS_ALERT_EMAIL }}
       refresh_ecs_service: ${{ vars.API_ASG_REFRESH_PROD || 'true' }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-dagster:
     needs:
@@ -605,9 +582,7 @@ jobs:
       # Other Configuration
       refresh_ecs_service: ${{ vars.DAGSTER_REFRESH_ECS_PROD || 'true' }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deployment-successful:
     needs:
@@ -650,12 +625,12 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Update Deployment Status
         uses: chrnorm/deployment-status@v2
         with:
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
           state: success
           deployment-id: ${{ needs.create-deployment.outputs.deployment_id }}
           description: "Production Deployment Succeeded"
@@ -684,11 +659,11 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Handle Deployment Failure
         uses: ./.github/actions/handle-deployment-failure
         with:
           deployment-id: ${{ needs.create-deployment.outputs.deployment_id }}
           environment: production
-          github-token: ${{ secrets.ACTIONS_TOKEN }}
+          github-token: ${{ secrets.ACTIONS_TOKEN || github.token }}

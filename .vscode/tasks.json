@@ -152,6 +152,13 @@
       "problemMatcher": []
     },
     {
+      "label": "Bootstrap OIDC",
+      "type": "shell",
+      "command": "just",
+      "args": ["bootstrap"],
+      "problemMatcher": []
+    },
+    {
       "label": "Create Feature",
       "type": "shell",
       "command": "just",
@@ -195,8 +202,7 @@
       "args": [
         "bastion-tunnel",
         "${input:environment}",
-        "${input:tunnelService}",
-        "${input:sshKey}"
+        "${input:tunnelService}"
       ],
       "problemMatcher": []
     },
@@ -212,13 +218,6 @@
       "type": "shell",
       "command": "just",
       "args": ["migrate-down"],
-      "problemMatcher": []
-    },
-    {
-      "label": "Migrate Remote",
-      "type": "shell",
-      "command": "just",
-      "args": ["migrate-remote", "${input:environment}", "${input:sshKey}"],
       "problemMatcher": []
     },
     {
@@ -283,17 +282,19 @@
       ]
     },
     {
-      "id": "sshKey",
-      "type": "promptString",
-      "description": "Choose SSH Key:",
-      "default": ""
-    },
-    {
       "id": "tunnelService",
       "type": "pickString",
       "description": "Choose service to tunnel:",
       "default": "all",
-      "options": ["all", "postgres", "valkey", "dagster"]
+      "options": [
+        "all",
+        "postgres",
+        "valkey",
+        "dagster",
+        "api",
+        "shell",
+        "migrate"
+      ]
     },
     {
       "id": "versionType",

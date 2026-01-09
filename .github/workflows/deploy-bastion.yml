@@ -33,14 +33,6 @@ on:
         description: "Public subnet IDs for bastion host (comma-separated)"
         required: true
         type: string
-      bastion_allowed_cidr:
-        description: "CIDR block for SSH access (e.g., 203.0.113.0/24 or VPN endpoint IP)"
-        required: true
-        type: string
-      bastion_key_pair_name:
-        description: "EC2 Key Pair name for SSH access to bastion host"
-        required: true
-        type: string
 
       # Security Groups
       valkey_sg_id:
@@ -65,25 +57,21 @@ on:
       bastion_sg_id:
         description: "Security group ID for bastion host"
         value: ${{ jobs.action.outputs.bastion_sg_id }}
-      bastion_public_ip:
-        description: "Public IP address of bastion host"
-        value: ${{ jobs.action.outputs.bastion_public_ip }}
 
     secrets:
       ACTIONS_TOKEN:
-        required: true
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
-        required: true
+        description: "GitHub token for checkout (optional - falls back to github.token)"
+        required: false
 
 jobs:
   action:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 20
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       bastion_sg_id: ${{ steps.stack-outputs.outputs.bastion_sg_id }}
-      bastion_public_ip: ${{ steps.stack-outputs.outputs.bastion_public_ip }}
 
     steps:
       - name: Checkout
@@ -91,13 +79,12 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Get Latest Amazon Linux 2023 ARM64 AMI
@@ -124,12 +111,11 @@ jobs:
           PUBLIC_SUBNET_ID=$(echo "${{ inputs.public_subnet_ids }}" | cut -d',' -f1)
           echo "Using public subnet (configured)"
 
+          # SSM-only access - no SSH parameters needed
           BASTION_PARAMS="ParameterKey=Environment,ParameterValue=${{ inputs.environment }} \
                 ParameterKey=VpcId,ParameterValue=${{ inputs.vpc_id }} \
                 ParameterKey=PublicSubnetId,ParameterValue=$PUBLIC_SUBNET_ID \
-                ParameterKey=AmiId,ParameterValue=${{ steps.ami.outputs.ami_id }} \
-                ParameterKey=KeyPairName,ParameterValue=${{ inputs.bastion_key_pair_name }} \
-                ParameterKey=AllowedCidrBlock,ParameterValue=${{ inputs.bastion_allowed_cidr }}"
+                ParameterKey=AmiId,ParameterValue=${{ steps.ami.outputs.ami_id }}"
 
           # Add Valkey client security group if provided
           if [ -n "${{ inputs.valkey_sg_id }}" ] && [ "${{ inputs.valkey_sg_id }}" != "" ]; then
@@ -225,15 +211,13 @@ jobs:
             echo "Warning: Could not retrieve Bastion Security Group ID"
           fi
 
-          # Get public IP
-          BASTION_PUBLIC_IP=$(aws cloudformation describe-stacks \
+          # Get instance ID for SSM access
+          BASTION_INSTANCE_ID=$(aws cloudformation describe-stacks \
             --stack-name ${{ inputs.stack_name }} \
-            --query "Stacks[0].Outputs[?OutputKey=='BastionPublicIP'].OutputValue" \
+            --query "Stacks[0].Outputs[?OutputKey=='BastionHostId'].OutputValue" \
             --output text 2>/dev/null || echo "")
 
-          if [ -n "$BASTION_PUBLIC_IP" ] && [ "$BASTION_PUBLIC_IP" != "None" ]; then
-            echo "bastion_public_ip=$BASTION_PUBLIC_IP" >> $GITHUB_OUTPUT
-            echo "Bastion Public IP: $BASTION_PUBLIC_IP"
-          else
-            echo "Warning: Could not retrieve Bastion Public IP"
+          if [ -n "$BASTION_INSTANCE_ID" ] && [ "$BASTION_INSTANCE_ID" != "None" ]; then
+            echo "Bastion Instance ID: $BASTION_INSTANCE_ID"
+            echo "Access via SSM: aws ssm start-session --target $BASTION_INSTANCE_ID"
           fi
