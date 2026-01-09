@@ -622,6 +622,9 @@ Resources:
             # S3 compute logs bucket for Dagster UI
             - Name: DAGSTER_COMPUTE_LOGS_BUCKET
               Value: !Sub robosystems-logs-${Environment}
+            # Run coordinator configuration (shared config with daemon)
+            - Name: DAGSTER_MAX_CONCURRENT_RUNS
+              Value: !Ref MaxConcurrentRuns
           HealthCheck:
             Command:
               [
@@ -698,6 +701,9 @@ Resources:
             # S3 compute logs bucket for Dagster UI
             - Name: DAGSTER_COMPUTE_LOGS_BUCKET
               Value: !Sub robosystems-logs-${Environment}
+            # Run coordinator configuration (shared config)
+            - Name: DAGSTER_MAX_CONCURRENT_RUNS
+              Value: !Ref MaxConcurrentRuns
 
   # ========================================
   # ECS SERVICES
