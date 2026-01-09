@@ -38,9 +38,6 @@ jobs:
       # Valkey/Redis Configuration (with authentication)
       VALKEY_URL: redis://localhost:6379
       VALKEY_AUTH_TOKEN: valkey # Must match pytest.ini
-      # AI Configuration
-      ANTHROPIC_API_KEY: test-anthropic-key
-      ANTHROPIC_MODEL: claude-sonnet-4-20250514
       # External Service Configuration (test values)
       INTUIT_CLIENT_ID: test-intuit-client-id
       INTUIT_CLIENT_SECRET: test-intuit-secret
