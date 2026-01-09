@@ -116,6 +116,13 @@ on:
         type: string
         default: ""
 
+      # Monitoring Configuration
+      container_insights_enabled:
+        description: "Enable Container Insights for ECS cluster (enabled/disabled)"
+        required: false
+        type: string
+        default: "disabled"
+
       # Other Configuration
       refresh_ecs_service:
         description: "Refresh ECS services after deployment"
@@ -185,7 +192,8 @@ jobs:
                 ParameterKey=ValkeyUrl,ParameterValue=${{ inputs.valkey_url }} \
                 ParameterKey=ValkeyClientSecurityGroupId,ParameterValue=${{ inputs.valkey_sg_id }} \
                 ParameterKey=DatabaseSecurityGroupId,ParameterValue=${{ inputs.database_sg_id }} \
-                ParameterKey=BastionSecurityGroupId,ParameterValue=${{ inputs.bastion_sg_id }}"
+                ParameterKey=BastionSecurityGroupId,ParameterValue=${{ inputs.bastion_sg_id }} \
+                ParameterKey=ContainerInsightsEnabled,ParameterValue=${{ inputs.container_insights_enabled }}"
 
           # Deploy or update the stack
           if [ "$STACK_ACTION" = "create-stack" ]; then

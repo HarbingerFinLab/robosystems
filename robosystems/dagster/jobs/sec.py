@@ -71,7 +71,8 @@ sec_process_job = define_asset_job(
   selection=AssetSelection.assets(
     sec_process_filing,
   ),
-  tags={"pipeline": "sec", "phase": "process"},
+  # Low priority (-1) so other jobs run first when queue is full
+  tags={"pipeline": "sec", "phase": "process", "dagster/priority": "-1"},
   partitions_def=sec_filing_partitions,
 )
 

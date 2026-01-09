@@ -236,6 +236,10 @@ function setup_minimum_config() {
     gh variable set RUN_MIGRATIONS_PROD --body "true"
     gh variable set RUN_MIGRATIONS_STAGING --body "true"
 
+    # Dagster Monitoring Configuration
+    gh variable set DAGSTER_CONTAINER_INSIGHTS_PROD --body "disabled"
+    gh variable set DAGSTER_CONTAINER_INSIGHTS_STAGING --body "disabled"
+
     # Database Configuration
     gh variable set DATABASE_ENGINE_PROD --body "postgres"
     gh variable set DATABASE_ENGINE_STAGING --body "postgres"
@@ -504,6 +508,10 @@ function setup_full_config() {
     gh variable set DAGSTER_REFRESH_ECS_STAGING --body "true"
     gh variable set RUN_MIGRATIONS_PROD --body "true"
     gh variable set RUN_MIGRATIONS_STAGING --body "true"
+
+    # Dagster Monitoring Configuration
+    gh variable set DAGSTER_CONTAINER_INSIGHTS_PROD --body "disabled"
+    gh variable set DAGSTER_CONTAINER_INSIGHTS_STAGING --body "disabled"
 
     # Database Configuration
     gh variable set DATABASE_ENGINE_PROD --body "postgres"
