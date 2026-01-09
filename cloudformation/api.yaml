@@ -737,17 +737,9 @@ Resources:
 
   # ECS Service
   # DependsOn required: ECS service must wait for listener to attach target group to ALB
-  # CloudFormation ignores dependencies on conditional resources that don't exist
   ApiService:
     Type: AWS::ECS::Service
-    Metadata:
-      cfn-lint:
-        config:
-          ignore_checks:
-            - E3005  # False positive: one listener always exists (HasDomain XOR IsInternal)
-    DependsOn:
-      - ApiHttpsListener        # Public mode: HTTPS listener
-      - ApiHttpForwardListener  # Internal mode: HTTP forward listener
+    DependsOn: ApiHttpListener
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
@@ -771,6 +763,7 @@ Resources:
         - ContainerName: api-container
           ContainerPort: !Ref ContainerPort
           TargetGroupArn: !Ref ApiTargetGroup
+      HealthCheckGracePeriodSeconds: 60
       EnableExecuteCommand: true
       PropagateTags: SERVICE
       DeploymentConfiguration:
@@ -944,36 +937,27 @@ Resources:
             ContentType: "application/json"
             MessageBody: '{"error": "Forbidden", "detail": "Admin API access restricted to authorized IP addresses"}'
 
-  # HTTP Listener - redirect to HTTPS (only when public domain is configured)
-  ApiHttpRedirectListener:
+  # HTTP Listener - always exists (unconditional)
+  # Public mode: redirects to HTTPS
+  # Internal mode: forwards directly to target group
+  ApiHttpListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
-    Condition: HasDomain
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
       DefaultActions:
-        - Type: redirect
-          RedirectConfig:
-            Protocol: HTTPS
-            Port: "443"
-            Host: "#{host}"
-            Path: /#{path}
-            Query: "#{query}"
-            StatusCode: HTTP_301
-      LoadBalancerArn: !Ref ApiALB
-      Port: 80
-      Protocol: HTTP
-
-  # HTTP Listener - forward directly (internal ALB only, access via bastion tunnel)
-  ApiHttpForwardListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Condition: IsInternal
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Retain
-    Properties:
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref ApiTargetGroup
+        - !If
+          - HasDomain
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: "443"
+              Host: "#{host}"
+              Path: /#{path}
+              Query: "#{query}"
+              StatusCode: HTTP_301
+          - Type: forward
+            TargetGroupArn: !Ref ApiTargetGroup
       LoadBalancerArn: !Ref ApiALB
       Port: 80
       Protocol: HTTP
