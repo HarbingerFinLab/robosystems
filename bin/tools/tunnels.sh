@@ -16,6 +16,7 @@ BASTION_HOST=""
 POSTGRES_ENDPOINT=""
 VALKEY_ENDPOINT=""
 DAGSTER_ENDPOINT=""
+API_ENDPOINT=""
 
 # Validate dependencies
 check_dependencies() {
@@ -88,7 +89,8 @@ print_usage() {
     echo "  postgres      - PostgreSQL tunnel (localhost:5432)"
     echo "  valkey        - Valkey ElastiCache tunnel (localhost:6379)"
     echo "  dagster       - Dagster webserver tunnel (localhost:3003)"
-    echo "  all           - All service tunnels (postgres + valkey + dagster)"
+    echo "  api           - API ALB tunnel (localhost:8000)"
+    echo "  all           - All service tunnels (postgres + valkey + dagster + api)"
     echo ""
     echo -e "${GREEN}======================================================================"
     echo "Database Operations"
@@ -196,12 +198,27 @@ discover_infrastructure() {
         echo -e "${YELLOW}Using default Dagster endpoint: $DAGSTER_ENDPOINT${NC}"
     fi
 
+    # Discover API ALB endpoint
+    echo -e "${YELLOW}Looking for API ALB endpoint...${NC}"
+
+    local api_stack="RoboSystemsApi${env_capitalized}"
+    API_ENDPOINT=$(aws cloudformation describe-stacks \
+        --stack-name "$api_stack" \
+        --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
+        --output text 2>/dev/null || echo "")
+
+    if [[ -z "$API_ENDPOINT" || "$API_ENDPOINT" == "None" ]]; then
+        echo -e "${YELLOW}Warning: Could not find API ALB endpoint for $environment${NC}"
+        API_ENDPOINT="NOT_FOUND"
+    fi
+
     # Show discovered endpoints
     echo -e "${GREEN}✓ Infrastructure discovered:${NC}"
     echo -e "  Bastion Host: ${GREEN}$BASTION_HOST${NC}"
     echo -e "  PostgreSQL:   ${GREEN}$POSTGRES_ENDPOINT${NC}"
     echo -e "  Valkey:       ${GREEN}$VALKEY_ENDPOINT${NC}"
     echo -e "  Dagster:      ${GREEN}$DAGSTER_ENDPOINT${NC}"
+    echo -e "  API:          ${GREEN}$API_ENDPOINT${NC}"
     echo ""
 }
 
@@ -352,6 +369,24 @@ setup_dagster_tunnel() {
     ssh -i $SSH_KEY -N -L 3003:$DAGSTER_ENDPOINT:3000 ec2-user@$BASTION_HOST
 }
 
+setup_api_tunnel() {
+    if [[ -z "$API_ENDPOINT" || "$API_ENDPOINT" == "NOT_FOUND" ]]; then
+        echo -e "${RED}Error: API ALB endpoint not found${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}Setting up API ALB tunnel...${NC}"
+    echo -e "${BLUE}Local: localhost:8000 -> Remote: $API_ENDPOINT:80${NC}"
+    echo ""
+    echo -e "${YELLOW}Access API:${NC}"
+    echo "curl http://localhost:8000/v1/status"
+    echo ""
+    echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
+    echo ""
+
+    ssh -i $SSH_KEY -N -L 8000:$API_ENDPOINT:80 ec2-user@$BASTION_HOST
+}
+
 run_database_migration() {
     local environment=$1
 
@@ -460,6 +495,11 @@ setup_all_tunnels() {
         tunnel_args="$tunnel_args -L 3003:$DAGSTER_ENDPOINT:3000"
     fi
 
+    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
+        available_services+=("API")
+        tunnel_args="$tunnel_args -L 8000:$API_ENDPOINT:80"
+    fi
+
     if [[ ${#available_services[@]} -eq 0 ]]; then
         echo -e "${RED}Error: No services found to tunnel${NC}"
         exit 1
@@ -479,6 +519,10 @@ setup_all_tunnels() {
         echo -e "${BLUE}Dagster:    localhost:3003 -> $DAGSTER_ENDPOINT:3000${NC}"
     fi
 
+    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
+        echo -e "${BLUE}API:        localhost:8000 -> $API_ENDPOINT:80${NC}"
+    fi
+
     echo ""
     echo -e "${YELLOW}Connection commands:${NC}"
 
@@ -495,6 +539,10 @@ setup_all_tunnels() {
 
     if [[ -n "$DAGSTER_ENDPOINT" && "$DAGSTER_ENDPOINT" != "NOT_FOUND" ]]; then
         echo "Dagster:    Open http://localhost:3003 in your browser"
+    fi
+
+    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
+        echo "API:        curl http://localhost:8000/v1/status"
     fi
 
     echo ""
@@ -552,7 +600,7 @@ main() {
                 fi
                 shift
                 ;;
-            postgres|valkey|dagster|migrate|all)
+            postgres|valkey|dagster|api|migrate|all)
                 if [[ -z "$service" ]]; then
                     service="$1"
                 else
@@ -619,6 +667,9 @@ main() {
             ;;
         dagster)
             setup_dagster_tunnel
+            ;;
+        api)
+            setup_api_tunnel
             ;;
         migrate)
             run_database_migration "$environment"
