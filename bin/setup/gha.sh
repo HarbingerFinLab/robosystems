@@ -42,6 +42,32 @@ print_warning() {
     echo -e "${YELLOW}⚠️  $1${NC}"
 }
 
+# Function to look up latest Amazon Linux 2023 ARM64 AMI from AWS SSM
+get_latest_ami() {
+    local ssm_path="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+
+    # Check if AWS CLI is available and authenticated
+    if ! command -v aws >/dev/null 2>&1; then
+        echo ""
+        return 1
+    fi
+
+    # Try to get the AMI ID from SSM Parameter Store
+    local ami_id
+    ami_id=$(aws ssm get-parameter \
+        --name "$ssm_path" \
+        --query "Parameter.Value" \
+        --output text 2>/dev/null)
+
+    if [ -n "$ami_id" ] && [ "$ami_id" != "None" ]; then
+        echo "$ami_id"
+        return 0
+    fi
+
+    echo ""
+    return 1
+}
+
 echo "=== RoboSystems GitHub Repository Setup ==="
 echo ""
 
@@ -215,7 +241,7 @@ function setup_minimum_config() {
 
     # VPC Flow Logs Configuration (SOC 2 - VPC-level, not environment-specific)
     gh variable set VPC_FLOW_LOGS_ENABLED --body "true"
-    gh variable set VPC_FLOW_LOGS_RETENTION_DAYS --body "30"
+    gh variable set VPC_FLOW_LOGS_RETENTION_DAYS --body "90"
     gh variable set VPC_FLOW_LOGS_TRAFFIC_TYPE --body "REJECT"
 
     # CloudTrail Configuration (SOC 2 - Account-level, not environment-specific)
@@ -279,8 +305,17 @@ function setup_minimum_config() {
     gh variable set NEO4J_ENTERPRISE_XLARGE_ENABLED_STAGING --body "false"
 
     # Graph AMI Configuration (updated via Graph Maintenance workflow)
-    gh variable set GRAPH_AMI_ID_PROD --body "ami-05ec8931dc5ae74ec"
-    gh variable set GRAPH_AMI_ID_STAGING --body "ami-05ec8931dc5ae74ec"
+    # Look up latest Amazon Linux 2023 ARM64 AMI from AWS SSM
+    print_info "Looking up latest Amazon Linux 2023 ARM64 AMI..."
+    LATEST_AMI=$(get_latest_ami)
+    if [ -n "$LATEST_AMI" ]; then
+        print_success "Found latest AMI: $LATEST_AMI"
+        gh variable set GRAPH_AMI_ID_PROD --body "$LATEST_AMI"
+        gh variable set GRAPH_AMI_ID_STAGING --body "$LATEST_AMI"
+    else
+        print_warning "Could not look up latest AMI from AWS SSM (requires AWS CLI auth)"
+        print_warning "Skipping GRAPH_AMI_ID_* - set manually or run graph-maintenance workflow"
+    fi
     # Opt-in: set to "true" to enable monthly scheduled AMI checks
     # gh variable set GRAPH_AMI_AUTO_UPDATE --body "true"
     # Opt-in: set to "true" to also trigger deploy when scheduled AMI update finds a new AMI
@@ -463,7 +498,7 @@ function setup_full_config() {
 
     # VPC Flow Logs Configuration (SOC 2 - VPC-level, not environment-specific)
     gh variable set VPC_FLOW_LOGS_ENABLED --body "true"
-    gh variable set VPC_FLOW_LOGS_RETENTION_DAYS --body "30"
+    gh variable set VPC_FLOW_LOGS_RETENTION_DAYS --body "90"
     gh variable set VPC_FLOW_LOGS_TRAFFIC_TYPE --body "REJECT"
 
     # CloudTrail Configuration (SOC 2 - Account-level, not environment-specific)
@@ -527,8 +562,17 @@ function setup_full_config() {
     gh variable set NEO4J_ENTERPRISE_XLARGE_ENABLED_STAGING --body "false"
 
     # Graph AMI Configuration (updated via Graph Maintenance workflow)
-    gh variable set GRAPH_AMI_ID_PROD --body "ami-05ec8931dc5ae74ec"
-    gh variable set GRAPH_AMI_ID_STAGING --body "ami-05ec8931dc5ae74ec"
+    # Look up latest Amazon Linux 2023 ARM64 AMI from AWS SSM
+    print_info "Looking up latest Amazon Linux 2023 ARM64 AMI..."
+    LATEST_AMI=$(get_latest_ami)
+    if [ -n "$LATEST_AMI" ]; then
+        print_success "Found latest AMI: $LATEST_AMI"
+        gh variable set GRAPH_AMI_ID_PROD --body "$LATEST_AMI"
+        gh variable set GRAPH_AMI_ID_STAGING --body "$LATEST_AMI"
+    else
+        print_warning "Could not look up latest AMI from AWS SSM (requires AWS CLI auth)"
+        print_warning "Skipping GRAPH_AMI_ID_* - set manually or run graph-maintenance workflow"
+    fi
     # Opt-in: set to "true" to enable monthly scheduled AMI checks
     # gh variable set GRAPH_AMI_AUTO_UPDATE --body "true"
     # Opt-in: set to "true" to also trigger deploy when scheduled AMI update finds a new AMI

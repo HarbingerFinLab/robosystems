@@ -49,6 +49,11 @@ echo ""
 # AWS SECRETS MANAGER SETUP FUNCTIONS
 # =============================================================================
 
+function generate_secret_key() {
+    # Generate a secure random key using openssl
+    openssl rand -base64 32
+}
+
 function create_production_secret() {
     echo "Creating production secret..."
 
@@ -63,6 +68,11 @@ function create_production_secret() {
             --tags Key=Environment,Value=prod Key=Service,Value=RoboSystems Key=Component,Value=Secrets
     fi
 
+    echo "Generating secure keys..."
+    PROD_JWT_SECRET=$(generate_secret_key)
+    PROD_CONNECTION_KEY=$(generate_secret_key)
+    PROD_BACKUP_KEY=$(generate_secret_key)
+
     echo "Setting production secret values..."
 
     # Set Production Secret Values
@@ -70,15 +80,16 @@ function create_production_secret() {
         --secret-id "robosystems/prod" \
         --secret-string '{
         "BILLING_ENABLED": "false",
-        "CONNECTION_CREDENTIALS_KEY": "your_connection_creds_key_here_use_openssl_rand_base64_32",
-        "CONNECTION_PLAID_ENABLED": "true",
-        "CONNECTION_QUICKBOOKS_ENABLED": "true",
-        "CONNECTION_SEC_ENABLED": "true",
+        "CONNECTION_CREDENTIALS_KEY": "'"$PROD_CONNECTION_KEY"'",
+        "CONNECTION_PLAID_ENABLED": "false",
+        "CONNECTION_QUICKBOOKS_ENABLED": "false",
+        "CONNECTION_SEC_ENABLED": "false",
         "INTUIT_CLIENT_ID": "Intuit.ipp.application.your_client_id",
         "INTUIT_CLIENT_SECRET": "your_quickbooks_client_secret_here",
         "INTUIT_ENVIRONMENT": "production",
         "INTUIT_REDIRECT_URI": "https://api.robosystems.ai/auth/callback",
-        "JWT_SECRET_KEY": "your_production_jwt_secret_key_here_use_openssl_rand_base64_32",
+        "JWT_SECRET_KEY": "'"$PROD_JWT_SECRET"'",
+        "GRAPH_BACKUP_ENCRYPTION_KEY": "'"$PROD_BACKUP_KEY"'",
         "LOAD_SHEDDING_ENABLED": "true",
         "ORG_GRAPHS_DEFAULT_LIMIT": "5",
         "OPENFIGI_API_KEY": "your_openfigi_api_key_here",
@@ -97,9 +108,9 @@ function create_production_secret() {
         "USER_REGISTRATION_ENABLED": "true",
         "AGENT_POST_ENABLED": "true",
         "BACKUP_CREATION_ENABLED": "true",
-        "CSP_TRUSTED_TYPES_ENABLED": "true",
+        "CSP_TRUSTED_TYPES_ENABLED": "false",
         "DIRECT_GRAPH_PROVISIONING_ENABLED": "true",
-        "ORG_MEMBER_INVITATIONS_ENABLED": "true",
+        "ORG_MEMBER_INVITATIONS_ENABLED": "false",
         "SHARED_MASTER_READS_ENABLED": "true",
         "SUBGRAPH_CREATION_ENABLED": "true",
         "BILLING_SCHEDULES_ENABLED": "true",
@@ -127,6 +138,11 @@ function create_staging_secret() {
             --tags Key=Environment,Value=staging Key=Service,Value=RoboSystems Key=Component,Value=Secrets
     fi
 
+    echo "Generating secure keys..."
+    STAGING_JWT_SECRET=$(generate_secret_key)
+    STAGING_CONNECTION_KEY=$(generate_secret_key)
+    STAGING_BACKUP_KEY=$(generate_secret_key)
+
     echo "Setting staging secret values..."
 
     # Set Staging Secret Values
@@ -134,15 +150,16 @@ function create_staging_secret() {
         --secret-id "robosystems/staging" \
         --secret-string '{
         "BILLING_ENABLED": "false",
-        "CONNECTION_CREDENTIALS_KEY": "dev-connection-creds-key-12345678901234567890abcdef",
-        "CONNECTION_PLAID_ENABLED": "true",
-        "CONNECTION_QUICKBOOKS_ENABLED": "true",
-        "CONNECTION_SEC_ENABLED": "true",
+        "CONNECTION_CREDENTIALS_KEY": "'"$STAGING_CONNECTION_KEY"'",
+        "CONNECTION_PLAID_ENABLED": "false",
+        "CONNECTION_QUICKBOOKS_ENABLED": "false",
+        "CONNECTION_SEC_ENABLED": "false",
         "INTUIT_CLIENT_ID": "Intuit.ipp.application.your_sandbox_client_id",
         "INTUIT_CLIENT_SECRET": "your_quickbooks_sandbox_client_secret_here",
         "INTUIT_ENVIRONMENT": "sandbox",
         "INTUIT_REDIRECT_URI": "https://staging.api.robosystems.ai/auth/callback",
-        "JWT_SECRET_KEY": "your_staging_jwt_secret_key_here_use_openssl_rand_base64_32",
+        "JWT_SECRET_KEY": "'"$STAGING_JWT_SECRET"'",
+        "GRAPH_BACKUP_ENCRYPTION_KEY": "'"$STAGING_BACKUP_KEY"'",
         "LOAD_SHEDDING_ENABLED": "true",
         "ORG_GRAPHS_DEFAULT_LIMIT": "5",
         "OPENFIGI_API_KEY": "your_openfigi_api_key_here",
@@ -161,9 +178,9 @@ function create_staging_secret() {
         "USER_REGISTRATION_ENABLED": "true",
         "AGENT_POST_ENABLED": "true",
         "BACKUP_CREATION_ENABLED": "true",
-        "CSP_TRUSTED_TYPES_ENABLED": "true",
+        "CSP_TRUSTED_TYPES_ENABLED": "false",
         "DIRECT_GRAPH_PROVISIONING_ENABLED": "true",
-        "ORG_MEMBER_INVITATIONS_ENABLED": "true",
+        "ORG_MEMBER_INVITATIONS_ENABLED": "false",
         "SHARED_MASTER_READS_ENABLED": "true",
         "SUBGRAPH_CREATION_ENABLED": "true",
         "BILLING_SCHEDULES_ENABLED": "true",
