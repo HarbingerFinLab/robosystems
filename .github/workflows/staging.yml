@@ -588,9 +588,6 @@ jobs:
       daemon_memory: ${{ vars.DAGSTER_DAEMON_MEMORY_STAGING || '2048' }}
       webserver_cpu: ${{ vars.DAGSTER_WEBSERVER_CPU_STAGING || '512' }}
       webserver_memory: ${{ vars.DAGSTER_WEBSERVER_MEMORY_STAGING || '1024' }}
-      webserver_desired_count: ${{ vars.DAGSTER_WEBSERVER_DESIRED_COUNT_STAGING || '1' }}
-      webserver_min_capacity: ${{ vars.DAGSTER_WEBSERVER_MIN_CAPACITY_STAGING || '1' }}
-      webserver_max_capacity: ${{ vars.DAGSTER_WEBSERVER_MAX_CAPACITY_STAGING || '2' }}
       # Run Job Configuration (for EcsRunLauncher)
       run_job_cpu: ${{ vars.DAGSTER_RUN_JOB_CPU_STAGING || '1024' }}
       run_job_memory: ${{ vars.DAGSTER_RUN_JOB_MEMORY_STAGING || '4096' }}
