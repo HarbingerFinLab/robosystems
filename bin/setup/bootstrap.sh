@@ -424,7 +424,7 @@ check_github_secrets() {
     # Combine both lists for checking
     ALL_SECRETS="${REPO_SECRETS}"$'\n'"${ORG_SECRETS}"
 
-    # Check for ACTIONS_TOKEN
+    # Check for ACTIONS_TOKEN (optional - enables workflow automations)
     if echo "$ALL_SECRETS" | grep -q "ACTIONS_TOKEN"; then
         if echo "$REPO_SECRETS" | grep -q "ACTIONS_TOKEN"; then
             print_success "ACTIONS_TOKEN exists (repo-level)"
@@ -432,10 +432,12 @@ check_github_secrets() {
             print_success "ACTIONS_TOKEN exists (org-level)"
         fi
     else
-        print_warning "ACTIONS_TOKEN not found"
+        print_info "ACTIONS_TOKEN not set (optional - enables workflow automations)"
         echo ""
-        echo "  This secret is required for workflow automation."
-        echo "  Create a GitHub Personal Access Token with 'repo' and 'workflow' scopes."
+        echo "  Not required for core CI/CD, but enables additional automations:"
+        echo "    - Triggering deploy workflows after release"
+        echo "    - Using gh CLI within workflows"
+        echo "    - Cross-workflow triggers"
         echo ""
         echo "  To set it (repo-level):"
         echo "    gh secret set ACTIONS_TOKEN"
@@ -443,18 +445,23 @@ check_github_secrets() {
         echo "  Or set at org-level (shared across repos):"
         echo "    gh secret set ACTIONS_TOKEN --org ${GITHUB_ORG}"
         echo ""
-        MISSING_SECRETS=true
+    fi
+
+    # Check for ANTHROPIC_API_KEY (optional - enables Claude PR/release workflows)
+    if echo "$ALL_SECRETS" | grep -q "ANTHROPIC_API_KEY"; then
+        if echo "$REPO_SECRETS" | grep -q "ANTHROPIC_API_KEY"; then
+            print_success "ANTHROPIC_API_KEY exists (repo-level)"
+        else
+            print_success "ANTHROPIC_API_KEY exists (org-level)"
+        fi
+    else
+        print_info "ANTHROPIC_API_KEY not set (optional - enables Claude PR/release workflows)"
     fi
 
     echo ""
     print_info "Note: AWS credentials (access keys) are NOT needed with OIDC"
     print_info "Workflows authenticate via AWS_ROLE_ARN instead"
-    print_info "AI features use AWS Bedrock (no ANTHROPIC_API_KEY needed)"
-
-    if [ "${MISSING_SECRETS:-false}" = "true" ]; then
-        echo ""
-        print_warning "Some required secrets are missing. Set them before deploying."
-    fi
+    print_info "AI inference uses AWS Bedrock (separate from ANTHROPIC_API_KEY)"
 }
 
 # =============================================================================
