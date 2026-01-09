@@ -4,23 +4,14 @@ Parameters:
   # GitHub Configuration
   GitHubOrg:
     Type: String
-    Description: GitHub organization or username (e.g., HarbingerFinLab)
+    Description: GitHub organization or username (e.g., RoboFinSystems)
     AllowedPattern: ^[a-zA-Z0-9-]+$
     ConstraintDescription: Must be a valid GitHub organization or username
 
-  RepositoryName:
-    Type: String
-    Default: robosystems
-    Description: Repository name (use * for all repos in org)
-    AllowedPattern: ^[a-zA-Z0-9-_*]+$
-    ConstraintDescription: Must be a valid repository name or * for wildcard
-
-  AllowedBranches:
-    Type: String
-    Default: "main,release/*"
-    Description: Comma-separated branch patterns allowed to assume role (use * for all)
-    AllowedPattern: ^[a-zA-Z0-9-_,/*]+$
-    ConstraintDescription: Must be comma-separated branch patterns (supports wildcards like release/*)
+  # Repository names are hardcoded for security:
+  # - Backend: robosystems (main infrastructure repo)
+  # - Frontend: robosystems-app, roboledger-app, roboinvestor-app
+  # Only GitHubOrg needs to be parameterized for forks
 
   # Tagging Configuration
   ServiceTag:
@@ -32,9 +23,6 @@ Parameters:
     Type: String
     Default: OIDC
     Description: Component tag for resource identification
-
-Conditions:
-  AllowAllBranches: !Equals [!Ref AllowedBranches, "*"]
 
 Resources:
   # OIDC Identity Provider
@@ -61,15 +49,16 @@ Resources:
         - Key: CreatedBy
           Value: CloudFormation
 
-  # IAM Role for GitHub Actions
-  # GitHub Actions assumes this role via OIDC federation
+  # =============================================================================
+  # BACKEND ROLE - Full infrastructure permissions for main robosystems repo
+  # =============================================================================
   GitHubActionsRole:
     Type: AWS::IAM::Role
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       RoleName: !Sub ${ServiceTag}GitHubActionsRole
-      Description: !Sub Role assumed by GitHub Actions for ${ServiceTag} deployments
+      Description: !Sub Backend role for ${ServiceTag} infrastructure deployments
       MaxSessionDuration: 3600
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -77,19 +66,18 @@ Resources:
           - Effect: Allow
             Principal:
               Federated: !Ref GitHubOIDCProvider
-            Action: sts:AssumeRoleWithWebIdentity
+            Action:
+              - sts:AssumeRoleWithWebIdentity
+              - sts:TagSession
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                # Allow specified branches and tags
-                # Patterns: main, release/*, and version tags (v*)
-                token.actions.githubusercontent.com:sub: !If
-                  - AllowAllBranches
-                  - !Sub repo:${GitHubOrg}/${RepositoryName}:*
-                  - - !Sub repo:${GitHubOrg}/${RepositoryName}:ref:refs/heads/main
-                    - !Sub repo:${GitHubOrg}/${RepositoryName}:ref:refs/heads/release/*
-                    - !Sub repo:${GitHubOrg}/${RepositoryName}:ref:refs/tags/v*
+                # Allow main, release branches, and version tags for backend repo only
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubOrg}/robosystems:ref:refs/heads/main
+                  - !Sub repo:${GitHubOrg}/robosystems:ref:refs/heads/release/*
+                  - !Sub repo:${GitHubOrg}/robosystems:ref:refs/tags/v*
       Policies:
         - PolicyName: !Sub ${ServiceTag}DeploymentPolicy
           PolicyDocument:
@@ -102,11 +90,18 @@ Resources:
                   - cloudformation:*
                 Resource: "*"
 
-              # ECR
+              # ECR - scoped to robosystems repositories
               - Sid: ECR
                 Effect: Allow
                 Action:
                   - ecr:*
+                Resource:
+                  - !Sub arn:aws:ecr:*:${AWS::AccountId}:repository/robosystems*
+              - Sid: ECRGlobal
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:DescribeRegistry
                 Resource: "*"
 
               # IAM Role/Policy Management
@@ -193,25 +188,48 @@ Resources:
                   - application-autoscaling:*
                 Resource: "*"
 
-              # S3
+              # S3 - scoped to robosystems buckets
               - Sid: S3
                 Effect: Allow
                 Action:
                   - s3:*
+                Resource:
+                  - arn:aws:s3:::robosystems-*
+                  - arn:aws:s3:::robosystems-*/*
+              - Sid: S3Global
+                Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketLocation
                 Resource: "*"
 
-              # DynamoDB
+              # DynamoDB - scoped to RoboSystems tables
               - Sid: DynamoDB
                 Effect: Allow
                 Action:
                   - dynamodb:*
+                Resource:
+                  - !Sub arn:aws:dynamodb:*:${AWS::AccountId}:table/RoboSystems*
+                  - !Sub arn:aws:dynamodb:*:${AWS::AccountId}:table/RoboSystems*/index/*
+              - Sid: DynamoDBGlobal
+                Effect: Allow
+                Action:
+                  - dynamodb:ListTables
+                  - dynamodb:DescribeLimits
                 Resource: "*"
 
-              # Secrets Manager
+              # Secrets Manager - scoped to robosystems secrets
               - Sid: SecretsManager
                 Effect: Allow
                 Action:
                   - secretsmanager:*
+                Resource:
+                  - !Sub arn:aws:secretsmanager:*:${AWS::AccountId}:secret:robosystems/*
+              - Sid: SecretsManagerGlobal
+                Effect: Allow
+                Action:
+                  - secretsmanager:ListSecrets
+                  - secretsmanager:GetRandomPassword
                 Resource: "*"
 
               # KMS
@@ -228,11 +246,19 @@ Resources:
                   - logs:*
                 Resource: "*"
 
-              # Lambda
+              # Lambda - scoped to robosystems functions
               - Sid: Lambda
                 Effect: Allow
                 Action:
                   - lambda:*
+                Resource:
+                  - !Sub arn:aws:lambda:*:${AWS::AccountId}:function:robosystems-*
+                  - !Sub arn:aws:lambda:*:${AWS::AccountId}:function:RoboSystems*
+              - Sid: LambdaGlobal
+                Effect: Allow
+                Action:
+                  - lambda:ListFunctions
+                  - lambda:GetAccountSettings
                 Resource: "*"
 
               # Route53
@@ -330,6 +356,281 @@ Resources:
         - Key: CreatedBy
           Value: CloudFormation
 
+  # =============================================================================
+  # FRONTEND ROLE - Limited permissions for frontend app deployments
+  # =============================================================================
+  GitHubActionsFrontendRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RoleName: !Sub ${ServiceTag}GitHubActionsFrontendRole
+      Description: !Sub Frontend role for ${ServiceTag} app deployments (limited permissions)
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action:
+              - sts:AssumeRoleWithWebIdentity
+              - sts:TagSession
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # Explicitly allow only these three frontend repos (hardcoded for security)
+                # If a repo isn't used, it simply won't assume this role
+                token.actions.githubusercontent.com:sub:
+                  # robosystems-app
+                  - !Sub repo:${GitHubOrg}/robosystems-app:ref:refs/heads/main
+                  - !Sub repo:${GitHubOrg}/robosystems-app:ref:refs/heads/release/*
+                  - !Sub repo:${GitHubOrg}/robosystems-app:ref:refs/tags/v*
+                  # roboledger-app
+                  - !Sub repo:${GitHubOrg}/roboledger-app:ref:refs/heads/main
+                  - !Sub repo:${GitHubOrg}/roboledger-app:ref:refs/heads/release/*
+                  - !Sub repo:${GitHubOrg}/roboledger-app:ref:refs/tags/v*
+                  # roboinvestor-app
+                  - !Sub repo:${GitHubOrg}/roboinvestor-app:ref:refs/heads/main
+                  - !Sub repo:${GitHubOrg}/roboinvestor-app:ref:refs/heads/release/*
+                  - !Sub repo:${GitHubOrg}/roboinvestor-app:ref:refs/tags/v*
+      Policies:
+        - PolicyName: !Sub ${ServiceTag}FrontendDeploymentPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # CloudFormation - for deploying frontend stacks
+              - Sid: CloudFormation
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                  - cloudformation:ListStacks
+                  - cloudformation:ValidateTemplate
+                Resource: "*"
+
+              # ECR - scoped to frontend app repositories
+              - Sid: ECR
+                Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeRepositories
+                  - ecr:DescribeImages
+                  - ecr:ListImages
+                Resource:
+                  - !Sub arn:aws:ecr:*:${AWS::AccountId}:repository/robosystems-app*
+                  - !Sub arn:aws:ecr:*:${AWS::AccountId}:repository/roboledger-app*
+                  - !Sub arn:aws:ecr:*:${AWS::AccountId}:repository/roboinvestor-app*
+              - Sid: ECRGlobal
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+
+              # ECS - for container deployments (including cluster management)
+              - Sid: ECS
+                Effect: Allow
+                Action:
+                  - ecs:CreateCluster
+                  - ecs:DeleteCluster
+                  - ecs:DescribeClusters
+                  - ecs:ListClusters
+                  - ecs:UpdateClusterSettings
+                  - ecs:CreateService
+                  - ecs:UpdateService
+                  - ecs:DeleteService
+                  - ecs:DescribeServices
+                  - ecs:DescribeTasks
+                  - ecs:DescribeTaskDefinition
+                  - ecs:RegisterTaskDefinition
+                  - ecs:DeregisterTaskDefinition
+                  - ecs:ListServices
+                  - ecs:ListTasks
+                  - ecs:ListTaskDefinitions
+                  - ecs:TagResource
+                  - ecs:UntagResource
+                  - ecs:ListTagsForResource
+                Resource: "*"
+
+              # ELB - for load balancers
+              - Sid: ELB
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:*
+                Resource: "*"
+
+              # Auto Scaling - for ECS auto scaling
+              - Sid: AutoScaling
+                Effect: Allow
+                Action:
+                  - application-autoscaling:*
+                Resource: "*"
+
+              # S3 - scoped to frontend app buckets
+              - Sid: S3
+                Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                  - arn:aws:s3:::robosystems-app-*
+                  - arn:aws:s3:::robosystems-app-*/*
+                  - arn:aws:s3:::roboledger-app-*
+                  - arn:aws:s3:::roboledger-app-*/*
+                  - arn:aws:s3:::roboinvestor-app-*
+                  - arn:aws:s3:::roboinvestor-app-*/*
+              - Sid: S3Global
+                Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketLocation
+                Resource: "*"
+
+              # Secrets Manager - read-only for app secrets
+              - Sid: SecretsManager
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource:
+                  - !Sub arn:aws:secretsmanager:*:${AWS::AccountId}:secret:robosystems/*
+
+              # CloudWatch Logs
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: "*"
+
+              # Route53 - for DNS
+              - Sid: Route53
+                Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                  - route53:GetHostedZone
+                  - route53:ListHostedZones
+                  - route53:ListResourceRecordSets
+                Resource: "*"
+
+              # ACM - for creating and managing certificates
+              - Sid: ACM
+                Effect: Allow
+                Action:
+                  - acm:RequestCertificate
+                  - acm:DescribeCertificate
+                  - acm:ListCertificates
+                  - acm:GetCertificate
+                  - acm:DeleteCertificate
+                  - acm:AddTagsToCertificate
+                  - acm:ListTagsForCertificate
+                Resource: "*"
+
+              # CloudFront - for CDN
+              - Sid: CloudFront
+                Effect: Allow
+                Action:
+                  - cloudfront:*
+                Resource: "*"
+
+              # SNS - for notifications
+              - Sid: SNS
+                Effect: Allow
+                Action:
+                  - sns:CreateTopic
+                  - sns:DeleteTopic
+                  - sns:Subscribe
+                  - sns:Unsubscribe
+                  - sns:Publish
+                  - sns:GetTopicAttributes
+                  - sns:SetTopicAttributes
+                  - sns:ListTopics
+                  - sns:ListSubscriptionsByTopic
+                Resource: "*"
+
+              # IAM - for creating ECS task roles and execution roles
+              - Sid: IAM
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:UpdateRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:PassRole
+                  - iam:CreateServiceLinkedRole
+                Resource: "*"
+
+              # EC2 - read-only for VPC/subnet info
+              - Sid: EC2ReadOnly
+                Effect: Allow
+                Action:
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeNetworkInterfaces
+                Resource: "*"
+
+              # EC2 Security Groups - create/manage for ECS tasks
+              - Sid: EC2SecurityGroups
+                Effect: Allow
+                Action:
+                  - ec2:CreateSecurityGroup
+                  - ec2:DeleteSecurityGroup
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:CreateTags
+                Resource: "*"
+
+              # STS - for identity
+              - Sid: STS
+                Effect: Allow
+                Action:
+                  - sts:GetCallerIdentity
+                Resource: "*"
+
+              # CloudWatch - for alarms
+              - Sid: CloudWatch
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DeleteAlarms
+                  - cloudwatch:DescribeAlarms
+                Resource: "*"
+      Tags:
+        - Key: Name
+          Value: !Sub ${ServiceTag}-github-actions-frontend-role
+        - Key: Service
+          Value: !Ref ServiceTag
+        - Key: Component
+          Value: !Ref ComponentTag
+        - Key: CreatedBy
+          Value: CloudFormation
+
 Outputs:
   OIDCProviderArn:
     Description: ARN of the GitHub OIDC Identity Provider
@@ -344,10 +645,23 @@ Outputs:
       Name: !Sub ${AWS::StackName}-GitHubActionsRoleArn
 
   GitHubActionsRoleName:
-    Description: Name of the IAM Role for GitHub Actions
+    Description: Name of the IAM Role for GitHub Actions (backend)
     Value: !Ref GitHubActionsRole
     Export:
       Name: !Sub ${AWS::StackName}-GitHubActionsRoleName
+
+  # Frontend Role Outputs
+  GitHubActionsFrontendRoleArn:
+    Description: ARN of the IAM Role for frontend app deployments
+    Value: !GetAtt GitHubActionsFrontendRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-GitHubActionsFrontendRoleArn
+
+  GitHubActionsFrontendRoleName:
+    Description: Name of the IAM Role for frontend apps
+    Value: !Ref GitHubActionsFrontendRole
+    Export:
+      Name: !Sub ${AWS::StackName}-GitHubActionsFrontendRoleName
 
   WorkflowExample:
     Description: Example workflow configuration for GitHub Actions

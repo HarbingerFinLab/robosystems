@@ -248,8 +248,14 @@ deploy_github_oidc() {
     read -p "GitHub Organization [${GITHUB_ORG}]: " input_org
     GITHUB_ORG=${input_org:-$GITHUB_ORG}
 
-    read -p "Repository name [${GITHUB_REPO}]: " input_repo
-    GITHUB_REPO=${input_repo:-$GITHUB_REPO}
+    echo ""
+    print_info "Repository names are hardcoded for security:"
+    print_info "Backend role will allow:"
+    print_info "  - ${GITHUB_ORG}/robosystems"
+    print_info "Frontend role will allow:"
+    print_info "  - ${GITHUB_ORG}/robosystems-app"
+    print_info "  - ${GITHUB_ORG}/roboledger-app"
+    print_info "  - ${GITHUB_ORG}/roboinvestor-app"
 
     # Branch patterns are hardcoded in the template: main, release/*, v* tags
     echo ""
@@ -292,7 +298,6 @@ deploy_github_oidc() {
             --template-body file://cloudformation/bootstrap-oidc.yaml \
             --parameters \
                 ParameterKey=GitHubOrg,ParameterValue="${GITHUB_ORG}" \
-                ParameterKey=RepositoryName,ParameterValue="${GITHUB_REPO}" \
             --capabilities CAPABILITY_NAMED_IAM \
             --profile "${SSO_PROFILE}" \
             --region "${AWS_REGION}" \
@@ -309,7 +314,6 @@ deploy_github_oidc() {
             --template-body file://cloudformation/bootstrap-oidc.yaml \
             --parameters \
                 ParameterKey=GitHubOrg,ParameterValue="${GITHUB_ORG}" \
-                ParameterKey=RepositoryName,ParameterValue="${GITHUB_REPO}" \
             --capabilities CAPABILITY_NAMED_IAM \
             --profile "${SSO_PROFILE}" \
             --region "${AWS_REGION}" 2>&1 || {
@@ -400,6 +404,50 @@ setup_aws_secrets() {
 
     # Run the existing setup script
     ./bin/setup/aws.sh
+}
+
+# =============================================================================
+# CHECK GITHUB SECRETS
+# =============================================================================
+
+check_github_secrets() {
+    print_header "Checking GitHub Secrets (Repo-Level)"
+
+    print_step "Checking for required secrets..."
+
+    # Get list of secrets
+    SECRETS=$(gh secret list 2>/dev/null || echo "")
+
+    # Check for ACTIONS_TOKEN
+    if echo "$SECRETS" | grep -q "ACTIONS_TOKEN"; then
+        print_success "ACTIONS_TOKEN exists"
+    else
+        print_warning "ACTIONS_TOKEN not found"
+        echo ""
+        echo "  This secret is required for workflow automation."
+        echo "  Create a GitHub Personal Access Token with 'repo' and 'workflow' scopes."
+        echo ""
+        echo "  To set it:"
+        echo "    gh secret set ACTIONS_TOKEN"
+        echo ""
+        MISSING_SECRETS=true
+    fi
+
+    # Check for optional secrets
+    if echo "$SECRETS" | grep -q "ANTHROPIC_API_KEY"; then
+        print_success "ANTHROPIC_API_KEY exists (optional)"
+    else
+        print_info "ANTHROPIC_API_KEY not set (optional - enables AI features)"
+    fi
+
+    echo ""
+    print_info "Note: AWS credentials (access keys) are NOT needed with OIDC"
+    print_info "Workflows authenticate via AWS_ROLE_ARN instead"
+
+    if [ "${MISSING_SECRETS:-false}" = "true" ]; then
+        echo ""
+        print_warning "Some required secrets are missing. Set them before deploying."
+    fi
 }
 
 # =============================================================================
@@ -505,6 +553,9 @@ main() {
 
     # Configure GitHub
     configure_github
+
+    # Check GitHub secrets
+    check_github_secrets
 
     # Setup AWS secrets
     setup_aws_secrets
