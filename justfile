@@ -341,6 +341,10 @@ sec-health verbose="" json="" api_url="http://localhost:8001" env=_local_env:
 
 ## Setup ##
 
+# Bootstrap AWS OIDC federation for GitHub Actions
+bootstrap:
+    @bin/setup/bootstrap.sh
+
 # AWS Secrets Manager setup
 setup-aws:
     @bin/setup/aws.sh

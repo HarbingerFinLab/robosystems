@@ -50,11 +50,8 @@ on:
 
     secrets:
       ACTIONS_TOKEN:
-        required: true
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
-        required: true
+        description: "GitHub token for checkout (optional - falls back to github.token)"
+        required: false
     outputs:
       secret_arn:
         description: "ARN of the Graph API authentication secret"
@@ -77,6 +74,7 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 30
     permissions:
+      id-token: write
       contents: read
     outputs:
       secret_arn: ${{ steps.get-outputs.outputs.secret_arn }}
@@ -90,13 +88,12 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Deploy Graph Infrastructure CloudFormation stack

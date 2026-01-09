@@ -36,7 +36,7 @@ jobs:
         with:
           repository: ${{ github.repository }}
           ref: main
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
           fetch-depth: 0
 
       - name: Set up Git
@@ -159,12 +159,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
       - name: Trigger deployment
         if: ${{ inputs.deploy_target != 'none' }}
         env:
-          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
+          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
         run: |
           DEPLOY_TARGET="${{ inputs.deploy_target }}"
           TAG_NAME="${{ needs.create-tag.outputs.tag_name }}"

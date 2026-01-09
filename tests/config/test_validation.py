@@ -27,7 +27,6 @@ class MockEnvConfig:
     self.INTUIT_CLIENT_SECRET = None
     self.PLAID_CLIENT_ID = None
     self.PLAID_CLIENT_SECRET = None
-    self.ANTHROPIC_API_KEY = None
     self.LBUG_DATABASE_PATH = "/tmp/lbug-dbs"
     self.GRAPH_API_URL = "http://localhost:8001"
     self.GRAPH_API_KEY = None
@@ -290,7 +289,6 @@ class TestEnvValidator:
     env_config = MockEnvConfig()
     env_config.INTUIT_CLIENT_ID = "intuit-id"
     env_config.PLAID_CLIENT_ID = "plaid-id"
-    env_config.ANTHROPIC_API_KEY = "claude-key"
     env_config.GRAPH_API_KEY = "lbug-key"
 
     summary = EnvValidator.get_config_summary(env_config)

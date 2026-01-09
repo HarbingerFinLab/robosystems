@@ -125,11 +125,8 @@ on:
 
     secrets:
       ACTIONS_TOKEN:
-        required: true
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
-        required: true
+        description: "GitHub token for checkout (optional - falls back to github.token)"
+        required: false
 
 jobs:
   # Step 1: Prepare Writer Matrix
@@ -358,9 +355,7 @@ jobs:
       volume_manager_function_arn: ${{ inputs.volume_manager_function_arn }}
       aws_sns_alert_email: ${{ inputs.aws_sns_alert_email }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   # Step 2b: Deploy Neo4j Writers
   deploy-graph-neo4j:
@@ -396,6 +391,4 @@ jobs:
       volume_manager_function_arn: ${{ inputs.volume_manager_function_arn }}
       aws_sns_alert_email: ${{ inputs.aws_sns_alert_email }}
     secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
