@@ -198,9 +198,9 @@ create-release version="patch" deploy="staging":
 deploy environment="prod" ref="":
     @bin/tools/deploy.sh {{environment}} {{ref}}
 
-# Bastion tunnel
-bastion-tunnel environment service key:
-    @bin/tools/tunnels.sh {{environment}} {{service}} --key ~/.ssh/{{key}}
+# Bastion tunnel (uses AWS SSM - no SSH keys required)
+bastion-tunnel environment service="all":
+    @bin/tools/tunnels.sh {{environment}} {{service}}
 
 
 ## Admin CLI ##

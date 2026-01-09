@@ -357,9 +357,7 @@ jobs:
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       vpc_id: ${{ needs.deploy-vpc.outputs.vpc_id }}
       public_subnet_ids: ${{ needs.deploy-vpc.outputs.public_subnet_ids }}
-      bastion_allowed_cidr: ${{ vars.BASTION_ALLOWED_CIDR }}
-      bastion_key_pair_name: ${{ vars.BASTION_KEY_PAIR_NAME }}
-      # Security Groups
+      # Security Groups (SSM-only access - no SSH parameters needed)
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}
     secrets:
       ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}

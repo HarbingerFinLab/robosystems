@@ -1,29 +1,60 @@
 #!/bin/bash
 
-# RoboSystems Bastion Host SSH Tunnels
-# Usage: ./bin/tunnels.sh [environment] [service]
+# RoboSystems AWS SSM Tunnels
+# Usage: ./bin/tools/tunnels.sh [environment] [service]
 # Environments: prod, staging, dev
-# Services: postgres, valkey, all
+# Services: postgres, valkey, dagster, api, all
 
 set -euo pipefail
 
 # Default configuration
 DEFAULT_ENVIRONMENT="prod"
-SSH_KEY="~/.ssh/id_rsa"
+AWS_REGION="${AWS_REGION:-us-east-1}"
 
 # Dynamic configuration (populated by discover_infrastructure)
-BASTION_HOST=""
+BASTION_INSTANCE_ID=""
 POSTGRES_ENDPOINT=""
 VALKEY_ENDPOINT=""
 DAGSTER_ENDPOINT=""
 API_ENDPOINT=""
+
+# Bastion management variables
+BASTION_WAS_STARTED="false"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Cleanup function to stop bastion if we started it
+cleanup_on_exit() {
+    echo ""
+    echo -e "${YELLOW}Cleaning up...${NC}"
+
+    # Kill any background SSM sessions
+    pkill -f "session-manager-plugin" 2>/dev/null || true
+
+    # Use parameter expansion with defaults for safety
+    if [[ "${BASTION_WAS_STARTED:-false}" == "true" ]] && [[ -n "${BASTION_INSTANCE_ID:-}" ]]; then
+        echo -e "${YELLOW}Stopping bastion instance (was originally stopped)...${NC}"
+        aws ec2 stop-instances --instance-ids "$BASTION_INSTANCE_ID" --region "${AWS_REGION:-us-east-1}" >/dev/null 2>&1 || true
+        echo -e "${GREEN}✓ Bastion instance stop command sent${NC}"
+    fi
+
+    echo -e "${GREEN}Done.${NC}"
+}
+
+# Set up trap to cleanup on exit
+trap cleanup_on_exit EXIT INT TERM
 
 # Validate dependencies
 check_dependencies() {
     local missing_deps=()
 
     # Check for required commands
-    for cmd in aws jq ssh; do
+    for cmd in aws jq; do
         if ! command -v "$cmd" &> /dev/null; then
             missing_deps+=("$cmd")
         fi
@@ -35,12 +66,21 @@ check_dependencies() {
         exit 1
     fi
 
-    # Check AWS CLI version
+    # Check AWS CLI version (SSM requires v2)
     local aws_version=$(aws --version 2>&1 | cut -d' ' -f1 | cut -d'/' -f2)
     local major_version=$(echo "$aws_version" | cut -d'.' -f1)
 
     if [ "$major_version" -lt 2 ]; then
-        echo -e "${YELLOW}Warning: AWS CLI v2 is recommended (found v${aws_version})${NC}"
+        echo -e "${RED}Error: AWS CLI v2 is required for SSM port forwarding (found v${aws_version})${NC}"
+        echo "Please upgrade to AWS CLI v2: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+        exit 1
+    fi
+
+    # Check for SSM plugin
+    if ! command -v session-manager-plugin &> /dev/null; then
+        echo -e "${RED}Error: AWS Session Manager Plugin not found${NC}"
+        echo "Install it from: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html"
+        exit 1
     fi
 
     # Check AWS credentials
@@ -51,32 +91,8 @@ check_dependencies() {
     fi
 }
 
-# Bastion management variables
-BASTION_INSTANCE_ID=""
-BASTION_WAS_STARTED="false"
-
-# Cleanup function to stop bastion if we started it
-cleanup_on_exit() {
-    if [[ "$BASTION_WAS_STARTED" == "true" ]] && [[ -n "$BASTION_INSTANCE_ID" ]]; then
-        echo ""
-        echo -e "${YELLOW}Stopping bastion instance (was originally stopped)...${NC}"
-        aws ec2 stop-instances --instance-ids "$BASTION_INSTANCE_ID" >/dev/null 2>&1 || true
-        echo -e "${GREEN}✓ Bastion instance stop command sent${NC}"
-    fi
-}
-
-# Set up trap to cleanup on exit
-trap cleanup_on_exit EXIT INT TERM
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
 print_usage() {
-    echo -e "${BLUE}Usage: $0 [environment] [service] [--key|-k <ssh_key_path>]${NC}"
+    echo -e "${BLUE}Usage: $0 [environment] [service]${NC}"
     echo ""
     echo -e "${YELLOW}Available environments:${NC}"
     echo "  prod     - Production environment (default)"
@@ -84,38 +100,22 @@ print_usage() {
     echo "  dev      - Development environment"
     echo ""
     echo -e "${GREEN}======================================================================"
-    echo "SSH Tunnels - Access internal services via bastion host"
+    echo "SSM Tunnels - Access internal services via AWS Systems Manager"
     echo "======================================================================${NC}"
     echo "  postgres      - PostgreSQL tunnel (localhost:5432)"
     echo "  valkey        - Valkey ElastiCache tunnel (localhost:6379)"
     echo "  dagster       - Dagster webserver tunnel (localhost:3003)"
     echo "  api           - API ALB tunnel (localhost:8000)"
-    echo "  all           - All service tunnels (postgres + valkey + dagster + api)"
+    echo "  all           - All service tunnels (runs in background)"
     echo ""
     echo -e "${GREEN}======================================================================"
     echo "Database Operations"
     echo "======================================================================${NC}"
     echo "  migrate       - Run database migrations via bastion"
+    echo "  shell         - Open interactive shell on bastion"
     echo ""
-    echo -e "${YELLOW}SSH Key Options:${NC}"
-    echo "  --key, -k <path>  - Path to SSH private key"
-    echo "                      Default: ~/.ssh/id_rsa"
+    echo -e "${YELLOW}Note: No SSH keys required - uses AWS IAM authentication${NC}"
     echo ""
-}
-
-check_aws_cli() {
-    if ! command -v aws &> /dev/null; then
-        echo -e "${RED}Error: AWS CLI not found${NC}"
-        echo "Please install AWS CLI and configure your credentials."
-        exit 1
-    fi
-
-    # Test AWS credentials
-    if ! aws sts get-caller-identity &> /dev/null; then
-        echo -e "${RED}Error: AWS credentials not configured${NC}"
-        echo "Please run 'aws configure' to set up your credentials."
-        exit 1
-    fi
 }
 
 discover_infrastructure() {
@@ -129,19 +129,21 @@ discover_infrastructure() {
 
     echo -e "${BLUE}Discovering infrastructure for $environment environment...${NC}"
 
-    # Discover bastion host
+    # Discover bastion instance ID
     local env_capitalized="$(echo ${environment:0:1} | tr 'a-z' 'A-Z')${environment:1}"
-    local bastion_stack="RoboSystemsBastion${env_capitalized}"
-    echo -e "${YELLOW}Looking for bastion stack: $bastion_stack${NC}"
 
-    BASTION_HOST=$(aws cloudformation describe-stacks \
-        --stack-name "$bastion_stack" \
-        --query 'Stacks[0].Outputs[?OutputKey==`BastionPublicIP`].OutputValue' \
-        --output text 2>/dev/null || echo "")
+    echo -e "${YELLOW}Looking for bastion instance...${NC}"
 
-    if [[ -z "$BASTION_HOST" ]]; then
-        echo -e "${RED}Error: Could not find bastion host for $environment${NC}"
-        echo "Make sure the bastion stack '$bastion_stack' is deployed."
+    BASTION_INSTANCE_ID=$(aws ec2 describe-instances \
+        --filters "Name=tag:aws:cloudformation:stack-name,Values=RoboSystemsBastion${env_capitalized}" \
+                  "Name=instance-state-name,Values=running,stopped,pending" \
+        --query 'Reservations[0].Instances[0].InstanceId' \
+        --output text \
+        --region "$AWS_REGION" 2>/dev/null || echo "")
+
+    if [[ -z "$BASTION_INSTANCE_ID" || "$BASTION_INSTANCE_ID" == "None" ]]; then
+        echo -e "${RED}Error: Could not find bastion instance for $environment${NC}"
+        echo "Make sure the bastion stack 'RoboSystemsBastion${env_capitalized}' is deployed."
         exit 1
     fi
 
@@ -154,19 +156,21 @@ discover_infrastructure() {
     else
         echo -e "${YELLOW}Skipping postgres discovery for dev environment${NC}"
         POSTGRES_ENDPOINT="NOT_FOUND"
-        return
     fi
 
-    echo -e "${YELLOW}Looking for postgres stack: $postgres_stack${NC}"
+    if [[ -n "$postgres_stack" ]]; then
+        echo -e "${YELLOW}Looking for postgres stack: $postgres_stack${NC}"
 
-    POSTGRES_ENDPOINT=$(aws cloudformation describe-stacks \
-        --stack-name "$postgres_stack" \
-        --query 'Stacks[0].Outputs[?OutputKey==`RDSInstanceEndpoint`].OutputValue' \
-        --output text 2>/dev/null || echo "")
+        POSTGRES_ENDPOINT=$(aws cloudformation describe-stacks \
+            --stack-name "$postgres_stack" \
+            --query 'Stacks[0].Outputs[?OutputKey==`RDSInstanceEndpoint`].OutputValue' \
+            --output text \
+            --region "$AWS_REGION" 2>/dev/null || echo "")
 
-    if [[ -z "$POSTGRES_ENDPOINT" ]]; then
-        echo -e "${YELLOW}Warning: Could not find PostgreSQL endpoint for $environment${NC}"
-        POSTGRES_ENDPOINT="NOT_FOUND"
+        if [[ -z "$POSTGRES_ENDPOINT" ]]; then
+            echo -e "${YELLOW}Warning: Could not find PostgreSQL endpoint for $environment${NC}"
+            POSTGRES_ENDPOINT="NOT_FOUND"
+        fi
     fi
 
     # Discover Valkey ElastiCache endpoint
@@ -176,7 +180,8 @@ discover_infrastructure() {
     VALKEY_ENDPOINT=$(aws cloudformation describe-stacks \
         --stack-name "$valkey_stack" \
         --query 'Stacks[0].Outputs[?OutputKey==`ValkeyEndpoint`].OutputValue' \
-        --output text 2>/dev/null || echo "")
+        --output text \
+        --region "$AWS_REGION" 2>/dev/null || echo "")
 
     if [[ -z "$VALKEY_ENDPOINT" || "$VALKEY_ENDPOINT" == "None" ]]; then
         echo -e "${YELLOW}Warning: Could not find Valkey cluster for $environment${NC}"
@@ -190,7 +195,8 @@ discover_infrastructure() {
     DAGSTER_ENDPOINT=$(aws cloudformation describe-stacks \
         --stack-name "$dagster_stack" \
         --query 'Stacks[0].Outputs[?OutputKey==`DagsterInternalEndpoint`].OutputValue' \
-        --output text 2>/dev/null || echo "")
+        --output text \
+        --region "$AWS_REGION" 2>/dev/null || echo "")
 
     if [[ -z "$DAGSTER_ENDPOINT" || "$DAGSTER_ENDPOINT" == "None" ]]; then
         # Fallback to standard Service Discovery naming
@@ -205,7 +211,8 @@ discover_infrastructure() {
     API_ENDPOINT=$(aws cloudformation describe-stacks \
         --stack-name "$api_stack" \
         --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
-        --output text 2>/dev/null || echo "")
+        --output text \
+        --region "$AWS_REGION" 2>/dev/null || echo "")
 
     if [[ -z "$API_ENDPOINT" || "$API_ENDPOINT" == "None" ]]; then
         echo -e "${YELLOW}Warning: Could not find API ALB endpoint for $environment${NC}"
@@ -214,7 +221,7 @@ discover_infrastructure() {
 
     # Show discovered endpoints
     echo -e "${GREEN}✓ Infrastructure discovered:${NC}"
-    echo -e "  Bastion Host: ${GREEN}$BASTION_HOST${NC}"
+    echo -e "  Bastion ID:   ${GREEN}$BASTION_INSTANCE_ID${NC}"
     echo -e "  PostgreSQL:   ${GREEN}$POSTGRES_ENDPOINT${NC}"
     echo -e "  Valkey:       ${GREEN}$VALKEY_ENDPOINT${NC}"
     echo -e "  Dagster:      ${GREEN}$DAGSTER_ENDPOINT${NC}"
@@ -222,97 +229,112 @@ discover_infrastructure() {
     echo ""
 }
 
-check_ssh_key() {
-    local key_path=$(eval echo $SSH_KEY)
-    if [[ ! -f "$key_path" ]]; then
-        echo -e "${RED}Error: SSH key not found at $key_path${NC}"
-        echo "Make sure your SSH key is in the correct location."
-        exit 1
-    fi
-
-    # Check permissions (detect OS for correct stat command)
-    local perms
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        perms=$(stat -f "%OLp" "$key_path")
-    else
-        perms=$(stat -c "%a" "$key_path")
-    fi
-
-    if [[ "$perms" != "600" ]]; then
-        echo -e "${YELLOW}Warning: SSH key has wrong permissions ($perms). Setting to 600...${NC}"
-        chmod 600 "$key_path"
-    fi
-}
-
 check_bastion_status() {
     local environment=$1
 
     echo -e "${BLUE}Checking bastion host status...${NC}"
 
-    # Get bastion instance ID
-    local env_capitalized="$(echo ${environment:0:1} | tr 'a-z' 'A-Z')${environment:1}"
-    BASTION_INSTANCE_ID=$(aws ec2 describe-instances \
-        --filters "Name=tag:aws:cloudformation:stack-name,Values=RoboSystemsBastion${env_capitalized}" \
-                  "Name=instance-state-name,Values=running,stopped" \
-        --query 'Reservations[0].Instances[0].InstanceId' \
-        --output text 2>/dev/null || echo "")
-
-    if [[ -z "$BASTION_INSTANCE_ID" || "$BASTION_INSTANCE_ID" == "None" ]]; then
-        echo -e "${RED}Error: Could not find bastion instance for $environment${NC}"
-        exit 1
-    fi
-
     # Check instance state
     local instance_state=$(aws ec2 describe-instances \
         --instance-ids "$BASTION_INSTANCE_ID" \
         --query 'Reservations[0].Instances[0].State.Name' \
-        --output text 2>/dev/null || echo "")
+        --output text \
+        --region "$AWS_REGION" 2>/dev/null || echo "")
 
     echo -e "${YELLOW}Bastion instance state: $instance_state${NC}"
 
     if [[ "$instance_state" == "stopped" ]]; then
         echo -e "${YELLOW}Starting bastion instance...${NC}"
-        aws ec2 start-instances --instance-ids "$BASTION_INSTANCE_ID" >/dev/null
+        aws ec2 start-instances --instance-ids "$BASTION_INSTANCE_ID" --region "$AWS_REGION" >/dev/null
 
         # Mark that we started the bastion
         BASTION_WAS_STARTED="true"
 
         # Wait for instance to be running
         echo -e "${BLUE}Waiting for instance to reach running state...${NC}"
-        aws ec2 wait instance-running --instance-ids "$BASTION_INSTANCE_ID"
+        aws ec2 wait instance-running --instance-ids "$BASTION_INSTANCE_ID" --region "$AWS_REGION"
 
         echo -e "${GREEN}✓ Bastion instance is now running${NC}"
 
-        # Wait additional time for SSH service to start
-        echo -e "${BLUE}Waiting 30 seconds for SSH service to initialize...${NC}"
+        # Wait for SSM agent to initialize
+        echo -e "${BLUE}Waiting for SSM agent to initialize (30 seconds)...${NC}"
         sleep 30
-
-        # Update the bastion host IP after starting
-        echo -e "${BLUE}Updating bastion host IP address...${NC}"
-        local bastion_stack="RoboSystemsBastion${env_capitalized}"
-        BASTION_HOST=$(aws cloudformation describe-stacks \
-            --stack-name "$bastion_stack" \
-            --query 'Stacks[0].Outputs[?OutputKey==`BastionPublicIP`].OutputValue' \
-            --output text 2>/dev/null || echo "")
-
-        echo -e "${GREEN}Updated bastion host IP: $BASTION_HOST${NC}"
 
     elif [[ "$instance_state" == "running" ]]; then
         echo -e "${GREEN}✓ Bastion instance is already running${NC}"
+    elif [[ "$instance_state" == "pending" ]]; then
+        echo -e "${BLUE}Waiting for instance to reach running state...${NC}"
+        aws ec2 wait instance-running --instance-ids "$BASTION_INSTANCE_ID" --region "$AWS_REGION"
+        echo -e "${GREEN}✓ Bastion instance is now running${NC}"
+        sleep 15  # Wait for SSM agent
     else
         echo -e "${RED}Error: Bastion instance is in unexpected state: $instance_state${NC}"
         exit 1
     fi
-}
 
-test_connectivity() {
-    echo -e "${BLUE}Testing connection to bastion host...${NC}"
-    if ! nc -z -w30 $BASTION_HOST 22 2>/dev/null; then
-        echo -e "${RED}Error: Cannot connect to bastion host $BASTION_HOST:22${NC}"
-        echo "Check your internet connection and bastion host status."
+    # Verify SSM connectivity
+    echo -e "${BLUE}Verifying SSM connectivity...${NC}"
+    local ssm_status=$(aws ssm describe-instance-information \
+        --filters "Key=InstanceIds,Values=$BASTION_INSTANCE_ID" \
+        --query 'InstanceInformationList[0].PingStatus' \
+        --output text \
+        --region "$AWS_REGION" 2>/dev/null || echo "")
+
+    if [[ "$ssm_status" != "Online" ]]; then
+        echo -e "${YELLOW}SSM agent not yet online, waiting...${NC}"
+        for i in {1..12}; do
+            sleep 5
+            ssm_status=$(aws ssm describe-instance-information \
+                --filters "Key=InstanceIds,Values=$BASTION_INSTANCE_ID" \
+                --query 'InstanceInformationList[0].PingStatus' \
+                --output text \
+                --region "$AWS_REGION" 2>/dev/null || echo "")
+            if [[ "$ssm_status" == "Online" ]]; then
+                break
+            fi
+            echo -e "${YELLOW}Still waiting for SSM agent... (attempt $i/12)${NC}"
+        done
+    fi
+
+    if [[ "$ssm_status" == "Online" ]]; then
+        echo -e "${GREEN}✓ SSM agent is online${NC}"
+    else
+        echo -e "${RED}Error: SSM agent not responding. Status: $ssm_status${NC}"
+        echo "The instance may not have the SSM agent installed or proper IAM permissions."
         exit 1
     fi
-    echo -e "${GREEN}✓ Bastion host is reachable${NC}"
+}
+
+start_ssm_tunnel() {
+    local remote_host=$1
+    local remote_port=$2
+    local local_port=$3
+    local service_name=$4
+
+    echo -e "${GREEN}Starting $service_name tunnel via SSM...${NC}"
+    echo -e "${BLUE}Local: localhost:$local_port -> Remote: $remote_host:$remote_port${NC}"
+
+    aws ssm start-session \
+        --target "$BASTION_INSTANCE_ID" \
+        --document-name AWS-StartPortForwardingSessionToRemoteHost \
+        --parameters "{\"host\":[\"$remote_host\"],\"portNumber\":[\"$remote_port\"],\"localPortNumber\":[\"$local_port\"]}" \
+        --region "$AWS_REGION"
+}
+
+start_ssm_tunnel_background() {
+    local remote_host=$1
+    local remote_port=$2
+    local local_port=$3
+    local service_name=$4
+
+    echo -e "${GREEN}Starting $service_name tunnel in background...${NC}"
+    echo -e "${BLUE}Local: localhost:$local_port -> Remote: $remote_host:$remote_port${NC}"
+
+    aws ssm start-session \
+        --target "$BASTION_INSTANCE_ID" \
+        --document-name AWS-StartPortForwardingSessionToRemoteHost \
+        --parameters "{\"host\":[\"$remote_host\"],\"portNumber\":[\"$remote_port\"],\"localPortNumber\":[\"$local_port\"]}" \
+        --region "$AWS_REGION" &
 }
 
 setup_postgres_tunnel() {
@@ -321,8 +343,6 @@ setup_postgres_tunnel() {
         exit 1
     fi
 
-    echo -e "${GREEN}Setting up PostgreSQL tunnel...${NC}"
-    echo -e "${BLUE}Local: localhost:5432 -> Remote: $POSTGRES_ENDPOINT:5432${NC}"
     echo ""
     echo -e "${YELLOW}Connect to PostgreSQL with:${NC}"
     echo "psql -h localhost -p 5432 -U postgres -d robosystems"
@@ -330,7 +350,7 @@ setup_postgres_tunnel() {
     echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
     echo ""
 
-    ssh -i $SSH_KEY -N -L 5432:$POSTGRES_ENDPOINT:5432 ec2-user@$BASTION_HOST
+    start_ssm_tunnel "$POSTGRES_ENDPOINT" "5432" "5432" "PostgreSQL"
 }
 
 setup_valkey_tunnel() {
@@ -339,8 +359,6 @@ setup_valkey_tunnel() {
         exit 1
     fi
 
-    echo -e "${GREEN}Setting up Valkey tunnel...${NC}"
-    echo -e "${BLUE}Local: localhost:6379 -> Remote: $VALKEY_ENDPOINT:6379${NC}"
     echo ""
     echo -e "${YELLOW}Connect to Valkey with:${NC}"
     echo "redis-cli -h localhost -p 6379"
@@ -348,7 +366,7 @@ setup_valkey_tunnel() {
     echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
     echo ""
 
-    ssh -i $SSH_KEY -N -L 6379:$VALKEY_ENDPOINT:6379 ec2-user@$BASTION_HOST
+    start_ssm_tunnel "$VALKEY_ENDPOINT" "6379" "6379" "Valkey"
 }
 
 setup_dagster_tunnel() {
@@ -357,8 +375,6 @@ setup_dagster_tunnel() {
         exit 1
     fi
 
-    echo -e "${GREEN}Setting up Dagster webserver tunnel...${NC}"
-    echo -e "${BLUE}Local: localhost:3003 -> Remote: $DAGSTER_ENDPOINT:3000${NC}"
     echo ""
     echo -e "${YELLOW}Access Dagster UI:${NC}"
     echo "Open http://localhost:3003 in your browser"
@@ -366,7 +382,7 @@ setup_dagster_tunnel() {
     echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
     echo ""
 
-    ssh -i $SSH_KEY -N -L 3003:$DAGSTER_ENDPOINT:3000 ec2-user@$BASTION_HOST
+    start_ssm_tunnel "$DAGSTER_ENDPOINT" "3000" "3003" "Dagster"
 }
 
 setup_api_tunnel() {
@@ -375,8 +391,6 @@ setup_api_tunnel() {
         exit 1
     fi
 
-    echo -e "${GREEN}Setting up API ALB tunnel...${NC}"
-    echo -e "${BLUE}Local: localhost:8000 -> Remote: $API_ENDPOINT:80${NC}"
     echo ""
     echo -e "${YELLOW}Access API:${NC}"
     echo "curl http://localhost:8000/v1/status"
@@ -384,7 +398,73 @@ setup_api_tunnel() {
     echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
     echo ""
 
-    ssh -i $SSH_KEY -N -L 8000:$API_ENDPOINT:80 ec2-user@$BASTION_HOST
+    start_ssm_tunnel "$API_ENDPOINT" "80" "8000" "API"
+}
+
+setup_all_tunnels() {
+    local environment=$1
+    local tunnel_count=0
+
+    echo -e "${GREEN}Starting all available tunnels...${NC}"
+    echo ""
+
+    # Start tunnels in background
+    if [[ "$POSTGRES_ENDPOINT" != "NOT_FOUND" ]]; then
+        start_ssm_tunnel_background "$POSTGRES_ENDPOINT" "5432" "5432" "PostgreSQL"
+        ((tunnel_count++))
+        sleep 1
+    fi
+
+    if [[ "$VALKEY_ENDPOINT" != "NOT_FOUND" ]]; then
+        start_ssm_tunnel_background "$VALKEY_ENDPOINT" "6379" "6379" "Valkey"
+        ((tunnel_count++))
+        sleep 1
+    fi
+
+    if [[ -n "$DAGSTER_ENDPOINT" && "$DAGSTER_ENDPOINT" != "NOT_FOUND" ]]; then
+        start_ssm_tunnel_background "$DAGSTER_ENDPOINT" "3000" "3003" "Dagster"
+        ((tunnel_count++))
+        sleep 1
+    fi
+
+    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
+        start_ssm_tunnel_background "$API_ENDPOINT" "80" "8000" "API"
+        ((tunnel_count++))
+        sleep 1
+    fi
+
+    if [[ $tunnel_count -eq 0 ]]; then
+        echo -e "${RED}Error: No services found to tunnel${NC}"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}✓ Started $tunnel_count tunnels${NC}"
+    echo ""
+    echo -e "${YELLOW}Connection commands:${NC}"
+
+    if [[ "$POSTGRES_ENDPOINT" != "NOT_FOUND" ]]; then
+        echo "PostgreSQL: psql -h localhost -p 5432 -U postgres -d robosystems"
+    fi
+
+    if [[ "$VALKEY_ENDPOINT" != "NOT_FOUND" ]]; then
+        echo "Valkey:     redis-cli -h localhost -p 6379"
+    fi
+
+    if [[ -n "$DAGSTER_ENDPOINT" && "$DAGSTER_ENDPOINT" != "NOT_FOUND" ]]; then
+        echo "Dagster:    Open http://localhost:3003 in your browser"
+    fi
+
+    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
+        echo "API:        curl http://localhost:8000/v1/status"
+    fi
+
+    echo ""
+    echo -e "${YELLOW}Press Ctrl+C to stop all tunnels${NC}"
+    echo ""
+
+    # Wait for background jobs
+    wait
 }
 
 run_database_migration() {
@@ -438,29 +518,28 @@ run_database_migration() {
             ;;
     esac
 
-    # Build the command arguments
-    local migration_args="--command \"$migration_command\""
-    if [[ "$dry_run" == "true" ]]; then
-        migration_args="$migration_args --dry-run"
-    fi
-
     echo -e "${BLUE}Executing migration command: alembic $migration_command${NC}"
     if [[ "$dry_run" == "true" ]]; then
         echo -e "${YELLOW}(DRY RUN MODE - No changes will be applied)${NC}"
     fi
     echo ""
 
-    # Run the migration script directly via SSH
-    echo -e "${YELLOW}Connecting to bastion and running migrations...${NC}"
+    # Build the command arguments
+    local migration_args="--command \"$migration_command\""
+    if [[ "$dry_run" == "true" ]]; then
+        migration_args="$migration_args --dry-run"
+    fi
+
+    echo -e "${YELLOW}Connecting to bastion via SSM and running migrations...${NC}"
     echo -e "${BLUE}Note: The latest Docker image ($environment tag) will be pulled automatically${NC}"
     echo "----------------------------------------"
 
-    # Execute the migration command via SSH
-    ssh -i "$SSH_KEY" \
-        -o "StrictHostKeyChecking=no" \
-        -o "UserKnownHostsFile=/dev/null" \
-        -t ec2-user@$BASTION_HOST \
-        "sudo -u ec2-user /usr/local/bin/run-migrations.sh $migration_args"
+    # Execute the migration command via SSM
+    aws ssm start-session \
+        --target "$BASTION_INSTANCE_ID" \
+        --document-name AWS-StartInteractiveCommand \
+        --parameters "{\"command\":[\"sudo -u ec2-user /usr/local/bin/run-migrations.sh $migration_args\"]}" \
+        --region "$AWS_REGION"
 
     local exit_code=$?
 
@@ -474,101 +553,16 @@ run_database_migration() {
     fi
 }
 
-setup_all_tunnels() {
-    local environment=$1
-    local available_services=()
-    local tunnel_args=""
-
-    # Check which services are available
-    if [[ "$POSTGRES_ENDPOINT" != "NOT_FOUND" ]]; then
-        available_services+=("PostgreSQL")
-        tunnel_args="$tunnel_args -L 5432:$POSTGRES_ENDPOINT:5432"
-    fi
-
-    if [[ "$VALKEY_ENDPOINT" != "NOT_FOUND" ]]; then
-        available_services+=("Valkey")
-        tunnel_args="$tunnel_args -L 6379:$VALKEY_ENDPOINT:6379"
-    fi
-
-    if [[ -n "$DAGSTER_ENDPOINT" && "$DAGSTER_ENDPOINT" != "NOT_FOUND" ]]; then
-        available_services+=("Dagster")
-        tunnel_args="$tunnel_args -L 3003:$DAGSTER_ENDPOINT:3000"
-    fi
-
-    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
-        available_services+=("API")
-        tunnel_args="$tunnel_args -L 8000:$API_ENDPOINT:80"
-    fi
-
-    if [[ ${#available_services[@]} -eq 0 ]]; then
-        echo -e "${RED}Error: No services found to tunnel${NC}"
-        exit 1
-    fi
-
-    echo -e "${GREEN}Setting up tunnels for: ${available_services[*]}${NC}"
-
-    if [[ "$POSTGRES_ENDPOINT" != "NOT_FOUND" ]]; then
-        echo -e "${BLUE}PostgreSQL: localhost:5432 -> $POSTGRES_ENDPOINT:5432${NC}"
-    fi
-
-    if [[ "$VALKEY_ENDPOINT" != "NOT_FOUND" ]]; then
-        echo -e "${BLUE}Valkey:     localhost:6379 -> $VALKEY_ENDPOINT:6379${NC}"
-    fi
-
-    if [[ -n "$DAGSTER_ENDPOINT" && "$DAGSTER_ENDPOINT" != "NOT_FOUND" ]]; then
-        echo -e "${BLUE}Dagster:    localhost:3003 -> $DAGSTER_ENDPOINT:3000${NC}"
-    fi
-
-    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
-        echo -e "${BLUE}API:        localhost:8000 -> $API_ENDPOINT:80${NC}"
-    fi
-
-    echo ""
-    echo -e "${YELLOW}Connection commands:${NC}"
-
-    if [[ "$POSTGRES_ENDPOINT" != "NOT_FOUND" ]]; then
-        echo "PostgreSQL: psql -h localhost -p 5432 -U postgres -d robosystems"
-    fi
-
-    if [[ "$VALKEY_ENDPOINT" != "NOT_FOUND" ]]; then
-        echo "Valkey:     redis-cli -h localhost -p 6379"
-        echo "            Note: Valkey uses AUTH. Get token with:"
-        echo "            aws secretsmanager get-secret-value --secret-id robosystems/$environment/valkey --query 'SecretString' | jq -r '.VALKEY_AUTH_TOKEN'"
-        echo "            Then connect: redis-cli -h localhost -p 6379 -a <AUTH_TOKEN> --tls"
-    fi
-
-    if [[ -n "$DAGSTER_ENDPOINT" && "$DAGSTER_ENDPOINT" != "NOT_FOUND" ]]; then
-        echo "Dagster:    Open http://localhost:3003 in your browser"
-    fi
-
-    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
-        echo "API:        curl http://localhost:8000/v1/status"
-    fi
-
-    echo ""
-    echo -e "${YELLOW}Press Ctrl+C to stop all tunnels${NC}"
+open_shell() {
+    echo -e "${GREEN}Opening interactive shell on bastion...${NC}"
+    echo -e "${YELLOW}Type 'exit' to close the session${NC}"
     echo ""
 
-    # Execute SSH with dynamic tunnel arguments
-    ssh -i $SSH_KEY -N $tunnel_args ec2-user@$BASTION_HOST
+    aws ssm start-session \
+        --target "$BASTION_INSTANCE_ID" \
+        --region "$AWS_REGION"
 }
 
-cleanup() {
-    echo ""
-    echo -e "${YELLOW}Cleaning up tunnels...${NC}"
-
-    # Stop bastion instance if we started it
-    if [[ "$BASTION_WAS_STARTED" == "true" && -n "$BASTION_INSTANCE_ID" ]]; then
-        echo -e "${YELLOW}Stopping bastion instance...${NC}"
-        aws ec2 stop-instances --instance-ids "$BASTION_INSTANCE_ID" >/dev/null 2>&1
-        echo -e "${GREEN}✓ Bastion instance stop command sent${NC}"
-    fi
-
-    echo -e "${GREEN}Tunnels stopped.${NC}"
-}
-
-# Set trap for cleanup on script exit
-trap cleanup EXIT INT TERM
 
 # Main script
 main() {
@@ -577,18 +571,17 @@ main() {
 
     local environment=""
     local service=""
-    local custom_ssh_key=""
 
-    # Parse arguments with support for SSH key parameter
+    # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --key|-k)
-                custom_ssh_key="$2"
-                shift 2
-                ;;
             -h|--help|help)
                 print_usage
                 exit 0
+                ;;
+            --region|-r)
+                AWS_REGION="$2"
+                shift 2
                 ;;
             prod|staging|dev)
                 if [[ -z "$environment" ]]; then
@@ -600,7 +593,7 @@ main() {
                 fi
                 shift
                 ;;
-            postgres|valkey|dagster|api|migrate|all)
+            postgres|valkey|dagster|api|migrate|shell|all)
                 if [[ -z "$service" ]]; then
                     service="$1"
                 else
@@ -627,12 +620,6 @@ main() {
         service="all"
     fi
 
-    # Update SSH_KEY if custom key provided
-    if [[ -n "$custom_ssh_key" ]]; then
-        SSH_KEY="$custom_ssh_key"
-        echo -e "${BLUE}Using custom SSH key: $SSH_KEY${NC}"
-    fi
-
     # Validate environment
     case $environment in
         prod|staging|dev)
@@ -644,18 +631,11 @@ main() {
             ;;
     esac
 
-    # Check prerequisites
-    check_aws_cli
-    check_ssh_key
-
     # Discover infrastructure
     discover_infrastructure "$environment"
 
     # Check and start bastion if needed
     check_bastion_status "$environment"
-
-    # Test connectivity
-    test_connectivity
 
     # Set up tunnels based on service
     case $service in
@@ -673,6 +653,9 @@ main() {
             ;;
         migrate)
             run_database_migration "$environment"
+            ;;
+        shell)
+            open_shell
             ;;
         all|"")
             setup_all_tunnels "$environment"

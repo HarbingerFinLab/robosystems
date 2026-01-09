@@ -38,17 +38,6 @@ Parameters:
       - t4g.medium
     ConstraintDescription: Must be a valid ARM64 instance type
 
-  # Security & Access Configuration
-  AllowedCidrBlock:
-    Type: String
-    Description: "REQUIRED: CIDR block for SSH access (e.g., 203.0.113.0/24 or VPN endpoint IP)"
-    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\/([0-9]|[1-2][0-9]|3[0-2])$
-    ConstraintDescription: Must be a valid CIDR block (e.g., 203.0.113.0/24)
-  KeyPairName:
-    Type: String
-    Description: EC2 Key Pair name for SSH access
-    ConstraintDescription: Must be an existing EC2 Key Pair
-
   # Script Configuration
   DeploymentBucket:
     Type: String
@@ -74,24 +63,19 @@ Conditions:
   HasDeploymentBucket: !Not [!Equals [!Ref DeploymentBucket, ""]]
 
 Resources:
-  # Security group for bastion host SSH access
+  # Security group for bastion host (SSM access - no inbound ports needed)
   BastionHostSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
-      GroupDescription: Security group for bastion host - SSH access from allowed IP
+      GroupDescription: Security group for bastion host - SSM access only (no SSH)
       VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: !Ref AllowedCidrBlock
-          Description: SSH access from authorized CIDR block
+      # No ingress rules - SSM uses outbound HTTPS connections
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
-          Description: Allow all outbound traffic
+          Description: Allow all outbound traffic (required for SSM and package updates)
       Tags:
         - Key: Name
           Value: !Sub sg-bastion-host-${Environment}
@@ -244,14 +228,18 @@ Resources:
     Properties:
       ImageId: !Ref AmiId
       InstanceType: !Ref InstanceType
-      KeyName: !Ref KeyPairName
-      SubnetId: !Ref PublicSubnetId
+      # No KeyName - access via SSM only (no SSH)
       InstanceInitiatedShutdownBehavior: stop
-      SecurityGroupIds: !If
-        - HasValkeySecurityGroup
-        - [!Ref BastionHostSecurityGroup, !Ref ValkeySecurityGroupId]
-        - [!Ref BastionHostSecurityGroup]
       IamInstanceProfile: !Ref BastionHostEC2InstanceProfile
+      # Use NetworkInterfaces to get auto-assigned public IP (no EIP needed for SSM)
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          SubnetId: !Ref PublicSubnetId
+          AssociatePublicIpAddress: true
+          GroupSet: !If
+            - HasValkeySecurityGroup
+            - [!Ref BastionHostSecurityGroup, !Ref ValkeySecurityGroupId]
+            - [!Ref BastionHostSecurityGroup]
       BlockDeviceMappings:
         - Ebs:
             VolumeType: gp3
@@ -350,39 +338,12 @@ Resources:
         Timeout: PT10M
         Count: 1
 
-  # Elastic IP for bastion host
-
-  BastionHostEIP:
-    Type: AWS::EC2::EIP
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Retain
-    Properties:
-      Domain: vpc
-      InstanceId: !Ref BastionHostEC2Instance
-      Tags:
-        - Key: Name
-          Value: !Sub robosystems-bastion-eip-${Environment}
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Service
-          Value: !Ref ServiceTag
-        - Key: Component
-          Value: !Ref ComponentTag
-        - Key: CreatedBy
-          Value: CloudFormation
-
 Outputs:
   BastionHostId:
-    Description: Instance ID of the bastion host
+    Description: Instance ID of the bastion host (use with SSM)
     Value: !Ref BastionHostEC2Instance
     Export:
       Name: !Sub ${AWS::StackName}-BastionHostId
-
-  BastionPublicIP:
-    Description: Public IP address of the bastion host
-    Value: !Ref BastionHostEIP
-    Export:
-      Name: !Sub ${AWS::StackName}-BastionPublicIP
 
   BastionSecurityGroupId:
     Description: Security Group ID of the bastion host
@@ -390,14 +351,14 @@ Outputs:
     Export:
       Name: !Sub ${AWS::StackName}-BastionSecurityGroupId
 
-  SSHCommand:
-    Description: SSH command to connect to bastion host
-    Value: !Sub ssh -i /path/to/${KeyPairName}.pem ec2-user@${BastionHostEIP}
+  SSMConnectCommand:
+    Description: SSM command to open interactive shell on bastion
+    Value: !Sub aws ssm start-session --target ${BastionHostEC2Instance} --region ${AWS::Region}
 
-  DynamicTunnelCommand:
-    Description: Tunnels script command for automatic endpoint discovery
-    Value: "./bin/tools/tunnels.sh prod all  # Replace 'prod' with your environment"
+  TunnelCommand:
+    Description: Tunnels script command (uses SSM - no SSH keys required)
+    Value: !Sub just bastion-tunnel ${Environment} all
 
-  TunnelScriptUsage:
-    Description: Instructions for using the tunnels script
-    Value: Run './bin/tools/tunnels.sh' from your local machine
+  TunnelUsage:
+    Description: Available tunnel services
+    Value: "Services: all, postgres, valkey, dagster, api, shell, migrate"

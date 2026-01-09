@@ -142,26 +142,10 @@ function setup_minimum_config() {
     REPOSITORY_NAME="${GITHUB_ORG}/${REPO_NAME}"
     read -p "AWS Account ID [123456789012]: " AWS_ACCOUNT_ID
     AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-"123456789012"}
-    read -p "Bastion EC2 Key Pair Name [your-key-pair-name]: " BASTION_KEY_PAIR_NAME
-    BASTION_KEY_PAIR_NAME=${BASTION_KEY_PAIR_NAME:-"your-key-pair-name"}
     read -p "AWS SNS Alert Email [alerts@example.com]: " AWS_SNS_ALERT_EMAIL
     AWS_SNS_ALERT_EMAIL=${AWS_SNS_ALERT_EMAIL:-"alerts@example.com"}
     read -p "ECR Repository Name [robosystems]: " ECR_REPOSITORY
     ECR_REPOSITORY=${ECR_REPOSITORY:-"robosystems"}
-    echo ""
-    echo "🔑 SSH Keys (optional):"
-    echo "Enter additional SSH public keys for bastion access (one per line, press Ctrl+D when done):"
-    echo "Leave empty to skip."
-    BASTION_SSH_KEYS=""
-    while IFS= read -r line; do
-        if [[ -n "$line" ]]; then
-            if [[ -n "$BASTION_SSH_KEYS" ]]; then
-                BASTION_SSH_KEYS="$BASTION_SSH_KEYS"$'\n'"$line"
-            else
-                BASTION_SSH_KEYS="$line"
-            fi
-        fi
-    done
 
     # Set the essential variables
     echo ""
@@ -331,11 +315,7 @@ function setup_minimum_config() {
     # Notification Configuration
     gh variable set AWS_SNS_ALERT_EMAIL --body "$AWS_SNS_ALERT_EMAIL"
 
-    # Bastion Configuration
-    gh variable set BASTION_KEY_PAIR_NAME --body "$BASTION_KEY_PAIR_NAME"
-    # CIDR for SSH access to bastion (set to your IP)
-    gh variable set BASTION_ALLOWED_CIDR --body "0.0.0.0/32"
-    # CIDR for admin API access (set to your IP)
+    # Admin API access (set to your IP for restricted access)
     gh variable set ADMIN_ALLOWED_CIDRS --body "0.0.0.0/32"
 
     # Publishing Configuration
@@ -365,7 +345,6 @@ function setup_minimum_config() {
     echo "📋 Variables set:"
     echo "  🌐 Root Domain: $ROOT_DOMAIN"
     echo "  📦 Repository: $REPOSITORY_NAME"
-    echo "  🔑 Bastion Key Pair: $BASTION_KEY_PAIR_NAME"
     echo "  🐳 ECR Repository: $ECR_REPOSITORY"
     echo "  📊 Observability: Enabled for both prod & staging"
     echo "  🛡️ WAF Protection: Ready to enable (currently disabled)"
@@ -413,7 +392,6 @@ function setup_full_config() {
     REPO_NAME=${REPO_NAME:-"robosystems-service"}
     REPOSITORY_NAME="${GITHUB_ORG}/${REPO_NAME}"
     read -p "Enter AWS Account ID: " AWS_ACCOUNT_ID
-    read -p "Enter Bastion EC2 Key Pair Name: " BASTION_KEY_PAIR_NAME
     read -p "Enter AWS SNS Alert Email: " AWS_SNS_ALERT_EMAIL
     read -p "Enter ECR Repository Name [robosystems]: " ECR_REPOSITORY
     ECR_REPOSITORY=${ECR_REPOSITORY:-"robosystems"}
@@ -440,11 +418,7 @@ function setup_full_config() {
     gh variable set ROBOSYSTEMS_APP_URL_PROD --body "https://$ROOT_DOMAIN"
     gh variable set ROBOSYSTEMS_APP_URL_STAGING --body "https://staging.$ROOT_DOMAIN"
 
-    # Bastion Configuration
-    gh variable set BASTION_KEY_PAIR_NAME --body "$BASTION_KEY_PAIR_NAME"
-    # CIDR for SSH access to bastion (set to your IP)
-    gh variable set BASTION_ALLOWED_CIDR --body "0.0.0.0/32"
-    # CIDR for admin API access (set to your IP)
+    # Admin API access (set to your IP for restricted access)
     gh variable set ADMIN_ALLOWED_CIDRS --body "0.0.0.0/32"
 
     # API Scaling Configuration

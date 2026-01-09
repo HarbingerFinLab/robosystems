@@ -736,10 +736,18 @@ Resources:
           Value: CloudFormation
 
   # ECS Service
-  # Note: DependsOn removed - CloudFormation handles ordering via implicit references
-  # The service depends on TargetGroup which depends on ALB
+  # DependsOn required: ECS service must wait for listener to attach target group to ALB
+  # CloudFormation ignores dependencies on conditional resources that don't exist
   ApiService:
     Type: AWS::ECS::Service
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - E3005  # False positive: one listener always exists (HasDomain XOR IsInternal)
+    DependsOn:
+      - ApiHttpsListener        # Public mode: HTTPS listener
+      - ApiHttpForwardListener  # Internal mode: HTTP forward listener
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
