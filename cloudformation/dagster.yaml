@@ -31,26 +31,28 @@ Parameters:
     Default: latest
 
   # Fargate Configuration
+  # Note: CPU/Memory must be valid Fargate combinations
+  # 512 CPU: 1024-4096 MB | 1024 CPU: 2048-8192 MB | 2048 CPU: 4096-16384 MB
   DaemonCpu:
     Type: String
-    Default: "512"
-    Description: CPU units for Dagster daemon (512 = 0.5 vCPU)
-    AllowedValues: ["256", "512", "1024"]
+    Default: "1024"
+    Description: CPU units for Dagster daemon (1024 = 1 vCPU)
+    AllowedValues: ["512", "1024", "2048"]
   DaemonMemory:
     Type: String
-    Default: "1024"
+    Default: "2048"
     Description: Memory in MiB for Dagster daemon
-    AllowedValues: ["512", "1024", "2048"]
+    AllowedValues: ["2048", "4096", "8192"]
   WebserverCpu:
     Type: String
     Default: "512"
     Description: CPU units for Dagster webserver (512 = 0.5 vCPU)
-    AllowedValues: ["256", "512", "1024", "2048"]
+    AllowedValues: ["512", "1024", "2048"]
   WebserverMemory:
     Type: String
     Default: "1024"
     Description: Memory in MiB for Dagster webserver
-    AllowedValues: ["512", "1024", "2048", "4096"]
+    AllowedValues: ["1024", "2048", "4096"]
   WebserverDesiredCount:
     Type: Number
     Default: 1
@@ -81,6 +83,12 @@ Parameters:
     Default: "4096"
     Description: Memory in MiB for Dagster run jobs
     AllowedValues: ["1024", "2048", "4096", "8192", "16384"]
+  MaxConcurrentRuns:
+    Type: Number
+    Default: 20
+    MinValue: 1
+    MaxValue: 50
+    Description: Maximum concurrent Dagster runs (QueuedRunCoordinator)
 
   # Cache Configuration
   ValkeyUrl:
@@ -540,6 +548,9 @@ Resources:
             # S3 compute logs bucket for Dagster UI
             - Name: DAGSTER_COMPUTE_LOGS_BUCKET
               Value: !Sub robosystems-logs-${Environment}
+            # Run coordinator configuration
+            - Name: DAGSTER_MAX_CONCURRENT_RUNS
+              Value: !Ref MaxConcurrentRuns
 
   WebserverTaskDefinition:
     Type: AWS::ECS::TaskDefinition

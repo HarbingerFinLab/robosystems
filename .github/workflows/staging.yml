@@ -584,8 +584,8 @@ jobs:
       ecr_repository_url: ${{ needs.build.outputs.ecr_repository_url }}
       ecr_image_tag: staging
       # Fargate Configuration
-      daemon_cpu: ${{ vars.DAGSTER_DAEMON_CPU_STAGING || '512' }}
-      daemon_memory: ${{ vars.DAGSTER_DAEMON_MEMORY_STAGING || '1024' }}
+      daemon_cpu: ${{ vars.DAGSTER_DAEMON_CPU_STAGING || '1024' }}
+      daemon_memory: ${{ vars.DAGSTER_DAEMON_MEMORY_STAGING || '2048' }}
       webserver_cpu: ${{ vars.DAGSTER_WEBSERVER_CPU_STAGING || '512' }}
       webserver_memory: ${{ vars.DAGSTER_WEBSERVER_MEMORY_STAGING || '1024' }}
       webserver_desired_count: ${{ vars.DAGSTER_WEBSERVER_DESIRED_COUNT_STAGING || '1' }}
@@ -594,6 +594,7 @@ jobs:
       # Run Job Configuration (for EcsRunLauncher)
       run_job_cpu: ${{ vars.DAGSTER_RUN_JOB_CPU_STAGING || '1024' }}
       run_job_memory: ${{ vars.DAGSTER_RUN_JOB_MEMORY_STAGING || '4096' }}
+      max_concurrent_runs: ${{ vars.DAGSTER_MAX_CONCURRENT_RUNS_STAGING || '20' }}
       # Cache Configuration
       valkey_url: ${{ needs.deploy-valkey.outputs.valkey_url }}
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}

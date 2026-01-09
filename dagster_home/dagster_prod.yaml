@@ -72,19 +72,18 @@ run_launcher:
       cluster:
         env: DAGSTER_ECS_CLUSTER
       launchType: FARGATE
-    # Resource overrides for different job types (optional)
-    run_resources:
-      cpu: "1024"
-      memory: "4096"
+    # Resource overrides removed - uses task definition defaults from CloudFormation
+    # (RunJobCpu and RunJobMemory parameters)
 
 # Run coordinator - controls concurrent run execution
 # Limits parallel Fargate tasks to avoid overwhelming resources
-# SEC parallel processing sensor benefits from this: 20 concurrent processing jobs
+# SEC parallel processing sensor benefits from this: configurable via DAGSTER_MAX_CONCURRENT_RUNS
 run_coordinator:
   module: dagster.core.run_coordinator
   class: QueuedRunCoordinator
   config:
-    max_concurrent_runs: 20
+    max_concurrent_runs:
+      env: DAGSTER_MAX_CONCURRENT_RUNS
     dequeue_interval_seconds: 5
 
 # Telemetry - disable for privacy
