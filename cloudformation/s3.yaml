@@ -9,6 +9,14 @@ Description: RoboSystems File Storage Service - S3 Buckets and IAM Policies
 # - robosystems-logs-{env}            : Dagster compute logs (stdout/stderr from ECS runs)
 
 Parameters:
+  # Namespace (auto-computed: main repo = empty, forks = AWS account ID)
+  Namespace:
+    Type: String
+    Description: S3 bucket namespace. Main repo uses empty, forks use AWS account ID (e.g., "123456789012" creates "robosystems-123456789012-*").
+    Default: ""
+    AllowedPattern: "^[0-9]{12}$|^$"
+    ConstraintDescription: Must be empty or a 12-digit AWS account ID
+
   # Environment
   Environment:
     Type: String
@@ -37,6 +45,7 @@ Parameters:
     Default: ""
 
 Conditions:
+  HasNamespace: !Not [!Equals [!Ref Namespace, ""]]
   HasCustomDomain: !Not [!Equals [!Ref PublicDomainName, ""]]
 
 Resources:
@@ -55,7 +64,10 @@ Resources:
         IgnorePublicAcls: true
         BlockPublicPolicy: true
         BlockPublicAcls: true
-      BucketName: !Sub robosystems-shared-raw-${Environment}
+      BucketName: !If
+        - HasNamespace
+        - !Sub "robosystems-${Namespace}-shared-raw-${Environment}"
+        - !Sub "robosystems-shared-raw-${Environment}"
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -94,7 +106,10 @@ Resources:
         IgnorePublicAcls: true
         BlockPublicPolicy: true
         BlockPublicAcls: true
-      BucketName: !Sub robosystems-shared-processed-${Environment}
+      BucketName: !If
+        - HasNamespace
+        - !Sub "robosystems-${Namespace}-shared-processed-${Environment}"
+        - !Sub "robosystems-shared-processed-${Environment}"
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -133,7 +148,10 @@ Resources:
         IgnorePublicAcls: true
         BlockPublicPolicy: true
         BlockPublicAcls: true
-      BucketName: !Sub robosystems-user-${Environment}
+      BucketName: !If
+        - HasNamespace
+        - !Sub "robosystems-${Namespace}-user-${Environment}"
+        - !Sub "robosystems-user-${Environment}"
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -183,7 +201,10 @@ Resources:
         IgnorePublicAcls: true
         BlockPublicPolicy: true
         BlockPublicAcls: true
-      BucketName: !Sub robosystems-public-data-${Environment}
+      BucketName: !If
+        - HasNamespace
+        - !Sub "robosystems-${Namespace}-public-data-${Environment}"
+        - !Sub "robosystems-public-data-${Environment}"
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -370,7 +391,10 @@ Resources:
         IgnorePublicAcls: true
         BlockPublicPolicy: true
         BlockPublicAcls: true
-      BucketName: !Sub robosystems-deployment-${Environment}
+      BucketName: !If
+        - HasNamespace
+        - !Sub "robosystems-${Namespace}-deployment-${Environment}"
+        - !Sub "robosystems-deployment-${Environment}"
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -418,7 +442,10 @@ Resources:
         IgnorePublicAcls: true
         BlockPublicPolicy: true
         BlockPublicAcls: true
-      BucketName: !Sub robosystems-logs-${Environment}
+      BucketName: !If
+        - HasNamespace
+        - !Sub "robosystems-${Namespace}-logs-${Environment}"
+        - !Sub "robosystems-logs-${Environment}"
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced

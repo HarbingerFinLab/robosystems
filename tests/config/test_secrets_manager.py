@@ -294,30 +294,59 @@ class TestSecretsManagerHelpers:
     """Test bucket names computed for dev environment (no suffix)."""
     manager = SecretsManager(environment="dev")
     buckets = manager.get_s3_buckets()
-    # New bucket names
+    # New bucket names (dev has no suffix, no namespace lookup)
     assert buckets["shared_raw"] == "robosystems-shared-raw"
     assert buckets["shared_processed"] == "robosystems-shared-processed"
     assert buckets["user_data"] == "robosystems-user"
     assert buckets["public_data"] == "robosystems-public-data"
-    # Deprecated aliases point to new names
-    assert buckets["aws_s3"] == "robosystems-user"
-    assert buckets["sec_raw"] == "robosystems-shared-raw"
-    assert buckets["sec_processed"] == "robosystems-shared-processed"
+    assert buckets["deployment"] == "robosystems-deployment"
+    assert buckets["logs"] == "robosystems-logs"
 
   def test_get_s3_buckets_staging_computed(self):
     """Test bucket names computed for staging environment (with suffix)."""
     # Bucket names are now computed from environment, not fetched from secrets
-    manager = SecretsManager(environment="staging")
-    buckets = manager.get_s3_buckets()
+    # Mock get_secret to return empty dict (no namespace = main deployment)
+    with patch("boto3.client") as mock_boto:
+      mock_client = MagicMock()
+      mock_client.get_secret_value.return_value = {
+        "SecretString": json.dumps({})  # No S3_NAMESPACE = main deployment
+      }
+      mock_boto.return_value = mock_client
 
-    # New bucket names with environment suffix
-    assert buckets["shared_raw"] == "robosystems-shared-raw-staging"
-    assert buckets["shared_processed"] == "robosystems-shared-processed-staging"
-    assert buckets["user_data"] == "robosystems-user-staging"
-    assert buckets["public_data"] == "robosystems-public-data-staging"
-    # Deprecated aliases point to new names
-    assert buckets["aws_s3"] == "robosystems-user-staging"
-    assert buckets["sec_raw"] == "robosystems-shared-raw-staging"
+      manager = SecretsManager(environment="staging")
+      buckets = manager.get_s3_buckets()
+
+      # New bucket names with environment suffix
+      assert buckets["shared_raw"] == "robosystems-shared-raw-staging"
+      assert buckets["shared_processed"] == "robosystems-shared-processed-staging"
+      assert buckets["user_data"] == "robosystems-user-staging"
+      assert buckets["public_data"] == "robosystems-public-data-staging"
+      assert buckets["deployment"] == "robosystems-deployment-staging"
+      assert buckets["logs"] == "robosystems-logs-staging"
+
+  def test_get_s3_buckets_staging_with_namespace(self):
+    """Test bucket names with namespace for fork deployments."""
+    # Fork deployments use AWS account ID as namespace
+    with patch("boto3.client") as mock_boto:
+      mock_client = MagicMock()
+      mock_client.get_secret_value.return_value = {
+        "SecretString": json.dumps({"S3_NAMESPACE": "123456789012"})
+      }
+      mock_boto.return_value = mock_client
+
+      manager = SecretsManager(environment="staging")
+      buckets = manager.get_s3_buckets()
+
+      # Bucket names include namespace for forks
+      assert buckets["shared_raw"] == "robosystems-123456789012-shared-raw-staging"
+      assert (
+        buckets["shared_processed"]
+        == "robosystems-123456789012-shared-processed-staging"
+      )
+      assert buckets["user_data"] == "robosystems-123456789012-user-staging"
+      assert buckets["public_data"] == "robosystems-123456789012-public-data-staging"
+      assert buckets["deployment"] == "robosystems-123456789012-deployment-staging"
+      assert buckets["logs"] == "robosystems-123456789012-logs-staging"
 
   def test_get_database_url_non_prod(self):
     manager = SecretsManager(environment="dev")
@@ -373,7 +402,7 @@ class TestSecretsManagerHelpers:
     from robosystems.config import secrets_manager as module
 
     manager = MagicMock()
-    manager.get_s3_buckets.return_value = {"sec_raw": "bucket"}
+    manager.get_s3_buckets.return_value = {"shared_raw": "bucket"}
     monkeypatch.setattr(module, "get_secrets_manager", lambda: manager)
 
     with patch.object(module.logger, "warning") as mock_warning:
@@ -384,10 +413,10 @@ class TestSecretsManagerHelpers:
     from robosystems.config import secrets_manager as module
 
     manager = MagicMock()
-    manager.get_s3_buckets.return_value = {"sec_processed": "bucket-name"}
+    manager.get_s3_buckets.return_value = {"shared_processed": "bucket-name"}
     monkeypatch.setattr(module, "get_secrets_manager", lambda: manager)
 
-    assert module.get_s3_bucket_name("sec_processed") == "bucket-name"
+    assert module.get_s3_bucket_name("shared_processed") == "bucket-name"
 
   def test_mappings_have_valid_structure(self):
     """Verify all mappings have correct structure."""

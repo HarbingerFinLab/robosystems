@@ -26,6 +26,13 @@ on:
         required: true
         type: string
       
+      # Namespace Configuration (auto-computed by caller: main repo = empty, forks = account ID)
+      namespace:
+        description: "S3 bucket namespace. Main repo uses empty, forks use AWS account ID for uniqueness."
+        required: false
+        type: string
+        default: ""
+
       # Domain Configuration
       public_domain_name:
         description: "Custom domain for public data CDN (e.g., public.robosystems.ai)"
@@ -108,7 +115,13 @@ jobs:
           fi
 
           S3_STACK_PARAMS="ParameterKey=Environment,ParameterValue=${{ inputs.environment }}"
-          
+
+          # Add namespace parameter if provided (for forks)
+          if [ -n "${{ inputs.namespace }}" ]; then
+            S3_STACK_PARAMS="$S3_STACK_PARAMS \
+                  ParameterKey=Namespace,ParameterValue=${{ inputs.namespace }}"
+          fi
+
           # Add domain parameters if provided
           if [ -n "${{ inputs.public_domain_name }}" ]; then
             S3_STACK_PARAMS="$S3_STACK_PARAMS \

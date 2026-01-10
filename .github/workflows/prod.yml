@@ -198,6 +198,8 @@ jobs:
       runner_config: ${{ needs.runner.outputs.runner_config }}
       # AWS Configuration
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      # Namespace Configuration (auto: main repo = none, forks = account ID)
+      namespace: ${{ github.repository == 'RoboFinSystems/robosystems' && '' || vars.AWS_ACCOUNT_ID }}
       # Domain Configuration
       # Leave PUBLIC_DOMAIN_NAME_PROD empty for default CloudFront domain (isolated deployment)
       public_domain_name: ${{ vars.PUBLIC_DOMAIN_NAME_PROD || '' }}
@@ -295,7 +297,8 @@ jobs:
       ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-prometheus:
-    if: vars.OBSERVABILITY_ENABLED_PROD != 'false'
+    # Observability disabled by default - set OBSERVABILITY_ENABLED_PROD=true to enable
+    if: vars.OBSERVABILITY_ENABLED_PROD == 'true'
     needs: [runner, create-deployment, stack-config, deploy-vpc]
     uses: ./.github/workflows/deploy-prometheus.yml
     with:
@@ -310,7 +313,8 @@ jobs:
       ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
   deploy-grafana:
-    if: vars.OBSERVABILITY_ENABLED_PROD != 'false'
+    # Observability disabled by default - set OBSERVABILITY_ENABLED_PROD=true to enable
+    if: vars.OBSERVABILITY_ENABLED_PROD == 'true'
     needs: [runner, create-deployment, stack-config]
     uses: ./.github/workflows/deploy-grafana.yml
     with:

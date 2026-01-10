@@ -46,6 +46,19 @@ echo ""
 # =============================================================================
 
 # =============================================================================
+# VALIDATION
+# =============================================================================
+
+# Validate S3_NAMESPACE format if provided (must be 12-digit AWS account ID)
+if [ -n "${S3_NAMESPACE:-}" ]; then
+    if ! [[ "$S3_NAMESPACE" =~ ^[0-9]{12}$ ]]; then
+        echo "ERROR: S3_NAMESPACE must be a 12-digit AWS account ID, got: $S3_NAMESPACE"
+        exit 1
+    fi
+    echo "S3 namespace configured: $S3_NAMESPACE (fork deployment)"
+fi
+
+# =============================================================================
 # AWS SECRETS MANAGER SETUP FUNCTIONS
 # =============================================================================
 
@@ -78,10 +91,18 @@ function create_production_secret() {
 
     echo "Setting production secret values..."
 
+    # Build S3_NAMESPACE entry if provided (for forks)
+    local s3_namespace_entry=""
+    if [ -n "${S3_NAMESPACE:-}" ]; then
+        s3_namespace_entry="\"S3_NAMESPACE\": \"${S3_NAMESPACE}\","
+        echo "Including S3_NAMESPACE: ${S3_NAMESPACE}"
+    fi
+
     # Set Production Secret Values
     aws secretsmanager put-secret-value \
         --secret-id "robosystems/prod" \
         --secret-string '{
+        '"${s3_namespace_entry}"'
         "BILLING_ENABLED": "false",
         "CONNECTION_CREDENTIALS_KEY": "'"$PROD_CONNECTION_KEY"'",
         "CONNECTION_PLAID_ENABLED": "false",
@@ -90,20 +111,20 @@ function create_production_secret() {
         "INTUIT_CLIENT_ID": "Intuit.ipp.application.your_client_id",
         "INTUIT_CLIENT_SECRET": "your_quickbooks_client_secret_here",
         "INTUIT_ENVIRONMENT": "production",
-        "INTUIT_REDIRECT_URI": "https://api.robosystems.ai/auth/callback",
+        "INTUIT_REDIRECT_URI": "https://your-api-domain.example.com/auth/callback",
         "JWT_SECRET_KEY": "'"$PROD_JWT_SECRET"'",
         "GRAPH_BACKUP_ENCRYPTION_KEY": "'"$PROD_BACKUP_KEY"'",
         "LOAD_SHEDDING_ENABLED": "true",
         "ORG_GRAPHS_DEFAULT_LIMIT": "5",
         "OPENFIGI_API_KEY": "your_openfigi_api_key_here",
-        "OTEL_ENABLED": "true",
+        "OTEL_ENABLED": "false",
         "PLAID_CLIENT_ID": "your_plaid_client_id_here",
         "PLAID_CLIENT_SECRET": "your_plaid_client_secret_here",
         "PLAID_ENVIRONMENT": "production",
         "RATE_LIMIT_ENABLED": "true",
         "CAPTCHA_ENABLED": "true",
         "EMAIL_VERIFICATION_ENABLED": "true",
-        "SEC_GOV_USER_AGENT": "RoboSystems/1.0 (contact@robosystems.ai)",
+        "SEC_GOV_USER_AGENT": "YourCompany/1.0 (your-email@example.com)",
         "SECURITY_AUDIT_ENABLED": "true",
         "SSE_ENABLED": "true",
         "TURNSTILE_SECRET_KEY": "your_cloudflare_turnstile_secret_key",
@@ -151,10 +172,18 @@ function create_staging_secret() {
 
     echo "Setting staging secret values..."
 
+    # Build S3_NAMESPACE entry if provided (for forks)
+    local s3_namespace_entry=""
+    if [ -n "${S3_NAMESPACE:-}" ]; then
+        s3_namespace_entry="\"S3_NAMESPACE\": \"${S3_NAMESPACE}\","
+        echo "Including S3_NAMESPACE: ${S3_NAMESPACE}"
+    fi
+
     # Set Staging Secret Values
     aws secretsmanager put-secret-value \
         --secret-id "robosystems/staging" \
         --secret-string '{
+        '"${s3_namespace_entry}"'
         "BILLING_ENABLED": "false",
         "CONNECTION_CREDENTIALS_KEY": "'"$STAGING_CONNECTION_KEY"'",
         "CONNECTION_PLAID_ENABLED": "false",
@@ -163,20 +192,20 @@ function create_staging_secret() {
         "INTUIT_CLIENT_ID": "Intuit.ipp.application.your_sandbox_client_id",
         "INTUIT_CLIENT_SECRET": "your_quickbooks_sandbox_client_secret_here",
         "INTUIT_ENVIRONMENT": "sandbox",
-        "INTUIT_REDIRECT_URI": "https://staging.api.robosystems.ai/auth/callback",
+        "INTUIT_REDIRECT_URI": "https://your-staging-api-domain.example.com/auth/callback",
         "JWT_SECRET_KEY": "'"$STAGING_JWT_SECRET"'",
         "GRAPH_BACKUP_ENCRYPTION_KEY": "'"$STAGING_BACKUP_KEY"'",
         "LOAD_SHEDDING_ENABLED": "true",
         "ORG_GRAPHS_DEFAULT_LIMIT": "5",
         "OPENFIGI_API_KEY": "your_openfigi_api_key_here",
-        "OTEL_ENABLED": "true",
+        "OTEL_ENABLED": "false",
         "PLAID_CLIENT_ID": "your_plaid_sandbox_client_id_here",
         "PLAID_CLIENT_SECRET": "your_plaid_sandbox_client_secret_here",
         "PLAID_ENVIRONMENT": "sandbox",
         "RATE_LIMIT_ENABLED": "true",
         "CAPTCHA_ENABLED": "false",
         "EMAIL_VERIFICATION_ENABLED": "false",
-        "SEC_GOV_USER_AGENT": "RoboSystems-Staging/1.0 (contact@robosystems.ai)",
+        "SEC_GOV_USER_AGENT": "YourCompany-Staging/1.0 (your-email@example.com)",
         "SECURITY_AUDIT_ENABLED": "true",
         "SSE_ENABLED": "true",
         "TURNSTILE_SECRET_KEY": "your_cloudflare_turnstile_secret_key",

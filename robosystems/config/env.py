@@ -687,32 +687,40 @@ class EnvConfig:
   AWS_S3_SECRET_ACCESS_KEY = get_secret_value("AWS_S3_SECRET_ACCESS_KEY", "")
 
   # S3 Bucket Configuration (2026-01 restructure)
-  # Bucket names are deterministic based on environment - no secrets needed.
-  # Pattern: robosystems-{purpose}-{environment}
+  # Bucket names computed via shared helper (robosystems/config/buckets.py)
+  # Pattern: robosystems-{namespace}-{purpose}-{environment}
+  #
+  # S3_NAMESPACE is auto-detected during bootstrap:
+  # - Main repo (RoboFinSystems/robosystems): no namespace → robosystems-shared-raw-prod
+  # - Forks: AWS account ID as namespace → robosystems-123456789012-shared-raw-prod
   #
   # For local dev, use env vars to override (e.g., for LocalStack bucket names)
-  # For prod/staging, the pattern is fixed and predictable.
+  # Import is inline to avoid circular imports at module load time
+  from robosystems.config.storage.buckets import compute_bucket_name
 
-  # Resolve environment suffix for bucket names
-  # Local dev uses no suffix, prod/staging append -{environment}
-  _BUCKET_SUFFIX = "" if ENVIRONMENT == "dev" else f"-{ENVIRONMENT}"
+  # Namespace for S3 buckets (from secrets for forks, empty for main deployment)
+  S3_NAMESPACE = get_secret_value("S3_NAMESPACE", "")
 
-  # Core bucket configuration - computed, not fetched from secrets
+  # Core bucket configuration - computed from namespace + environment
+  # Environment variable overrides supported for local development
   SHARED_RAW_BUCKET = get_str_env(
-    "SHARED_RAW_BUCKET", f"robosystems-shared-raw{_BUCKET_SUFFIX}"
+    "SHARED_RAW_BUCKET", compute_bucket_name("shared-raw", S3_NAMESPACE, ENVIRONMENT)
   )
   SHARED_PROCESSED_BUCKET = get_str_env(
-    "SHARED_PROCESSED_BUCKET", f"robosystems-shared-processed{_BUCKET_SUFFIX}"
+    "SHARED_PROCESSED_BUCKET",
+    compute_bucket_name("shared-processed", S3_NAMESPACE, ENVIRONMENT),
   )
   USER_DATA_BUCKET = get_str_env(
-    "USER_DATA_BUCKET", f"robosystems-user{_BUCKET_SUFFIX}"
+    "USER_DATA_BUCKET", compute_bucket_name("user", S3_NAMESPACE, ENVIRONMENT)
   )
-  # Public data bucket unchanged - actively serving CDN content
   PUBLIC_DATA_BUCKET = get_str_env(
-    "PUBLIC_DATA_BUCKET", f"robosystems-public-data{_BUCKET_SUFFIX}"
+    "PUBLIC_DATA_BUCKET", compute_bucket_name("public-data", S3_NAMESPACE, ENVIRONMENT)
   )
   DEPLOYMENT_BUCKET = get_str_env(
-    "DEPLOYMENT_BUCKET", f"robosystems-deployment{_BUCKET_SUFFIX}"
+    "DEPLOYMENT_BUCKET", compute_bucket_name("deployment", S3_NAMESPACE, ENVIRONMENT)
+  )
+  LOGS_BUCKET = get_str_env(
+    "LOGS_BUCKET", compute_bucket_name("logs", S3_NAMESPACE, ENVIRONMENT)
   )
 
   # CDN URL passed via ECS task definition (depends on CloudFront distribution)

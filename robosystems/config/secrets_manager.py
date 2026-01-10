@@ -176,25 +176,17 @@ class SecretsManager:
     Returns:
         Dictionary mapping bucket purposes to bucket names.
     """
-    # Bucket names are computed from environment, not stored in secrets
-    # For dev: no suffix (robosystems-shared-raw)
-    # For staging/prod: with suffix (robosystems-shared-raw-staging)
-    suffix = "" if self.environment == "dev" else f"-{self.environment}"
+    # Import here to avoid circular imports
+    from robosystems.config.storage.buckets import get_all_bucket_names
 
-    buckets = {
-      # New bucket names (computed)
-      "shared_raw": f"robosystems-shared-raw{suffix}",
-      "shared_processed": f"robosystems-shared-processed{suffix}",
-      "user_data": f"robosystems-user{suffix}",
-      "public_data": f"robosystems-public-data{suffix}",
-      "deployment": f"robosystems{suffix}-deployment",
-      # Deprecated aliases (point to new names)
-      "aws_s3": f"robosystems-user{suffix}",
-      "sec_raw": f"robosystems-shared-raw{suffix}",
-      "sec_processed": f"robosystems-shared-processed{suffix}",
-    }
+    # Get namespace from base secret (empty string for main deployment)
+    # S3_NAMESPACE is auto-detected during bootstrap:
+    # - Main repo (RoboFinSystems/robosystems): no namespace
+    # - Forks: AWS account ID as namespace
+    base_secrets = self.get_secret()
+    namespace = base_secrets.get("S3_NAMESPACE", "")
 
-    return buckets
+    return get_all_bucket_names(namespace=namespace, environment=self.environment)
 
   def get_database_url(self) -> str:
     """
@@ -279,7 +271,7 @@ def get_s3_bucket_name(purpose: str) -> str:
   Get an S3 bucket name for a specific purpose.
 
   Args:
-      purpose: The purpose of the bucket (e.g., "sec_processed", "sec_raw", "user_data")
+      purpose: The purpose of the bucket (e.g., "shared_raw", "shared_processed", "user_data")
 
   Returns:
       The bucket name with proper environment suffix.
@@ -287,13 +279,9 @@ def get_s3_bucket_name(purpose: str) -> str:
   manager = get_secrets_manager()
   buckets = manager.get_s3_buckets()
 
-  # Map common purpose strings to our bucket keys
+  # Map convenience aliases to bucket keys
   purpose_map = {
-    "sec_processed": "sec_processed",
-    "sec_raw": "sec_raw",
-    "aws_s3": "aws_s3",
     "public": "public_data",
-    "deployment": "deployment",
   }
 
   mapped_purpose = purpose_map.get(purpose, purpose)
