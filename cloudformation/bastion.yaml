@@ -295,9 +295,10 @@ Resources:
           echo "Executing UserData script..."
           /tmp/bastion-userdata.sh
 
-          # Tag the root volume
+          # Tag the root volume (using IMDSv2 token-based metadata)
           echo "Tagging EBS volumes..."
-          INSTANCE_ID=$(ec2-metadata --instance-id | cut -d' ' -f2)
+          TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+          INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
           ROOT_VOLUME=$(aws ec2 describe-instances \
             --instance-ids $INSTANCE_ID \
             --query "Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName=='/dev/xvda'].Ebs.VolumeId" \
@@ -327,8 +328,7 @@ Resources:
           echo "Auto-stopping bastion instance in 60 seconds..."
           sleep 60
 
-          # Stop this instance (instance can stop itself without additional IAM permissions)
-          INSTANCE_ID=$(ec2-metadata --instance-id | cut -d' ' -f2)
+          # Stop this instance (INSTANCE_ID already set above via IMDSv2)
           aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --region $AWS_REGION
 
           echo "Bastion instance will stop shortly"
