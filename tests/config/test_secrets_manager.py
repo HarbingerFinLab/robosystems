@@ -346,7 +346,10 @@ class TestSecretsManagerHelpers:
 
       # Bucket names include namespace for forks
       assert buckets["shared_raw"] == "robosystems-123456789012-shared-raw-staging"
-      assert buckets["shared_processed"] == "robosystems-123456789012-shared-processed-staging"
+      assert (
+        buckets["shared_processed"]
+        == "robosystems-123456789012-shared-processed-staging"
+      )
       assert buckets["user_data"] == "robosystems-123456789012-user-staging"
       assert buckets["public_data"] == "robosystems-123456789012-public-data-staging"
       assert buckets["deployment"] == "robosystems-123456789012-deployment-staging"

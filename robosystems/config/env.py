@@ -724,9 +724,7 @@ class EnvConfig:
   DEPLOYMENT_BUCKET = get_str_env(
     "DEPLOYMENT_BUCKET", f"{_BUCKET_PREFIX}-deployment{_BUCKET_SUFFIX}"
   )
-  LOGS_BUCKET = get_str_env(
-    "LOGS_BUCKET", f"{_BUCKET_PREFIX}-logs{_BUCKET_SUFFIX}"
-  )
+  LOGS_BUCKET = get_str_env("LOGS_BUCKET", f"{_BUCKET_PREFIX}-logs{_BUCKET_SUFFIX}")
 
   # CDN URL passed via ECS task definition (depends on CloudFront distribution)
   PUBLIC_DATA_CDN_URL = get_str_env("PUBLIC_DATA_CDN_URL", "")
