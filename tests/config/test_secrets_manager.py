@@ -301,10 +301,6 @@ class TestSecretsManagerHelpers:
     assert buckets["public_data"] == "robosystems-public-data"
     assert buckets["deployment"] == "robosystems-deployment"
     assert buckets["logs"] == "robosystems-logs"
-    # Deprecated aliases point to new names
-    assert buckets["aws_s3"] == "robosystems-user"
-    assert buckets["sec_raw"] == "robosystems-shared-raw"
-    assert buckets["sec_processed"] == "robosystems-shared-processed"
 
   def test_get_s3_buckets_staging_computed(self):
     """Test bucket names computed for staging environment (with suffix)."""
@@ -327,9 +323,6 @@ class TestSecretsManagerHelpers:
       assert buckets["public_data"] == "robosystems-public-data-staging"
       assert buckets["deployment"] == "robosystems-deployment-staging"
       assert buckets["logs"] == "robosystems-logs-staging"
-      # Deprecated aliases point to new names
-      assert buckets["aws_s3"] == "robosystems-user-staging"
-      assert buckets["sec_raw"] == "robosystems-shared-raw-staging"
 
   def test_get_s3_buckets_staging_with_namespace(self):
     """Test bucket names with namespace for fork deployments."""
@@ -409,7 +402,7 @@ class TestSecretsManagerHelpers:
     from robosystems.config import secrets_manager as module
 
     manager = MagicMock()
-    manager.get_s3_buckets.return_value = {"sec_raw": "bucket"}
+    manager.get_s3_buckets.return_value = {"shared_raw": "bucket"}
     monkeypatch.setattr(module, "get_secrets_manager", lambda: manager)
 
     with patch.object(module.logger, "warning") as mock_warning:
@@ -420,10 +413,10 @@ class TestSecretsManagerHelpers:
     from robosystems.config import secrets_manager as module
 
     manager = MagicMock()
-    manager.get_s3_buckets.return_value = {"sec_processed": "bucket-name"}
+    manager.get_s3_buckets.return_value = {"shared_processed": "bucket-name"}
     monkeypatch.setattr(module, "get_secrets_manager", lambda: manager)
 
-    assert module.get_s3_bucket_name("sec_processed") == "bucket-name"
+    assert module.get_s3_bucket_name("shared_processed") == "bucket-name"
 
   def test_mappings_have_valid_structure(self):
     """Verify all mappings have correct structure."""

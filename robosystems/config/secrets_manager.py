@@ -271,7 +271,7 @@ def get_s3_bucket_name(purpose: str) -> str:
   Get an S3 bucket name for a specific purpose.
 
   Args:
-      purpose: The purpose of the bucket (e.g., "sec_processed", "sec_raw", "user_data")
+      purpose: The purpose of the bucket (e.g., "shared_raw", "shared_processed", "user_data")
 
   Returns:
       The bucket name with proper environment suffix.
@@ -279,13 +279,9 @@ def get_s3_bucket_name(purpose: str) -> str:
   manager = get_secrets_manager()
   buckets = manager.get_s3_buckets()
 
-  # Map common purpose strings to our bucket keys
+  # Map convenience aliases to bucket keys
   purpose_map = {
-    "sec_processed": "sec_processed",
-    "sec_raw": "sec_raw",
-    "aws_s3": "aws_s3",
     "public": "public_data",
-    "deployment": "deployment",
   }
 
   mapped_purpose = purpose_map.get(purpose, purpose)

@@ -37,7 +37,9 @@ def compute_bucket_suffix(environment: str) -> str:
   return "" if environment == "dev" else f"-{environment}"
 
 
-def compute_bucket_name(purpose: str, namespace: str = "", environment: str = "dev") -> str:
+def compute_bucket_name(
+  purpose: str, namespace: str = "", environment: str = "dev"
+) -> str:
   """
   Compute a complete S3 bucket name.
 
@@ -57,7 +59,9 @@ def compute_bucket_name(purpose: str, namespace: str = "", environment: str = "d
   return f"{prefix}-{purpose}{suffix}"
 
 
-def get_all_bucket_names(namespace: str = "", environment: str = "dev") -> dict[str, str]:
+def get_all_bucket_names(
+  namespace: str = "", environment: str = "dev"
+) -> dict[str, str]:
   """
   Get all bucket names for a given namespace and environment.
 
@@ -72,15 +76,10 @@ def get_all_bucket_names(namespace: str = "", environment: str = "dev") -> dict[
   suffix = compute_bucket_suffix(environment)
 
   return {
-    # Primary bucket names
     "shared_raw": f"{prefix}-shared-raw{suffix}",
     "shared_processed": f"{prefix}-shared-processed{suffix}",
     "user_data": f"{prefix}-user{suffix}",
     "public_data": f"{prefix}-public-data{suffix}",
     "deployment": f"{prefix}-deployment{suffix}",
     "logs": f"{prefix}-logs{suffix}",
-    # Deprecated aliases (for backward compatibility)
-    "aws_s3": f"{prefix}-user{suffix}",
-    "sec_raw": f"{prefix}-shared-raw{suffix}",
-    "sec_processed": f"{prefix}-shared-processed{suffix}",
   }
