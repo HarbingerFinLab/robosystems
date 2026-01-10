@@ -466,6 +466,103 @@ configure_github() {
 }
 
 # =============================================================================
+# ESSENTIAL GITHUB VARIABLES
+# =============================================================================
+
+configure_essential_variables() {
+    print_header "Essential Configuration"
+
+    # AWS_SNS_ALERT_EMAIL - required for CloudWatch alarms (GitHub variable)
+    print_step "Alert Email Configuration"
+    echo ""
+    echo "CloudWatch alarms will send notifications to this email."
+    echo "You'll receive a confirmation email from AWS to activate alerts."
+    echo ""
+    read -p "Enter alert email address: " ALERT_EMAIL
+
+    if [ -z "$ALERT_EMAIL" ]; then
+        print_error "Alert email is required for deployment"
+        exit 1
+    fi
+
+    gh variable set AWS_SNS_ALERT_EMAIL --body "$ALERT_EMAIL"
+    print_success "Set AWS_SNS_ALERT_EMAIL (GitHub variable)"
+
+    # S3_NAMESPACE - auto-detected based on repository
+    # Main repo (RoboFinSystems/robosystems): no namespace
+    # Forks: use AWS account ID as namespace (auto-unique)
+    echo ""
+    print_step "S3 Namespace Configuration"
+    echo ""
+
+    local full_repo="${GITHUB_ORG}/${GITHUB_REPO}"
+    if [ "$full_repo" = "RoboFinSystems/robosystems" ]; then
+        export S3_NAMESPACE=""
+        print_success "Main repository detected - no namespace needed"
+        print_info "Buckets: robosystems-shared-raw-prod, etc."
+    else
+        export S3_NAMESPACE="$AWS_ACCOUNT_ID"
+        print_success "Fork detected - using account ID as namespace"
+        print_info "Buckets: robosystems-${AWS_ACCOUNT_ID}-shared-raw-prod, etc."
+        print_info "This ensures globally unique S3 bucket names"
+    fi
+}
+
+# =============================================================================
+# ECR REPOSITORY
+# =============================================================================
+
+setup_ecr_repository() {
+    print_header "ECR Repository Setup"
+
+    # Derive ECR repository name from GitHub repo name
+    local ecr_repo_name
+    ecr_repo_name=$(echo "${GITHUB_REPO}" | tr '[:upper:]' '[:lower:]')
+
+    echo "ECR Repository: ${ecr_repo_name}"
+    echo ""
+
+    # Check if repository already exists - don't modify existing repos
+    if aws ecr describe-repositories --repository-names "${ecr_repo_name}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+        print_success "ECR repository already exists"
+        return 0
+    fi
+
+    print_step "Creating ECR repository..."
+
+    aws ecr create-repository \
+        --repository-name "${ecr_repo_name}" \
+        --region "${AWS_REGION}" \
+        --image-scanning-configuration scanOnPush=true \
+        --encryption-configuration encryptionType=AES256 \
+        --tags Key=Project,Value=RoboSystems Key=ManagedBy,Value=Bootstrap >/dev/null
+
+    print_success "ECR repository created: ${ecr_repo_name}"
+
+    # Set basic lifecycle policy for new repos (keeps things tidy)
+    print_step "Setting basic lifecycle policy..."
+    aws ecr put-lifecycle-policy \
+        --repository-name "${ecr_repo_name}" \
+        --region "${AWS_REGION}" \
+        --lifecycle-policy-text '{
+            "rules": [
+                {
+                    "rulePriority": 1,
+                    "description": "Keep last 20 untagged images",
+                    "selection": {
+                        "tagStatus": "untagged",
+                        "countType": "imageCountMoreThan",
+                        "countNumber": 20
+                    },
+                    "action": { "type": "expire" }
+                }
+            ]
+        }' >/dev/null
+
+    print_success "ECR repository ready"
+}
+
+# =============================================================================
 # AWS SECRETS
 # =============================================================================
 
@@ -711,6 +808,12 @@ main() {
 
     # Configure GitHub
     configure_github
+
+    # Configure essential variables (alert email, S3 namespace)
+    configure_essential_variables
+
+    # Setup ECR repository
+    setup_ecr_repository
 
     # Check GitHub secrets
     check_github_secrets

@@ -176,22 +176,34 @@ class SecretsManager:
     Returns:
         Dictionary mapping bucket purposes to bucket names.
     """
-    # Bucket names are computed from environment, not stored in secrets
+    # Bucket names are computed from environment and optional namespace.
     # For dev: no suffix (robosystems-shared-raw)
     # For staging/prod: with suffix (robosystems-shared-raw-staging)
+    #
+    # S3_NAMESPACE is auto-detected during bootstrap:
+    # - Main repo (RoboFinSystems/robosystems): no namespace → robosystems-shared-raw-prod
+    # - Forks: AWS account ID as namespace → robosystems-123456789012-shared-raw-prod
     suffix = "" if self.environment == "dev" else f"-{self.environment}"
 
+    # Get namespace from base secret (empty string for main deployment)
+    base_secrets = self.get_secret()
+    namespace = base_secrets.get("S3_NAMESPACE", "")
+
+    # Build prefix: "robosystems-{namespace}" or just "robosystems"
+    prefix = f"robosystems-{namespace}" if namespace else "robosystems"
+
     buckets = {
-      # New bucket names (computed)
-      "shared_raw": f"robosystems-shared-raw{suffix}",
-      "shared_processed": f"robosystems-shared-processed{suffix}",
-      "user_data": f"robosystems-user{suffix}",
-      "public_data": f"robosystems-public-data{suffix}",
-      "deployment": f"robosystems{suffix}-deployment",
+      # New bucket names (computed from namespace + environment)
+      "shared_raw": f"{prefix}-shared-raw{suffix}",
+      "shared_processed": f"{prefix}-shared-processed{suffix}",
+      "user_data": f"{prefix}-user{suffix}",
+      "public_data": f"{prefix}-public-data{suffix}",
+      "deployment": f"{prefix}-deployment{suffix}",
+      "logs": f"{prefix}-logs{suffix}",
       # Deprecated aliases (point to new names)
-      "aws_s3": f"robosystems-user{suffix}",
-      "sec_raw": f"robosystems-shared-raw{suffix}",
-      "sec_processed": f"robosystems-shared-processed{suffix}",
+      "aws_s3": f"{prefix}-user{suffix}",
+      "sec_raw": f"{prefix}-shared-raw{suffix}",
+      "sec_processed": f"{prefix}-shared-processed{suffix}",
     }
 
     return buckets

@@ -78,10 +78,18 @@ function create_production_secret() {
 
     echo "Setting production secret values..."
 
+    # Build S3_NAMESPACE entry if provided (for forks)
+    local s3_namespace_entry=""
+    if [ -n "${S3_NAMESPACE:-}" ]; then
+        s3_namespace_entry="\"S3_NAMESPACE\": \"${S3_NAMESPACE}\","
+        echo "Including S3_NAMESPACE: ${S3_NAMESPACE}"
+    fi
+
     # Set Production Secret Values
     aws secretsmanager put-secret-value \
         --secret-id "robosystems/prod" \
         --secret-string '{
+        '"${s3_namespace_entry}"'
         "BILLING_ENABLED": "false",
         "CONNECTION_CREDENTIALS_KEY": "'"$PROD_CONNECTION_KEY"'",
         "CONNECTION_PLAID_ENABLED": "false",
@@ -96,7 +104,7 @@ function create_production_secret() {
         "LOAD_SHEDDING_ENABLED": "true",
         "ORG_GRAPHS_DEFAULT_LIMIT": "5",
         "OPENFIGI_API_KEY": "your_openfigi_api_key_here",
-        "OTEL_ENABLED": "true",
+        "OTEL_ENABLED": "false",
         "PLAID_CLIENT_ID": "your_plaid_client_id_here",
         "PLAID_CLIENT_SECRET": "your_plaid_client_secret_here",
         "PLAID_ENVIRONMENT": "production",
@@ -151,10 +159,18 @@ function create_staging_secret() {
 
     echo "Setting staging secret values..."
 
+    # Build S3_NAMESPACE entry if provided (for forks)
+    local s3_namespace_entry=""
+    if [ -n "${S3_NAMESPACE:-}" ]; then
+        s3_namespace_entry="\"S3_NAMESPACE\": \"${S3_NAMESPACE}\","
+        echo "Including S3_NAMESPACE: ${S3_NAMESPACE}"
+    fi
+
     # Set Staging Secret Values
     aws secretsmanager put-secret-value \
         --secret-id "robosystems/staging" \
         --secret-string '{
+        '"${s3_namespace_entry}"'
         "BILLING_ENABLED": "false",
         "CONNECTION_CREDENTIALS_KEY": "'"$STAGING_CONNECTION_KEY"'",
         "CONNECTION_PLAID_ENABLED": "false",
@@ -169,7 +185,7 @@ function create_staging_secret() {
         "LOAD_SHEDDING_ENABLED": "true",
         "ORG_GRAPHS_DEFAULT_LIMIT": "5",
         "OPENFIGI_API_KEY": "your_openfigi_api_key_here",
-        "OTEL_ENABLED": "true",
+        "OTEL_ENABLED": "false",
         "PLAID_CLIENT_ID": "your_plaid_sandbox_client_id_here",
         "PLAID_CLIENT_SECRET": "your_plaid_sandbox_client_secret_here",
         "PLAID_ENVIRONMENT": "sandbox",
