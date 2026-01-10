@@ -98,6 +98,7 @@ dagster_home/*
 .env
 .env.local
 .env.*.local
+.envrc
 .venv
 env/
 venv/

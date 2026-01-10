@@ -67,6 +67,49 @@ print_info() {
 }
 
 # =============================================================================
+# DIRENV SETUP
+# =============================================================================
+
+setup_direnv() {
+    print_header "Setting up direnv"
+
+    local target_file=".envrc"
+    local profile="${AWS_PROFILE:-}"
+
+    if [ -z "$profile" ]; then
+        read -p "Enter AWS profile name [robosystems-sso]: " profile
+        profile="${profile:-robosystems-sso}"
+    fi
+
+    if [ -f "$target_file" ]; then
+        print_info "Existing .envrc found:"
+        cat "$target_file"
+        echo ""
+        read -p "Overwrite with profile '${profile}'? (y/N): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Keeping existing .envrc"
+            return 0
+        fi
+    fi
+
+    # Generate .envrc with the configured profile
+    cat > "$target_file" << EOF
+# Automatically set AWS profile for this project
+export AWS_PROFILE=${profile}
+EOF
+
+    print_success "Created .envrc with AWS_PROFILE=${profile}"
+
+    if command -v direnv &>/dev/null; then
+        print_info "Run 'direnv allow' to activate"
+    else
+        print_warning "direnv not installed - .envrc created but won't auto-load"
+        print_info "Install with: brew install direnv"
+    fi
+}
+
+# =============================================================================
 # SSO CONFIGURATION
 # =============================================================================
 
@@ -548,6 +591,9 @@ main() {
         print_info "Bootstrap cancelled"
         exit 0
     fi
+
+    # Setup direnv for AWS profile
+    setup_direnv
 
     # Check/configure SSO
     if ! check_sso_configured; then
