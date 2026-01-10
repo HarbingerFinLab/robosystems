@@ -21,39 +21,28 @@ just admin dev <command> <args>
 
 ### IP Whitelist Configuration
 
-Access is controlled via GitHub variables for bastion SSH and Admin API:
-
-**Bastion SSH Access** (`BASTION_ALLOWED_CIDR`):
-- Single CIDR block for SSH access to bastion host
-- Typically your office IP or corporate VPN endpoint
-
 **Admin API Access** (`ADMIN_ALLOWED_CIDRS`):
 - Comma-separated CIDR blocks for Admin API endpoints
 - Can specify multiple IPs/networks
 
 **Format:**
 ```bash
-# Bastion (single CIDR)
+# Single CIDR
 203.0.113.42/32
-
-# Admin API (single or multiple CIDRs)
-203.0.113.42/32
-# OR
+# OR multiple CIDRs
 203.0.113.0/24,198.51.100.0/24,10.0.1.0/24
 ```
 
-**Setting the variables:**
+**Setting the variable:**
 ```bash
-# Bastion SSH access (single CIDR)
-gh variable set BASTION_ALLOWED_CIDR --body "YOUR.IP.ADDRESS/32"
-
-# Admin API access (can be single or comma-separated)
 gh variable set ADMIN_ALLOWED_CIDRS --body "YOUR.IP.ADDRESS/32"
 # OR for multiple IPs
 gh variable set ADMIN_ALLOWED_CIDRS --body "203.0.113.0/24,198.51.100.0/24"
 ```
 
-**Note:** These are stored as variables (not secrets) since IP addresses aren't truly secret, and visibility helps with troubleshooting.
+**Note:** Stored as a variable (not secret) since IP addresses aren't truly secret, and visibility helps with troubleshooting.
+
+**Bastion Access:** Uses SSM Session Manager with IAM authentication - no SSH keys or IP whitelisting required.
 
 ### Security Features
 
@@ -852,21 +841,17 @@ just admin dev subscriptions list
 
 ### IP Whitelist Management
 
-The IP whitelists are managed via GitHub variables (not secrets, for visibility):
+The Admin API IP whitelist is managed via GitHub variables (not secrets, for visibility):
 
 ```bash
-# Update bastion SSH whitelist (single CIDR)
-gh variable set BASTION_ALLOWED_CIDR --body "203.0.113.0/24"
-
 # Update Admin API whitelist (can be comma-separated)
 gh variable set ADMIN_ALLOWED_CIDRS --body "203.0.113.0/24,198.51.100.0/24"
 
-# View current values
-gh variable list | grep ALLOWED
+# View current value
+gh variable list | grep ADMIN_ALLOWED_CIDRS
 
-# After updating, redeploy stacks for changes to take effect:
-# - Bastion stack: gh workflow run staging.yml (or prod.yml)
-# - API stack: gh workflow run staging.yml (or prod.yml)
+# After updating, redeploy API stack for changes to take effect:
+# gh workflow run staging.yml (or prod.yml)
 ```
 
 ### Remote Operations Security
