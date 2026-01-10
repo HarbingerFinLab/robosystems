@@ -472,13 +472,13 @@ configure_github() {
 setup_aws_secrets() {
     print_header "AWS Secrets Manager Setup"
 
-    echo "The application requires secrets (JWT keys, encryption keys) to start."
-    echo "This creates them with auto-generated secure values."
+    echo "The application requires secrets and feature flags to start."
+    echo "This creates them with auto-generated keys and sensible defaults."
     echo ""
     print_info "Safe to run - existing secrets are NOT overwritten"
     echo ""
 
-    read -p "Create application secrets? (Y/n): " -n 1 -r
+    read -p "Create application secrets & feature flags? (Y/n): " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Nn]$ ]]; then
         print_warning "Skipping secrets - deploy will fail without them!"
@@ -627,7 +627,7 @@ show_summary() {
     echo "   (access via bastion tunnel) unless domain is configured."
     echo ""
     echo "To run skipped steps later:"
-    echo "   just setup-aws      # Application secrets (required for deploy)"
+    echo "   just setup-aws      # Application secrets & feature flags (required)"
     echo "   just setup-gha      # Full variable control (optional)"
     echo ""
     echo "For CLI access:"
