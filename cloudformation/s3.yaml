@@ -14,9 +14,8 @@ Parameters:
     Type: String
     Description: S3 bucket namespace. Main repo uses empty, forks use AWS account ID (e.g., "123456789012" creates "robosystems-123456789012-*").
     Default: ""
-    AllowedPattern: "^[a-z0-9-]*$"
-    MaxLength: 20
-    ConstraintDescription: Must be lowercase alphanumeric with hyphens, max 20 chars
+    AllowedPattern: "^[0-9]{12}$|^$"
+    ConstraintDescription: Must be empty or a 12-digit AWS account ID
 
   # Environment
   Environment:

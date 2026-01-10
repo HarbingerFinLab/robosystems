@@ -176,37 +176,17 @@ class SecretsManager:
     Returns:
         Dictionary mapping bucket purposes to bucket names.
     """
-    # Bucket names are computed from environment and optional namespace.
-    # For dev: no suffix (robosystems-shared-raw)
-    # For staging/prod: with suffix (robosystems-shared-raw-staging)
-    #
-    # S3_NAMESPACE is auto-detected during bootstrap:
-    # - Main repo (RoboFinSystems/robosystems): no namespace → robosystems-shared-raw-prod
-    # - Forks: AWS account ID as namespace → robosystems-123456789012-shared-raw-prod
-    suffix = "" if self.environment == "dev" else f"-{self.environment}"
+    # Import here to avoid circular imports
+    from robosystems.config.storage.buckets import get_all_bucket_names
 
     # Get namespace from base secret (empty string for main deployment)
+    # S3_NAMESPACE is auto-detected during bootstrap:
+    # - Main repo (RoboFinSystems/robosystems): no namespace
+    # - Forks: AWS account ID as namespace
     base_secrets = self.get_secret()
     namespace = base_secrets.get("S3_NAMESPACE", "")
 
-    # Build prefix: "robosystems-{namespace}" or just "robosystems"
-    prefix = f"robosystems-{namespace}" if namespace else "robosystems"
-
-    buckets = {
-      # New bucket names (computed from namespace + environment)
-      "shared_raw": f"{prefix}-shared-raw{suffix}",
-      "shared_processed": f"{prefix}-shared-processed{suffix}",
-      "user_data": f"{prefix}-user{suffix}",
-      "public_data": f"{prefix}-public-data{suffix}",
-      "deployment": f"{prefix}-deployment{suffix}",
-      "logs": f"{prefix}-logs{suffix}",
-      # Deprecated aliases (point to new names)
-      "aws_s3": f"{prefix}-user{suffix}",
-      "sec_raw": f"{prefix}-shared-raw{suffix}",
-      "sec_processed": f"{prefix}-shared-processed{suffix}",
-    }
-
-    return buckets
+    return get_all_bucket_names(namespace=namespace, environment=self.environment)
 
   def get_database_url(self) -> str:
     """

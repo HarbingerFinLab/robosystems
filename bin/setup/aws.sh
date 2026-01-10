@@ -46,6 +46,19 @@ echo ""
 # =============================================================================
 
 # =============================================================================
+# VALIDATION
+# =============================================================================
+
+# Validate S3_NAMESPACE format if provided (must be 12-digit AWS account ID)
+if [ -n "${S3_NAMESPACE:-}" ]; then
+    if ! [[ "$S3_NAMESPACE" =~ ^[0-9]{12}$ ]]; then
+        echo "ERROR: S3_NAMESPACE must be a 12-digit AWS account ID, got: $S3_NAMESPACE"
+        exit 1
+    fi
+    echo "S3 namespace configured: $S3_NAMESPACE (fork deployment)"
+fi
+
+# =============================================================================
 # AWS SECRETS MANAGER SETUP FUNCTIONS
 # =============================================================================
 
