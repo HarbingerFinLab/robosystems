@@ -277,7 +277,7 @@ jobs:
       vpc_id: ${{ needs.deploy-vpc.outputs.vpc_id }}
       subnet_ids: ${{ needs.deploy-vpc.outputs.private_subnet_ids }}
       # Instance Configuration
-      node_type: ${{ vars.VALKEY_NODE_TYPE_PROD || 'cache.m6g.large' }}
+      node_type: ${{ vars.VALKEY_NODE_TYPE_PROD || 'cache.t4g.micro' }}
       num_cache_nodes: ${{ vars.VALKEY_NUM_NODES_PROD || '1' }}
       # Valkey Version Configuration (set to pin version, empty uses template default)
       valkey_version: ${{ vars.VALKEY_VERSION_PROD || '' }}
