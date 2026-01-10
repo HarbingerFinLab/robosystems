@@ -96,11 +96,22 @@ jobs:
       current_ami: ${{ steps.current.outputs.current_ami }}
       var_name: ${{ steps.current.outputs.var_name }}
       ami_changed: ${{ steps.compare.outputs.ami_changed }}
+      has_token: ${{ steps.check-token.outputs.has_token }}
       # Pass-through inputs for downstream jobs
       environment: ${{ steps.inputs.outputs.environment }}
       trigger_deploy: ${{ steps.inputs.outputs.trigger_deploy }}
       deploy_ref: ${{ steps.inputs.outputs.deploy_ref }}
     steps:
+      - name: Check ACTIONS_TOKEN availability
+        id: check-token
+        run: |
+          if [ -z "${{ secrets.ACTIONS_TOKEN }}" ]; then
+            echo "has_token=false" >> $GITHUB_OUTPUT
+            echo "::warning::ACTIONS_TOKEN not set - will show AMI info but cannot update variables"
+          else
+            echo "has_token=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Resolve inputs
         id: inputs
         run: |
@@ -143,11 +154,17 @@ jobs:
       - name: Get Current AMI Variable
         id: current
         env:
-          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
         run: |
           ENV="${{ steps.inputs.outputs.environment }}"
           VAR_NAME="GRAPH_AMI_ID_$(echo $ENV | tr '[:lower:]' '[:upper:]')"
-          CURRENT_AMI=$(gh variable get "$VAR_NAME" 2>/dev/null || echo "not-set")
+          # gh variable requires PAT - will show "not-set" if token missing
+          if [ -z "$GH_TOKEN" ]; then
+            CURRENT_AMI="not-set"
+            echo "⚠️ Cannot read variable without ACTIONS_TOKEN"
+          else
+            CURRENT_AMI=$(gh variable get "$VAR_NAME" 2>/dev/null || echo "not-set")
+          fi
           echo "current_ami=$CURRENT_AMI" >> $GITHUB_OUTPUT
           echo "var_name=$VAR_NAME" >> $GITHUB_OUTPUT
           echo "Current $VAR_NAME: $CURRENT_AMI"
@@ -169,7 +186,8 @@ jobs:
     if: |
       always() &&
       needs.ami-get-latest.result == 'success' &&
-      needs.ami-get-latest.outputs.ami_changed == 'true'
+      needs.ami-get-latest.outputs.ami_changed == 'true' &&
+      needs.ami-get-latest.outputs.has_token == 'true'
     needs: [ami-get-latest]
     runs-on: ubuntu-latest
     steps:
@@ -178,7 +196,7 @@ jobs:
 
       - name: Update AMI Variable
         env:
-          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
         run: |
           VAR_NAME="${{ needs.ami-get-latest.outputs.var_name }}"
           echo "Updating $VAR_NAME to: ${{ needs.ami-get-latest.outputs.ami_id }}"
@@ -202,7 +220,7 @@ jobs:
       - name: Trigger Deploy Workflow
         id: trigger
         env:
-          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
         run: |
           WORKFLOW="${{ needs.ami-get-latest.outputs.environment }}.yml"
 
@@ -236,7 +254,7 @@ jobs:
 
       - name: Wait for Deploy to Complete
         env:
-          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
         run: |
           echo "Waiting for deployment to complete..."
           gh run watch ${{ steps.trigger.outputs.run_id }} --exit-status
@@ -275,5 +293,26 @@ jobs:
           echo "| Update Variable | ${{ needs.ami-update-variable.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Trigger Deploy | ${{ needs.ami-trigger-deploy.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Show warning if ACTIONS_TOKEN was missing
+          if [ "${{ needs.ami-get-latest.outputs.has_token }}" != "true" ]; then
+            echo "### ⚠️ ACTIONS_TOKEN Not Set" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Variable update and deployment were skipped because ACTIONS_TOKEN is not configured." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "To enable automatic updates, set the secret:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "gh secret set ACTIONS_TOKEN" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ needs.ami-get-latest.outputs.ami_changed }}" == "true" ]; then
+              echo "To manually update the variable:" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "gh variable set ${{ needs.ami-get-latest.outputs.var_name }} --body \"${{ needs.ami-get-latest.outputs.ami_id }}\"" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "Triggered by: **${{ github.actor }}** at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY

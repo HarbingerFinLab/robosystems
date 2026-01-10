@@ -164,8 +164,21 @@ jobs:
       - name: Trigger deployment
         if: ${{ inputs.deploy_target != 'none' }}
         env:
-          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
         run: |
+          # ACTIONS_TOKEN (PAT) is required to trigger other workflows - github.token cannot
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::ACTIONS_TOKEN not set - skipping deployment trigger"
+            echo ""
+            echo "The default github.token cannot trigger other workflows."
+            echo "To enable auto-deployment, set ACTIONS_TOKEN:"
+            echo "  gh secret set ACTIONS_TOKEN"
+            echo ""
+            echo "You can manually deploy the release with:"
+            echo "  gh workflow run ${{ inputs.deploy_target }}.yml --ref ${{ needs.create-tag.outputs.tag_name }}"
+            exit 0
+          fi
+
           DEPLOY_TARGET="${{ inputs.deploy_target }}"
           TAG_NAME="${{ needs.create-tag.outputs.tag_name }}"
 

@@ -171,6 +171,24 @@ jobs:
         if: steps.check-tag.outputs.tag_exists == 'false'
         id: claude-changelog
         run: |
+          # Check if ANTHROPIC_API_KEY is available
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "::notice::ANTHROPIC_API_KEY not set - using basic changelog"
+            CHANGELOG="## What's Changed"$'\n\n'
+            CHANGELOG="${CHANGELOG}- ${{ steps.analyze-changes.outputs.commits_count }} commits with ${{ steps.analyze-changes.outputs.files_changed }} files changed"$'\n'
+            CHANGELOG="${CHANGELOG}- ${{ steps.analyze-changes.outputs.additions }} additions and ${{ steps.analyze-changes.outputs.deletions }} deletions"$'\n\n'
+            CHANGELOG="${CHANGELOG}See commit history for detailed changes."$'\n\n'
+            CHANGELOG="${CHANGELOG}---"$'\n'"*To enable AI-generated changelogs, set ANTHROPIC_API_KEY secret.*"
+
+            {
+              echo "changelog<<EOF"
+              echo -e "$CHANGELOG"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+
+            exit 0
+          fi
+
           # Call Claude API with the analysis prompt
           PROMPT=$(cat /tmp/changelog_prompt.txt)
 
