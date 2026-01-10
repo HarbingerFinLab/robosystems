@@ -342,8 +342,11 @@ sec-health verbose="" json="" api_url="http://localhost:8001" env=_local_env:
 ## Setup ##
 
 # Bootstrap AWS OIDC federation for GitHub Actions
-bootstrap:
-    @bin/setup/bootstrap.sh
+# Usage: just bootstrap [profile] [region]
+#   profile: AWS SSO profile name (default: robosystems-sso)
+#   region:  AWS region (default: us-east-1)
+bootstrap profile="robosystems-sso" region="us-east-1":
+    @bin/setup/bootstrap.sh "{{profile}}" "{{region}}"
 
 # AWS Secrets Manager setup
 setup-aws:

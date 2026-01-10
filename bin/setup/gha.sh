@@ -49,15 +49,16 @@ get_latest_ami() {
     # Check if AWS CLI is available and authenticated
     if ! command -v aws >/dev/null 2>&1; then
         echo ""
-        return 1
+        return 0  # Return success to avoid set -e exit, caller checks empty string
     fi
 
     # Try to get the AMI ID from SSM Parameter Store
+    # Use || true to prevent set -e from exiting on AWS CLI failure
     local ami_id
     ami_id=$(aws ssm get-parameter \
         --name "$ssm_path" \
         --query "Parameter.Value" \
-        --output text 2>/dev/null)
+        --output text 2>/dev/null) || true
 
     if [ -n "$ami_id" ] && [ "$ami_id" != "None" ]; then
         echo "$ami_id"
@@ -65,7 +66,7 @@ get_latest_ami() {
     fi
 
     echo ""
-    return 1
+    return 0  # Return success to avoid set -e exit, caller checks empty string
 }
 
 echo "=== RoboSystems GitHub Repository Setup ==="
@@ -111,299 +112,98 @@ function check_prerequisites() {
     echo ""
 }
 
-function setup_secrets() {
-    echo "GitHub Secrets (all optional)"
+function show_optional_secrets() {
+    echo "📋 Optional Secrets (not required for deployment):"
     echo ""
-    echo "All secrets are optional. Basic deployments work with zero secrets."
+    echo "   ACTIONS_TOKEN      - Enables cross-workflow triggers, auto-deploy on release"
+    echo "   ANTHROPIC_API_KEY  - Enables AI-powered PR summaries and release notes"
     echo ""
-    echo "📋 Optional secrets:"
-    echo "   ACTIONS_TOKEN     - Enables auto-deploy on release, cross-workflow triggers"
-    echo "   ANTHROPIC_API_KEY - Enables AI-powered features"
+    echo "To set secrets:"
+    echo "   gh secret set ACTIONS_TOKEN"
+    echo "   gh secret set ANTHROPIC_API_KEY"
     echo ""
-    echo "Without ACTIONS_TOKEN, workflows use github.token which works for"
-    echo "all deployments but cannot trigger other workflows."
-    echo ""
-    echo "Note: AWS credentials are handled via OIDC federation."
-    echo "Run 'just bootstrap' to set up AWS access."
+    echo "Note: AWS credentials are handled via OIDC (no secrets needed)."
 }
 
 
-function setup_minimum_config() {
-    echo "Setting up minimal configuration..."
-    echo "💡 Only essential variables required - everything else has sensible defaults!"
+function setup_essential_config() {
+    echo "Setting up essential configuration..."
+    echo "💡 Auto-detecting values - only domain requires input!"
     echo ""
 
-    # Absolutely essential variables
-    echo "📋 Required variables:"
-    while true; do
-        read -p "Enter Root Domain (e.g., robosystems.ai): " ROOT_DOMAIN
-        # Basic domain validation: must contain at least one dot and valid characters
-        if [[ "$ROOT_DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$ ]]; then
-            break
-        else
-            echo "❌ Invalid domain format. Please enter a valid domain (e.g., example.com)"
-        fi
-    done
+    # Auto-detect all values
+    REPOSITORY_NAME=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "")
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+    AWS_REGION="${AWS_REGION:-us-east-1}"
 
+    # Validate we could detect the essentials
+    if [ -z "$REPOSITORY_NAME" ]; then
+        print_error "Could not detect repository. Run from within a git repo with GitHub remote."
+        exit 1
+    fi
+    if [ -z "$AWS_ACCOUNT_ID" ]; then
+        print_error "Could not detect AWS account. Ensure AWS CLI is authenticated."
+        print_info "Run: aws sso login --profile <your-profile>"
+        exit 1
+    fi
+
+    # ECR repository defaults to repo name
+    ECR_REPOSITORY=$(echo "$REPOSITORY_NAME" | cut -d'/' -f2)
+
+    echo "📋 Auto-detected:"
+    echo "   Repository:   $REPOSITORY_NAME"
+    echo "   ECR:          $ECR_REPOSITORY"
+    echo "   AWS Account:  $AWS_ACCOUNT_ID"
+    echo "   AWS Region:   $AWS_REGION"
     echo ""
-    echo "🔧 Optional variables (press Enter to use defaults):"
-    read -p "GitHub Organization Name [YourGitHubOrg]: " GITHUB_ORG
-    GITHUB_ORG=${GITHUB_ORG:-"YourGitHubOrg"}
-    read -p "Repository Name [robosystems]: " REPO_NAME
-    REPO_NAME=${REPO_NAME:-"robosystems"}
-    REPOSITORY_NAME="${GITHUB_ORG}/${REPO_NAME}"
-    read -p "AWS Account ID [123456789012]: " AWS_ACCOUNT_ID
-    AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-"123456789012"}
-    read -p "AWS SNS Alert Email [alerts@example.com]: " AWS_SNS_ALERT_EMAIL
-    AWS_SNS_ALERT_EMAIL=${AWS_SNS_ALERT_EMAIL:-"alerts@example.com"}
-    read -p "ECR Repository Name [robosystems]: " ECR_REPOSITORY
-    ECR_REPOSITORY=${ECR_REPOSITORY:-"robosystems"}
+
+    # Domain (optional - only user input needed)
+    echo "📋 Domain Configuration (optional):"
+    echo "   Leave empty for VPC-only deployment (access via bastion tunnel)"
+    read -p "Root Domain (e.g., example.com) or press Enter to skip: " ROOT_DOMAIN
+    if [ -z "$ROOT_DOMAIN" ]; then
+        print_info "No domain - API accessible via bastion tunnel only"
+    elif [[ ! "$ROOT_DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$ ]]; then
+        print_warning "Invalid domain format, skipping"
+        ROOT_DOMAIN=""
+    fi
 
     # Set the essential variables
     echo ""
     echo "Setting variables..."
 
-    # Core Infrastructure
-    gh variable set API_DOMAIN_NAME_ROOT --body "$ROOT_DOMAIN"
     gh variable set REPOSITORY_NAME --body "$REPOSITORY_NAME"
     gh variable set ECR_REPOSITORY --body "$ECR_REPOSITORY"
-
-    # AWS Configuration (typically org-level, set at repo level for forks)
     gh variable set AWS_ACCOUNT_ID --body "$AWS_ACCOUNT_ID"
-    gh variable set AWS_REGION --body "us-east-1"
-    gh variable set ENVIRONMENT_PROD --body "prod"
-    gh variable set ENVIRONMENT_STAGING --body "staging"
-
-    # Domain Configuration
-    gh variable set API_DOMAIN_NAME_PROD --body "api.$ROOT_DOMAIN"
-    gh variable set API_DOMAIN_NAME_STAGING --body "staging.api.$ROOT_DOMAIN"
-
-    # Application URLs (typically org-level, set at repo level for forks)
-    gh variable set ROBOSYSTEMS_API_URL_PROD --body "https://api.$ROOT_DOMAIN"
-    gh variable set ROBOSYSTEMS_API_URL_STAGING --body "https://staging.api.$ROOT_DOMAIN"
-    gh variable set ROBOSYSTEMS_APP_URL_PROD --body "https://$ROOT_DOMAIN"
-    gh variable set ROBOSYSTEMS_APP_URL_STAGING --body "https://staging.$ROOT_DOMAIN"
-
-    # API Scaling Configuration
-    gh variable set API_MIN_CAPACITY_PROD --body "1"
-    gh variable set API_MAX_CAPACITY_PROD --body "10"
-    gh variable set API_MIN_CAPACITY_STAGING --body "1"
-    gh variable set API_MAX_CAPACITY_STAGING --body "2"
-    gh variable set API_ASG_REFRESH_PROD --body "true"
-    gh variable set API_ASG_REFRESH_STAGING --body "true"
-
-    # Dagster Daemon Configuration
-    gh variable set DAGSTER_DAEMON_CPU_PROD --body "1024"
-    gh variable set DAGSTER_DAEMON_CPU_STAGING --body "1024"
-    gh variable set DAGSTER_DAEMON_MEMORY_PROD --body "2048"
-    gh variable set DAGSTER_DAEMON_MEMORY_STAGING --body "2048"
-
-    # Dagster Webserver Configuration
-    gh variable set DAGSTER_WEBSERVER_CPU_PROD --body "512"
-    gh variable set DAGSTER_WEBSERVER_CPU_STAGING --body "512"
-    gh variable set DAGSTER_WEBSERVER_MEMORY_PROD --body "1024"
-    gh variable set DAGSTER_WEBSERVER_MEMORY_STAGING --body "1024"
-
-    # Dagster Run Job Configuration (EcsRunLauncher - Fargate)
-    gh variable set DAGSTER_RUN_JOB_CPU_PROD --body "1024"
-    gh variable set DAGSTER_RUN_JOB_CPU_STAGING --body "1024"
-    gh variable set DAGSTER_RUN_JOB_MEMORY_PROD --body "4096"
-    gh variable set DAGSTER_RUN_JOB_MEMORY_STAGING --body "4096"
-    gh variable set DAGSTER_MAX_CONCURRENT_RUNS_PROD --body "20"
-    gh variable set DAGSTER_MAX_CONCURRENT_RUNS_STAGING --body "20"
-
-    # Dagster Deployment Options
-    gh variable set DAGSTER_REFRESH_ECS_PROD --body "true"
-    gh variable set DAGSTER_REFRESH_ECS_STAGING --body "true"
-    gh variable set RUN_MIGRATIONS_PROD --body "true"
-    gh variable set RUN_MIGRATIONS_STAGING --body "true"
-
-    # Dagster Monitoring Configuration
-    gh variable set DAGSTER_CONTAINER_INSIGHTS_PROD --body "disabled"
-    gh variable set DAGSTER_CONTAINER_INSIGHTS_STAGING --body "disabled"
-
-    # Database Configuration
-    gh variable set DATABASE_ENGINE_PROD --body "postgres"
-    gh variable set DATABASE_ENGINE_STAGING --body "postgres"
-    gh variable set DATABASE_INSTANCE_SIZE_PROD --body "db.t4g.small"
-    gh variable set DATABASE_INSTANCE_SIZE_STAGING --body "db.t4g.small"
-    gh variable set DATABASE_ALLOCATED_STORAGE_PROD --body "20"
-    gh variable set DATABASE_ALLOCATED_STORAGE_STAGING --body "20"
-    gh variable set DATABASE_MAX_ALLOCATED_STORAGE_PROD --body "100"
-    gh variable set DATABASE_MAX_ALLOCATED_STORAGE_STAGING --body "100"
-    gh variable set DATABASE_MULTI_AZ_ENABLED_PROD --body "false"
-    gh variable set DATABASE_MULTI_AZ_ENABLED_STAGING --body "false"
-    gh variable set DATABASE_SECRETS_ROTATION_DAYS --body "90"
-
-    # Database Versions (pin to override template defaults)
-    gh variable set DATABASE_POSTGRES_VERSION_PROD --body "16.11"
-    gh variable set DATABASE_POSTGRES_VERSION_STAGING --body "16.11"
-
-    # VPC Flow Logs Configuration (SOC 2 - VPC-level, not environment-specific)
-    gh variable set VPC_FLOW_LOGS_ENABLED --body "true"
-    gh variable set VPC_FLOW_LOGS_RETENTION_DAYS --body "90"
-    gh variable set VPC_FLOW_LOGS_TRAFFIC_TYPE --body "REJECT"
-
-    # CloudTrail Configuration (SOC 2 - Account-level, not environment-specific)
-    gh variable set CLOUDTRAIL_ENABLED --body "true"
-    gh variable set CLOUDTRAIL_LOG_RETENTION_DAYS --body "90"
-    gh variable set CLOUDTRAIL_DATA_EVENTS_ENABLED --body "false"
-
-    # Valkey Configuration
-    gh variable set VALKEY_NODE_TYPE_PROD --body "cache.t4g.micro"
-    gh variable set VALKEY_NODE_TYPE_STAGING --body "cache.t4g.micro"
-    gh variable set VALKEY_NUM_NODES_PROD --body "1"
-    gh variable set VALKEY_NUM_NODES_STAGING --body "1"
-    gh variable set VALKEY_ENCRYPTION_ENABLED_PROD --body "true"
-    gh variable set VALKEY_ENCRYPTION_ENABLED_STAGING --body "true"
-    gh variable set VALKEY_SECRET_ROTATION_ENABLED_PROD --body "true"
-    gh variable set VALKEY_SECRET_ROTATION_ENABLED_STAGING --body "true"
-    gh variable set VALKEY_ROTATION_SCHEDULE_DAYS_PROD --body "90"
-    gh variable set VALKEY_ROTATION_SCHEDULE_DAYS_STAGING --body "90"
-    gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_PROD --body "7"
-    gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_STAGING --body "0"
-
-    gh variable set VALKEY_VERSION_PROD --body "8.1"
-    gh variable set VALKEY_VERSION_STAGING --body "8.1"
-
-    # LadybugDB Writer Configuration - Standard Tier
-    gh variable set LBUG_STANDARD_ENABLED_PROD --body "true"
-    gh variable set LBUG_STANDARD_ENABLED_STAGING --body "true"
-    gh variable set LBUG_STANDARD_MIN_INSTANCES_PROD --body "1"
-    gh variable set LBUG_STANDARD_MAX_INSTANCES_PROD --body "10"
-    gh variable set LBUG_STANDARD_MIN_INSTANCES_STAGING --body "1"
-    gh variable set LBUG_STANDARD_MAX_INSTANCES_STAGING --body "5"
-
-    # LadybugDB Writer Configuration - Large Tier
-    gh variable set LBUG_LARGE_ENABLED_PROD --body "false"
-    gh variable set LBUG_LARGE_ENABLED_STAGING --body "false"
-    gh variable set LBUG_LARGE_MIN_INSTANCES_PROD --body "0"
-    gh variable set LBUG_LARGE_MAX_INSTANCES_PROD --body "20"
-    gh variable set LBUG_LARGE_MIN_INSTANCES_STAGING --body "0"
-    gh variable set LBUG_LARGE_MAX_INSTANCES_STAGING --body "5"
-
-    # LadybugDB Writer Configuration - XLarge Tier
-    gh variable set LBUG_XLARGE_ENABLED_PROD --body "false"
-    gh variable set LBUG_XLARGE_ENABLED_STAGING --body "false"
-    gh variable set LBUG_XLARGE_MIN_INSTANCES_PROD --body "0"
-    gh variable set LBUG_XLARGE_MAX_INSTANCES_PROD --body "10"
-    gh variable set LBUG_XLARGE_MIN_INSTANCES_STAGING --body "0"
-    gh variable set LBUG_XLARGE_MAX_INSTANCES_STAGING --body "5"
-
-    # LadybugDB Writer Configuration - Shared Repository
-    gh variable set LBUG_SHARED_ENABLED_PROD --body "false"
-    gh variable set LBUG_SHARED_ENABLED_STAGING --body "false"
-    gh variable set LBUG_SHARED_MIN_INSTANCES_PROD --body "1"
-    gh variable set LBUG_SHARED_MAX_INSTANCES_PROD --body "3"
-    gh variable set LBUG_SHARED_MIN_INSTANCES_STAGING --body "1"
-    gh variable set LBUG_SHARED_MAX_INSTANCES_STAGING --body "2"
-
-    # Neo4j Writer Configuration (optional backend)
-    gh variable set NEO4J_COMMUNITY_LARGE_ENABLED_PROD --body "false"
-    gh variable set NEO4J_COMMUNITY_LARGE_ENABLED_STAGING --body "false"
-    gh variable set NEO4J_ENTERPRISE_XLARGE_ENABLED_PROD --body "false"
-    gh variable set NEO4J_ENTERPRISE_XLARGE_ENABLED_STAGING --body "false"
-
-    # Graph AMI Configuration (updated via Graph Maintenance workflow)
-    # Look up latest Amazon Linux 2023 ARM64 AMI from AWS SSM
-    print_info "Looking up latest Amazon Linux 2023 ARM64 AMI..."
-    LATEST_AMI=$(get_latest_ami)
-    if [ -n "$LATEST_AMI" ]; then
-        print_success "Found latest AMI: $LATEST_AMI"
-        gh variable set GRAPH_AMI_ID_PROD --body "$LATEST_AMI"
-        gh variable set GRAPH_AMI_ID_STAGING --body "$LATEST_AMI"
-    else
-        print_warning "Could not look up latest AMI from AWS SSM (requires AWS CLI auth)"
-        print_warning "Skipping GRAPH_AMI_ID_* - set manually or run graph-maintenance workflow"
-    fi
-    # Opt-in: set to "true" to enable monthly scheduled AMI checks
-    # gh variable set GRAPH_AMI_AUTO_UPDATE --body "true"
-    # Opt-in: set to "true" to also trigger deploy when scheduled AMI update finds a new AMI
-    # gh variable set GRAPH_AMI_AUTO_DEPLOY --body "true"
-
-    # Other Graph Settings
-    gh variable set GRAPH_API_KEY_ROTATION_DAYS --body "90"
-    gh variable set GRAPH_UPDATE_CONTAINERS_PROD --body "true"
-    gh variable set GRAPH_UPDATE_CONTAINERS_STAGING --body "true"
-
-    # GitHub Actions Runner Configuration
-    # Default: "github-hosted" uses GitHub-hosted runners (ubuntu-latest)
-    # For self-hosted: set RUNNER_LABELS to e.g. "self-hosted,Linux,X64"
-    # RUNNER_SCOPE: "repo" (check repo only), "org" (org only), "both" (repo then org)
-    gh variable set RUNNER_LABELS --body "github-hosted"
-    gh variable set RUNNER_SCOPE --body "both"
-
-    # Notification Configuration
-    gh variable set AWS_SNS_ALERT_EMAIL --body "$AWS_SNS_ALERT_EMAIL"
-
-    # Admin API access (set to your IP for restricted access)
-    gh variable set ADMIN_ALLOWED_CIDRS --body "0.0.0.0/32"
-
-    # Publishing Configuration
-    gh variable set DOCKERHUB_PUBLISHING_ENABLED --body "false"
-
-    # Features Configuration
-    gh variable set OBSERVABILITY_ENABLED_PROD --body "true"
-    gh variable set OBSERVABILITY_ENABLED_STAGING --body "true"
-
-    # WAF Configuration (environment-specific)
-    gh variable set WAF_ENABLED_PROD --body "true"
-    gh variable set WAF_ENABLED_STAGING --body "true"
-    gh variable set WAF_RATE_LIMIT_PER_IP --body "10000"
-    gh variable set WAF_GEO_BLOCKING_ENABLED --body "false"
-    gh variable set WAF_AWS_MANAGED_RULES_ENABLED --body "true"
-
-    # Infrastructure Configuration
-    gh variable set MAX_AVAILABILITY_ZONES --body "5"
-
-    # Public Domain Configuration (optional for externalizing XBRL data)
-    gh variable set PUBLIC_DOMAIN_NAME_PROD --body "public.$ROOT_DOMAIN"
-    gh variable set PUBLIC_DOMAIN_NAME_STAGING --body "public-staging.$ROOT_DOMAIN"
+    gh variable set AWS_REGION --body "$AWS_REGION"
+    gh variable set API_DOMAIN_NAME_ROOT --body "${ROOT_DOMAIN:-}"
 
     echo ""
-    echo "✅ Minimal configuration completed!"
+    print_success "Essential configuration complete! (5 variables set)"
     echo ""
-    echo "📋 Variables set:"
-    echo "  🌐 Root Domain: $ROOT_DOMAIN"
-    echo "  📦 Repository: $REPOSITORY_NAME"
-    echo "  🐳 ECR Repository: $ECR_REPOSITORY"
-    echo "  📊 Observability: Enabled for both prod & staging"
-    echo "  🛡️ WAF Protection: Ready to enable (currently disabled)"
-    echo "  🗃️ Database Multi-AZ: Disabled (for cost optimization)"
-    echo "  📁 CloudTrail: Disabled (enable for SOC 2, ~\$5-15/month)"
-    echo "  🔍 VPC Flow Logs: Disabled (enable for SOC 2, ~\$10-15/month)"
-    echo "  🔐 Graph API Key Rotation: Every 90 days"
-    echo "  🔐 PostgreSQL Password Rotation: Every 90 days"
-    echo "  🐘 PostgreSQL Version: 16.11"
-    echo "  🔐 Valkey Encryption: Enabled for both environments"
-    echo "  🔐 Valkey Secret Rotation: Every 90 days (both environments)"
-    echo "  ⚡ Valkey Version: 8.1"
-    echo "  💾 Valkey Snapshots: 7 days (prod), disabled (staging)"
-    echo "  🔄 Database Migrations: Disabled (prod), Enabled (staging)"
-    echo ""
-    echo "🚀 Your deployment is ready to run!"
-    echo "💡 All settings use cost-optimized defaults."
-    echo ""
-    echo "📋 Optional secrets (all deployments work without these):"
-    echo "    - ACTIONS_TOKEN (enables cross-workflow triggers)"
-    echo "    - ANTHROPIC_API_KEY (enables AI-powered tools)"
-    echo ""
-    echo "💡 AWS credentials are handled via OIDC federation."
-    echo "   Run 'just bootstrap' if not already configured."
+    show_optional_secrets
 }
+
 
 function setup_full_config() {
     echo "Setting up full configuration with all currently used variables..."
     echo ""
 
-    # Get user input for key variables
+    # Domain configuration (optional for VPC-only deployments)
+    echo "📋 Domain Configuration:"
+    echo "   Leave empty for VPC-only deployment (access via bastion tunnel)"
     while true; do
-        read -p "Enter Root Domain (e.g., robosystems.ai): " ROOT_DOMAIN
+        read -p "Enter Root Domain (e.g., robosystems.ai) or press Enter to skip: " ROOT_DOMAIN
+        # Allow empty for VPC-only deployment
+        if [ -z "$ROOT_DOMAIN" ]; then
+            print_info "No domain configured - API will be accessible via bastion tunnel only"
+            break
+        fi
         # Basic domain validation: must contain at least one dot and valid characters
         if [[ "$ROOT_DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$ ]]; then
             break
         else
-            echo "❌ Invalid domain format. Please enter a valid domain (e.g., example.com)"
+            echo "❌ Invalid domain format. Please enter a valid domain (e.g., example.com) or press Enter to skip"
         fi
     done
     read -p "Enter GitHub Organization Name [YourGitHubOrg]: " GITHUB_ORG
@@ -420,9 +220,6 @@ function setup_full_config() {
     echo "Setting all variables..."
 
     # Core Infrastructure
-    gh variable set API_DOMAIN_NAME_ROOT --body "$ROOT_DOMAIN"
-    gh variable set API_DOMAIN_NAME_PROD --body "api.$ROOT_DOMAIN"
-    gh variable set API_DOMAIN_NAME_STAGING --body "staging.api.$ROOT_DOMAIN"
     gh variable set REPOSITORY_NAME --body "$REPOSITORY_NAME"
     gh variable set ECR_REPOSITORY --body "$ECR_REPOSITORY"
 
@@ -432,11 +229,25 @@ function setup_full_config() {
     gh variable set ENVIRONMENT_PROD --body "prod"
     gh variable set ENVIRONMENT_STAGING --body "staging"
 
-    # Application URLs (typically org-level, set at repo level for forks)
-    gh variable set ROBOSYSTEMS_API_URL_PROD --body "https://api.$ROOT_DOMAIN"
-    gh variable set ROBOSYSTEMS_API_URL_STAGING --body "https://staging.api.$ROOT_DOMAIN"
-    gh variable set ROBOSYSTEMS_APP_URL_PROD --body "https://$ROOT_DOMAIN"
-    gh variable set ROBOSYSTEMS_APP_URL_STAGING --body "https://staging.$ROOT_DOMAIN"
+    # Domain Configuration (empty for VPC-only deployment)
+    if [ -n "$ROOT_DOMAIN" ]; then
+        gh variable set API_DOMAIN_NAME_ROOT --body "$ROOT_DOMAIN"
+        gh variable set API_DOMAIN_NAME_PROD --body "api.$ROOT_DOMAIN"
+        gh variable set API_DOMAIN_NAME_STAGING --body "staging.api.$ROOT_DOMAIN"
+        gh variable set ROBOSYSTEMS_API_URL_PROD --body "https://api.$ROOT_DOMAIN"
+        gh variable set ROBOSYSTEMS_API_URL_STAGING --body "https://staging.api.$ROOT_DOMAIN"
+        gh variable set ROBOSYSTEMS_APP_URL_PROD --body "https://$ROOT_DOMAIN"
+        gh variable set ROBOSYSTEMS_APP_URL_STAGING --body "https://staging.$ROOT_DOMAIN"
+    else
+        # VPC-only deployment - set empty domain values
+        gh variable set API_DOMAIN_NAME_ROOT --body ""
+        gh variable set API_DOMAIN_NAME_PROD --body ""
+        gh variable set API_DOMAIN_NAME_STAGING --body ""
+        gh variable set ROBOSYSTEMS_API_URL_PROD --body ""
+        gh variable set ROBOSYSTEMS_API_URL_STAGING --body ""
+        gh variable set ROBOSYSTEMS_APP_URL_PROD --body ""
+        gh variable set ROBOSYSTEMS_APP_URL_STAGING --body ""
+    fi
 
     # Admin API access (set to your IP for restricted access)
     gh variable set ADMIN_ALLOWED_CIDRS --body "0.0.0.0/32"
@@ -608,25 +419,33 @@ function setup_full_config() {
     gh variable set MAX_AVAILABILITY_ZONES --body "5"
 
     # Public Domain Configuration (optional for frontend apps)
-    gh variable set PUBLIC_DOMAIN_NAME_PROD --body "public.$ROOT_DOMAIN"
-    gh variable set PUBLIC_DOMAIN_NAME_STAGING --body "public-staging.$ROOT_DOMAIN"
-
-    # Additional Application URLs (optional, for multi-app ecosystems)
-    echo ""
-    read -p "Configure RoboLedger app URLs? (y/N): " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        read -p "RoboLedger domain (e.g., roboledger.ai): " ROBOLEDGER_DOMAIN
-        gh variable set ROBOLEDGER_APP_URL_PROD --body "https://$ROBOLEDGER_DOMAIN"
-        gh variable set ROBOLEDGER_APP_URL_STAGING --body "https://staging.$ROBOLEDGER_DOMAIN"
+    if [ -n "$ROOT_DOMAIN" ]; then
+        gh variable set PUBLIC_DOMAIN_NAME_PROD --body "public.$ROOT_DOMAIN"
+        gh variable set PUBLIC_DOMAIN_NAME_STAGING --body "public-staging.$ROOT_DOMAIN"
+    else
+        gh variable set PUBLIC_DOMAIN_NAME_PROD --body ""
+        gh variable set PUBLIC_DOMAIN_NAME_STAGING --body ""
     fi
 
-    read -p "Configure RoboInvestor app URLs? (y/N): " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        read -p "RoboInvestor domain (e.g., roboinvestor.ai): " ROBOINVESTOR_DOMAIN
-        gh variable set ROBOINVESTOR_APP_URL_PROD --body "https://$ROBOINVESTOR_DOMAIN"
-        gh variable set ROBOINVESTOR_APP_URL_STAGING --body "https://staging.$ROBOINVESTOR_DOMAIN"
+    # Additional Application URLs (optional, for multi-app ecosystems)
+    # Only offer if domain is configured
+    if [ -n "$ROOT_DOMAIN" ]; then
+        echo ""
+        read -p "Configure RoboLedger app URLs? (y/N): " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            read -p "RoboLedger domain (e.g., roboledger.ai): " ROBOLEDGER_DOMAIN
+            gh variable set ROBOLEDGER_APP_URL_PROD --body "https://$ROBOLEDGER_DOMAIN"
+            gh variable set ROBOLEDGER_APP_URL_STAGING --body "https://staging.$ROBOLEDGER_DOMAIN"
+        fi
+
+        read -p "Configure RoboInvestor app URLs? (y/N): " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            read -p "RoboInvestor domain (e.g., roboinvestor.ai): " ROBOINVESTOR_DOMAIN
+            gh variable set ROBOINVESTOR_APP_URL_PROD --body "https://$ROBOINVESTOR_DOMAIN"
+            gh variable set ROBOINVESTOR_APP_URL_STAGING --body "https://staging.$ROBOINVESTOR_DOMAIN"
+        fi
     fi
 
     # Publishing Configuration
@@ -636,7 +455,11 @@ function setup_full_config() {
     echo "✅ Full configuration completed!"
     echo ""
     echo "📋 Summary of configured variables:"
-    echo "  🌐 Domains: api.$ROOT_DOMAIN, staging.api.$ROOT_DOMAIN"
+    if [ -n "$ROOT_DOMAIN" ]; then
+        echo "  🌐 Domains: api.$ROOT_DOMAIN, staging.api.$ROOT_DOMAIN"
+    else
+        echo "  🌐 Domain: VPC-only (bastion tunnel access)"
+    fi
     echo "  📦 Repository: $REPOSITORY_NAME"
     echo "  🐳 ECR: $ECR_REPOSITORY"
     echo "  🔧 Total variables configured: 81"
@@ -659,45 +482,26 @@ function main() {
     echo "Repository: $repo_info"
     echo ""
 
-    echo "Choose what to set up:"
-    echo "1) Variables only - Minimum config (essential variables only)"
-    echo "2) Variables only - Full config (all variables)"
-    echo "3) Show secret commands (requires manual setup)"
-    echo "4) Both variables (minimum) + secret commands"
-    echo "5) Both variables (full) + secret commands"
+    echo "Choose configuration level:"
     echo ""
-    read -p "Enter your choice (1/2/3/4/5): " -n 1 -r
+    echo "1) Essential (recommended) - 5 variables, uses workflow defaults"
+    echo "   Best for: New deployments, forks, testing"
+    echo ""
+    echo "2) Full - ~80 variables, explicit control over everything"
+    echo "   Best for: Production customization, specific sizing needs"
+    echo ""
+    read -p "Enter your choice (1/2): " -n 1 -r
+    echo ""
     echo ""
 
     case $REPLY in
         1)
-            echo "Setting up minimum variables..."
-            echo ""
-            setup_minimum_config
+            setup_essential_config
             ;;
         2)
-            echo "Setting up full variables..."
-            echo ""
-            setup_full_config
-            ;;
-        3)
-            echo "Showing secret setup commands..."
-            echo ""
-            setup_secrets
-            ;;
-        4)
-            echo "Setting up minimum variables and showing secret commands..."
-            echo ""
-            setup_minimum_config
-            echo ""
-            setup_secrets
-            ;;
-        5)
-            echo "Setting up full variables and showing secret commands..."
-            echo ""
             setup_full_config
             echo ""
-            setup_secrets
+            show_optional_secrets
             ;;
         *)
             echo "Invalid choice. Exiting."
@@ -709,10 +513,9 @@ function main() {
     echo "✅ GitHub repository setup completed!"
     echo ""
     echo "📋 Next steps:"
-    echo "1. If secrets weren't set, run the displayed commands with real values"
-    echo "2. Verify variables: gh variable list"
-    echo "3. Verify secrets: gh secret list"
-    echo "4. Test CI/CD pipeline"
+    echo "   1. Deploy: just deploy staging"
+    echo "   2. Verify variables: gh variable list"
+    echo "   3. Verify secrets: gh secret list"
 }
 
 # Run main function if script is executed directly

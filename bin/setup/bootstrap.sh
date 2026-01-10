@@ -18,8 +18,17 @@
 #   4. Creates AWS Secrets Manager secrets
 #
 # USAGE:
-#   just bootstrap
-#   or: bin/setup/bootstrap.sh
+#   just bootstrap [profile] [region]
+#   or: bin/setup/bootstrap.sh [profile] [region]
+#
+# ARGUMENTS:
+#   profile: AWS SSO profile name (default: robosystems-sso)
+#   region:  AWS region (default: us-east-1)
+#
+# EXAMPLES:
+#   just bootstrap                           # Use defaults
+#   just bootstrap my-fork-sso               # Custom profile
+#   just bootstrap my-fork-sso eu-west-1     # Custom profile and region
 #
 # =============================================================================
 
@@ -33,10 +42,18 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Configuration
-SSO_PROFILE="${AWS_PROFILE:-robosystems-sso}"
+# Parse arguments - these take priority over environment variables
+SSO_PROFILE="${1:-${AWS_PROFILE:-robosystems-sso}}"
+AWS_REGION="${2:-${AWS_REGION:-us-east-1}}"
 OIDC_STACK_NAME="RoboSystemsGitHubOIDC"
-AWS_REGION="${AWS_REGION:-us-east-1}"
+
+# Export immediately so all AWS CLI calls in this script use the correct profile
+# This ensures bootstrap works even if .envrc isn't activated yet
+export AWS_PROFILE="$SSO_PROFILE"
+export AWS_REGION="$AWS_REGION"
+
+# Track if we need to remind user to activate .envrc
+ENVRC_NEEDS_ACTIVATION=false
 
 print_header() {
     echo ""
@@ -74,38 +91,66 @@ setup_direnv() {
     print_header "Setting up direnv"
 
     local target_file=".envrc"
-    local profile="${AWS_PROFILE:-}"
+    local expected_profile="$SSO_PROFILE"
+    local expected_region="$AWS_REGION"
 
-    if [ -z "$profile" ]; then
-        read -p "Enter AWS profile name [robosystems-sso]: " profile
-        profile="${profile:-robosystems-sso}"
-    fi
+    print_info "Using profile: ${expected_profile}"
+    print_info "Using region:  ${expected_region}"
+    echo ""
 
     if [ -f "$target_file" ]; then
-        print_info "Existing .envrc found:"
-        cat "$target_file"
-        echo ""
-        read -p "Overwrite with profile '${profile}'? (y/N): " -n 1 -r
-        echo ""
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Keeping existing .envrc"
+        # Check if existing .envrc has the expected profile
+        local current_profile
+        current_profile=$(grep -E "^export AWS_PROFILE=" "$target_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" || echo "")
+
+        if [ "$current_profile" = "$expected_profile" ]; then
+            print_success "Existing .envrc already configured for profile '${expected_profile}'"
+
+            # Check if region is set, update if missing
+            if ! grep -q "^export AWS_REGION=" "$target_file" 2>/dev/null; then
+                echo "export AWS_REGION=${expected_region}" >> "$target_file"
+                print_info "Added AWS_REGION to existing .envrc"
+                ENVRC_NEEDS_ACTIVATION=true
+            fi
             return 0
+        else
+            # Different profile - ask user what to do
+            print_warning "Existing .envrc uses different profile: '${current_profile}'"
+            echo ""
+            cat "$target_file"
+            echo ""
+            read -p "Update to profile '${expected_profile}'? (Y/n): " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Nn]$ ]]; then
+                print_error "Cannot continue with mismatched profile"
+                print_info "Either update .envrc manually or run: just bootstrap ${current_profile}"
+                exit 1
+            fi
         fi
     fi
 
-    # Generate .envrc with the configured profile
+    # Generate .envrc with the configured profile and region
     cat > "$target_file" << EOF
-# Automatically set AWS profile for this project
-export AWS_PROFILE=${profile}
+# Automatically set AWS profile and region for this project
+export AWS_PROFILE=${expected_profile}
+export AWS_REGION=${expected_region}
 EOF
 
-    print_success "Created .envrc with AWS_PROFILE=${profile}"
+    print_success "Created .envrc with AWS_PROFILE=${expected_profile} and AWS_REGION=${expected_region}"
+    ENVRC_NEEDS_ACTIVATION=true
 
     if command -v direnv &>/dev/null; then
-        print_info "Run 'direnv allow' to activate"
+        # Try to auto-allow if possible
+        if direnv allow . 2>/dev/null; then
+            print_success "Activated .envrc with direnv"
+            ENVRC_NEEDS_ACTIVATION=false
+        else
+            print_info "Run 'direnv allow' to activate for future sessions"
+        fi
     else
         print_warning "direnv not installed - .envrc created but won't auto-load"
         print_info "Install with: brew install direnv"
+        print_info "Or run: source .envrc"
     fi
 }
 
@@ -537,12 +582,39 @@ show_summary() {
     echo -e "${CYAN}  NEXT STEPS${NC}"
     echo -e "${CYAN}════════════════════════════════════════════════════════════${NC}"
     echo ""
-    echo "1. Deploy to production:"
+    # Show activation reminder if .envrc was created/updated
+    if [ "$ENVRC_NEEDS_ACTIVATION" = true ]; then
+        echo -e "${YELLOW}════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}  ACTION REQUIRED: Activate .envrc${NC}"
+        echo -e "${YELLOW}════════════════════════════════════════════════════════════${NC}"
+        echo ""
+        if command -v direnv &>/dev/null; then
+            echo "  Run: direnv allow"
+        else
+            echo "  Run: source .envrc"
+        fi
+        echo ""
+        echo "  This ensures future terminal sessions use the correct AWS profile."
+        echo ""
+    fi
+
+    echo "1. Create application secrets (required before first deploy):"
+    echo "   just setup-aws"
+    echo ""
+    echo "   This creates JWT keys, encryption keys, and feature flags in"
+    echo "   AWS Secrets Manager. Edit bin/setup/aws.sh first to customize"
+    echo "   integration credentials (QuickBooks, Plaid, etc.) if needed."
+    echo ""
+    echo "2. Deploy to production:"
     echo "   just deploy prod"
     echo ""
-    echo "2. For CLI access, use:"
+    echo "3. For CLI access, use:"
     echo "   aws sso login --profile ${SSO_PROFILE}"
-    echo "   export AWS_PROFILE=${SSO_PROFILE}"
+    if command -v direnv &>/dev/null; then
+        echo "   # AWS_PROFILE is auto-set by direnv"
+    else
+        echo "   export AWS_PROFILE=${SSO_PROFILE}"
+    fi
     echo ""
 }
 
@@ -557,6 +629,10 @@ main() {
     echo ""
     echo "  • AWS CLI via SSO (temporary credentials)"
     echo "  • GitHub Actions via OIDC (no stored secrets)"
+    echo ""
+    echo -e "${CYAN}Configuration:${NC}"
+    echo "  AWS Profile: ${SSO_PROFILE}"
+    echo "  AWS Region:  ${AWS_REGION}"
     echo ""
     echo "Prerequisites:"
     echo "  ✓ AWS IAM Identity Center enabled"

@@ -191,6 +191,29 @@ jobs:
       - name: Call Claude API
         id: claude
         run: |
+          # Check if ANTHROPIC_API_KEY is available
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "::notice::ANTHROPIC_API_KEY not set - using basic PR description"
+            PR_TITLE="${{ inputs.pr_type }}: ${{ steps.source-branch.outputs.source_branch }}"
+            PR_DESCRIPTION="## Summary"$'\n\n'"Automated PR from \`${{ steps.source-branch.outputs.source_branch }}\` to \`${{ inputs.target_branch }}\`"
+            PR_DESCRIPTION="${PR_DESCRIPTION}"$'\n\n'"**Changes:** ${{ steps.analyze.outputs.files_changed }} files, ${{ steps.analyze.outputs.commits_count }} commits"
+            PR_DESCRIPTION="${PR_DESCRIPTION}"$'\n\n'"---"$'\n'"*To enable AI-generated descriptions, set ANTHROPIC_API_KEY secret.*"
+
+            {
+              echo "pr_title<<EOF"
+              echo "$PR_TITLE"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+
+            {
+              echo "pr_description<<EOF"
+              echo "$PR_DESCRIPTION"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+
+            exit 0
+          fi
+
           # Call Claude API with the analysis prompt
           PROMPT=$(cat /tmp/pr_analysis_prompt.txt)
 
