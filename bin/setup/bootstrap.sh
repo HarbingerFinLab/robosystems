@@ -463,14 +463,6 @@ configure_github() {
     echo ""
     print_step "Note: No AWS secrets needed with OIDC!"
     print_info "Workflows will use role assumption instead of access keys"
-
-    echo ""
-    read -p "Run full GitHub variable setup (setup-gha)? (Y/n): " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        # Run the existing setup script
-        ./bin/setup/gha.sh
-    fi
 }
 
 # =============================================================================
@@ -480,10 +472,17 @@ configure_github() {
 setup_aws_secrets() {
     print_header "AWS Secrets Manager Setup"
 
-    read -p "Create AWS Secrets Manager secrets? (Y/n): " -n 1 -r
+    echo "The application requires secrets and feature flags to start."
+    echo "This creates them with auto-generated keys and sensible defaults."
+    echo ""
+    print_info "Safe to run - existing secrets are NOT overwritten"
+    echo ""
+
+    read -p "Create application secrets & feature flags? (Y/n): " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Nn]$ ]]; then
-        print_info "Skipping secrets setup"
+        print_warning "Skipping secrets - deploy will fail without them!"
+        print_info "Run 'just setup-aws' before deploying"
         return 0
     fi
 
@@ -492,6 +491,29 @@ setup_aws_secrets() {
 
     # Run the existing setup script
     ./bin/setup/aws.sh
+}
+
+# =============================================================================
+# OPTIONAL: FULL GITHUB VARIABLES
+# =============================================================================
+
+prompt_full_gha_setup() {
+    print_header "Full GitHub Variables (Optional)"
+
+    echo "Basic deployment works with the 3 variables already set."
+    echo "The full setup adds ~80 variables for custom domains, instance"
+    echo "sizes, scaling policies, and other production customizations."
+    echo ""
+    print_info "This is NOT required - workflows use sensible defaults"
+    echo ""
+
+    read -p "Run full GitHub variable setup? (y/N): " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        ./bin/setup/gha.sh
+    else
+        print_info "Skipping - run 'just setup-gha' later if needed"
+    fi
 }
 
 # =============================================================================
@@ -598,17 +620,17 @@ show_summary() {
         echo ""
     fi
 
-    echo "1. Create application secrets (required before first deploy):"
-    echo "   just setup-aws"
-    echo ""
-    echo "   This creates JWT keys, encryption keys, and feature flags in"
-    echo "   AWS Secrets Manager. Edit bin/setup/aws.sh first to customize"
-    echo "   integration credentials (QuickBooks, Plaid, etc.) if needed."
-    echo ""
-    echo "2. Deploy to production:"
+    echo "1. Deploy to production:"
     echo "   just deploy prod"
     echo ""
-    echo "3. For CLI access, use:"
+    echo "   Workflows use sensible defaults. Deploys to VPC-only mode"
+    echo "   (access via bastion tunnel) unless domain is configured."
+    echo ""
+    echo "To run skipped steps later:"
+    echo "   just setup-aws      # Application secrets & feature flags (required)"
+    echo "   just setup-gha      # Full variable control (optional)"
+    echo ""
+    echo "For CLI access:"
     echo "   aws sso login --profile ${SSO_PROFILE}"
     if command -v direnv &>/dev/null; then
         echo "   # AWS_PROFILE is auto-set by direnv"
@@ -695,6 +717,9 @@ main() {
 
     # Setup AWS secrets
     setup_aws_secrets
+
+    # Optional: full GitHub variable setup
+    prompt_full_gha_setup
 
     # Summary
     show_summary

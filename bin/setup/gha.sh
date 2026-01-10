@@ -126,65 +126,6 @@ function show_optional_secrets() {
 }
 
 
-function setup_essential_config() {
-    echo "Setting up essential configuration..."
-    echo "💡 Auto-detecting values - only domain requires input!"
-    echo ""
-
-    # Auto-detect all values
-    REPOSITORY_NAME=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "")
-    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
-    AWS_REGION="${AWS_REGION:-us-east-1}"
-
-    # Validate we could detect the essentials
-    if [ -z "$REPOSITORY_NAME" ]; then
-        print_error "Could not detect repository. Run from within a git repo with GitHub remote."
-        exit 1
-    fi
-    if [ -z "$AWS_ACCOUNT_ID" ]; then
-        print_error "Could not detect AWS account. Ensure AWS CLI is authenticated."
-        print_info "Run: aws sso login --profile <your-profile>"
-        exit 1
-    fi
-
-    # ECR repository defaults to repo name
-    ECR_REPOSITORY=$(echo "$REPOSITORY_NAME" | cut -d'/' -f2)
-
-    echo "📋 Auto-detected:"
-    echo "   Repository:   $REPOSITORY_NAME"
-    echo "   ECR:          $ECR_REPOSITORY"
-    echo "   AWS Account:  $AWS_ACCOUNT_ID"
-    echo "   AWS Region:   $AWS_REGION"
-    echo ""
-
-    # Domain (optional - only user input needed)
-    echo "📋 Domain Configuration (optional):"
-    echo "   Leave empty for VPC-only deployment (access via bastion tunnel)"
-    read -p "Root Domain (e.g., example.com) or press Enter to skip: " ROOT_DOMAIN
-    if [ -z "$ROOT_DOMAIN" ]; then
-        print_info "No domain - API accessible via bastion tunnel only"
-    elif [[ ! "$ROOT_DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$ ]]; then
-        print_warning "Invalid domain format, skipping"
-        ROOT_DOMAIN=""
-    fi
-
-    # Set the essential variables
-    echo ""
-    echo "Setting variables..."
-
-    gh variable set REPOSITORY_NAME --body "$REPOSITORY_NAME"
-    gh variable set ECR_REPOSITORY --body "$ECR_REPOSITORY"
-    gh variable set AWS_ACCOUNT_ID --body "$AWS_ACCOUNT_ID"
-    gh variable set AWS_REGION --body "$AWS_REGION"
-    gh variable set API_DOMAIN_NAME_ROOT --body "${ROOT_DOMAIN:-}"
-
-    echo ""
-    print_success "Essential configuration complete! (5 variables set)"
-    echo ""
-    show_optional_secrets
-}
-
-
 function setup_full_config() {
     echo "Setting up full configuration with all currently used variables..."
     echo ""
@@ -229,7 +170,7 @@ function setup_full_config() {
     gh variable set ENVIRONMENT_PROD --body "prod"
     gh variable set ENVIRONMENT_STAGING --body "staging"
 
-    # Domain Configuration (empty for VPC-only deployment)
+    # Domain Configuration (skip for VPC-only deployment - workflows default to empty)
     if [ -n "$ROOT_DOMAIN" ]; then
         gh variable set API_DOMAIN_NAME_ROOT --body "$ROOT_DOMAIN"
         gh variable set API_DOMAIN_NAME_PROD --body "api.$ROOT_DOMAIN"
@@ -238,16 +179,8 @@ function setup_full_config() {
         gh variable set ROBOSYSTEMS_API_URL_STAGING --body "https://staging.api.$ROOT_DOMAIN"
         gh variable set ROBOSYSTEMS_APP_URL_PROD --body "https://$ROOT_DOMAIN"
         gh variable set ROBOSYSTEMS_APP_URL_STAGING --body "https://staging.$ROOT_DOMAIN"
-    else
-        # VPC-only deployment - set empty domain values
-        gh variable set API_DOMAIN_NAME_ROOT --body ""
-        gh variable set API_DOMAIN_NAME_PROD --body ""
-        gh variable set API_DOMAIN_NAME_STAGING --body ""
-        gh variable set ROBOSYSTEMS_API_URL_PROD --body ""
-        gh variable set ROBOSYSTEMS_API_URL_STAGING --body ""
-        gh variable set ROBOSYSTEMS_APP_URL_PROD --body ""
-        gh variable set ROBOSYSTEMS_APP_URL_STAGING --body ""
     fi
+    # VPC-only: domain variables not set, workflows use || '' fallbacks
 
     # Admin API access (set to your IP for restricted access)
     gh variable set ADMIN_ALLOWED_CIDRS --body "0.0.0.0/32"
@@ -418,13 +351,10 @@ function setup_full_config() {
     # Infrastructure Configuration
     gh variable set MAX_AVAILABILITY_ZONES --body "5"
 
-    # Public Domain Configuration (optional for frontend apps)
+    # Public Domain Configuration (optional for frontend apps, skip if no domain)
     if [ -n "$ROOT_DOMAIN" ]; then
         gh variable set PUBLIC_DOMAIN_NAME_PROD --body "public.$ROOT_DOMAIN"
         gh variable set PUBLIC_DOMAIN_NAME_STAGING --body "public-staging.$ROOT_DOMAIN"
-    else
-        gh variable set PUBLIC_DOMAIN_NAME_PROD --body ""
-        gh variable set PUBLIC_DOMAIN_NAME_STAGING --body ""
     fi
 
     # Additional Application URLs (optional, for multi-app ecosystems)
@@ -482,32 +412,20 @@ function main() {
     echo "Repository: $repo_info"
     echo ""
 
-    echo "Choose configuration level:"
+    echo "This sets ~80 GitHub variables for full control over infrastructure."
+    echo "Note: Basic deployments work without this (workflows have sensible defaults)."
     echo ""
-    echo "1) Essential (recommended) - 5 variables, uses workflow defaults"
-    echo "   Best for: New deployments, forks, testing"
+    read -p "Continue with full variable setup? (Y/n): " -n 1 -r
     echo ""
-    echo "2) Full - ~80 variables, explicit control over everything"
-    echo "   Best for: Production customization, specific sizing needs"
-    echo ""
-    read -p "Enter your choice (1/2): " -n 1 -r
-    echo ""
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        echo "Cancelled."
+        exit 0
+    fi
     echo ""
 
-    case $REPLY in
-        1)
-            setup_essential_config
-            ;;
-        2)
-            setup_full_config
-            echo ""
-            show_optional_secrets
-            ;;
-        *)
-            echo "Invalid choice. Exiting."
-            exit 1
-            ;;
-    esac
+    setup_full_config
+    echo ""
+    show_optional_secrets
 
     echo ""
     echo "✅ GitHub repository setup completed!"
@@ -515,7 +433,6 @@ function main() {
     echo "📋 Next steps:"
     echo "   1. Deploy: just deploy staging"
     echo "   2. Verify variables: gh variable list"
-    echo "   3. Verify secrets: gh secret list"
 }
 
 # Run main function if script is executed directly

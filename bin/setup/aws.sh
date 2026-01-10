@@ -55,18 +55,21 @@ function generate_secret_key() {
 }
 
 function create_production_secret() {
+    echo "Checking production secret..."
+
+    # Check if secret already exists - don't overwrite!
+    if aws secretsmanager describe-secret --secret-id "robosystems/prod" >/dev/null 2>&1; then
+        echo "✅ Production secret already exists - skipping (won't overwrite)"
+        return 0
+    fi
+
     echo "Creating production secret..."
 
-    # Check if secret already exists
-    if aws secretsmanager describe-secret --secret-id "robosystems/prod" >/dev/null 2>&1; then
-        echo "⚠️  Production secret already exists. Updating values..."
-    else
-        # Create Production Secret
-        aws secretsmanager create-secret \
-            --name "robosystems/prod" \
-            --description "RoboSystems production environment secrets" \
-            --tags Key=Environment,Value=prod Key=Service,Value=RoboSystems Key=Component,Value=Secrets
-    fi
+    # Create Production Secret
+    aws secretsmanager create-secret \
+        --name "robosystems/prod" \
+        --description "RoboSystems production environment secrets" \
+        --tags Key=Environment,Value=prod Key=Service,Value=RoboSystems Key=Component,Value=Secrets
 
     echo "Generating secure keys..."
     PROD_JWT_SECRET=$(generate_secret_key)
@@ -125,18 +128,21 @@ function create_production_secret() {
 }
 
 function create_staging_secret() {
+    echo "Checking staging secret..."
+
+    # Check if secret already exists - don't overwrite!
+    if aws secretsmanager describe-secret --secret-id "robosystems/staging" >/dev/null 2>&1; then
+        echo "✅ Staging secret already exists - skipping (won't overwrite)"
+        return 0
+    fi
+
     echo "Creating staging secret..."
 
-    # Check if secret already exists
-    if aws secretsmanager describe-secret --secret-id "robosystems/staging" >/dev/null 2>&1; then
-        echo "⚠️  Staging secret already exists. Updating values..."
-    else
-        # Create Staging Secret
-        aws secretsmanager create-secret \
-            --name "robosystems/staging" \
-            --description "RoboSystems staging environment secrets" \
-            --tags Key=Environment,Value=staging Key=Service,Value=RoboSystems Key=Component,Value=Secrets
-    fi
+    # Create Staging Secret
+    aws secretsmanager create-secret \
+        --name "robosystems/staging" \
+        --description "RoboSystems staging environment secrets" \
+        --tags Key=Environment,Value=staging Key=Service,Value=RoboSystems Key=Component,Value=Secrets
 
     echo "Generating secure keys..."
     STAGING_JWT_SECRET=$(generate_secret_key)
@@ -226,10 +232,10 @@ function check_prerequisites() {
 function main() {
     check_prerequisites
 
-    echo "This script will create RoboSystems secrets in AWS Secrets Manager."
+    echo "This script creates RoboSystems secrets in AWS Secrets Manager."
     echo ""
-    echo "⚠️  WARNING: Make sure to update the placeholder values in this script"
-    echo "   with your actual API keys and secrets before running!"
+    echo "Safe to run multiple times - existing secrets are NOT overwritten."
+    echo "Keys (JWT, encryption) are auto-generated on first run."
     echo ""
 
     # Show current AWS identity
@@ -237,33 +243,61 @@ function main() {
     echo "AWS Account: $aws_identity"
     echo ""
 
-    read -p "Do you want to continue? (y/N): " -n 1 -r
+    # Check what already exists
+    local prod_exists=false
+    local staging_exists=false
+    if aws secretsmanager describe-secret --secret-id "robosystems/prod" >/dev/null 2>&1; then
+        prod_exists=true
+    fi
+    if aws secretsmanager describe-secret --secret-id "robosystems/staging" >/dev/null 2>&1; then
+        staging_exists=true
+    fi
+
+    if $prod_exists && $staging_exists; then
+        echo "✅ Both secrets already exist - nothing to do"
+        echo ""
+        echo "To update individual values, use AWS Console or CLI:"
+        echo "   aws secretsmanager get-secret-value --secret-id robosystems/prod"
+        echo "   aws secretsmanager put-secret-value --secret-id robosystems/prod --secret-string '...'"
+        return 0
+    fi
+
+    if $prod_exists; then
+        echo "ℹ️  Production secret exists (will skip)"
+    else
+        echo "⚡ Production secret will be created"
+    fi
+    if $staging_exists; then
+        echo "ℹ️  Staging secret exists (will skip)"
+    else
+        echo "⚡ Staging secret will be created"
+    fi
     echo ""
 
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "Starting secrets setup..."
-        echo ""
+    read -p "Continue? (Y/n): " -n 1 -r
+    echo ""
 
-        create_production_secret
-        echo ""
-        create_staging_secret
-        echo ""
-
-        echo "✅ AWS Secrets Manager setup completed!"
-        echo ""
-        echo "📋 Next steps:"
-        echo "1. Edit this script to replace placeholder values with real secrets"
-        echo "2. Re-run this script to update the secrets with actual values"
-        echo "3. Deploy your CloudFormation templates"
-        echo "4. Test the application with the new secrets"
-        echo ""
-        echo "🔍 View secrets:"
-        echo "   aws secretsmanager get-secret-value --secret-id robosystems/prod"
-        echo "   aws secretsmanager get-secret-value --secret-id robosystems/staging"
-    else
-        echo "Setup cancelled."
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        echo "Cancelled."
         exit 0
     fi
+
+    echo ""
+    echo "Creating secrets..."
+    echo ""
+
+    create_production_secret
+    echo ""
+    create_staging_secret
+    echo ""
+
+    echo "✅ AWS Secrets Manager setup completed!"
+    echo ""
+    echo "📋 To customize integration credentials later:"
+    echo "   aws secretsmanager get-secret-value --secret-id robosystems/prod --query SecretString --output text | jq ."
+    echo ""
+    echo "   Then update with:"
+    echo "   aws secretsmanager put-secret-value --secret-id robosystems/prod --secret-string '\$(cat updated-secrets.json)'"
 }
 
 # Run main function if script is executed directly
