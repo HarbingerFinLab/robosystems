@@ -22,12 +22,15 @@ Parameters:
     ConstraintDescription: Must be between 2 and 6. Verify your AWS region has sufficient AZs before deployment.
 
   # Infrastructure & Networking Configuration
-  VpcCidr:
-    Type: String
-    Default: 10.0.0.0/16
-    Description: CIDR block for VPC
-    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$
-    ConstraintDescription: Must be a valid CIDR block
+  # VPC uses 10.X.0.0/16 where X is the VpcSecondOctet
+  # Default is 10.0.0.0/16 - forks should change to avoid conflicts with other VPCs
+  # Example: Set VpcSecondOctet=2 for 10.2.0.0/16 to peer with another 10.0.0.0/16 VPC
+  VpcSecondOctet:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 255
+    Description: Second octet for VPC CIDR (10.X.0.0/16). Change to avoid overlap with other VPCs for peering.
 
   # Security & Access Configuration
   DeployVpcEndpoints:
@@ -81,7 +84,7 @@ Resources:
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !Ref VpcCidr
+      CidrBlock: !Sub "10.${VpcSecondOctet}.0.0/16"
       EnableDnsHostnames: true
       EnableDnsSupport: true
       Tags:
@@ -123,7 +126,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.10.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.10.0/24"
       AvailabilityZone: !Select
         - 0
         - !GetAZs ""
@@ -144,7 +147,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.11.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.11.0/24"
       AvailabilityZone: !Select
         - 1
         - !GetAZs ""
@@ -166,7 +169,7 @@ Resources:
     Condition: Create3rdAZ
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.12.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.12.0/24"
       AvailabilityZone: !Select
         - 2
         - !GetAZs ""
@@ -188,7 +191,7 @@ Resources:
     Condition: Create4thAZ
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.13.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.13.0/24"
       AvailabilityZone: !Select
         - 3
         - !GetAZs ""
@@ -210,7 +213,7 @@ Resources:
     Condition: Create5thAZ
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.14.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.14.0/24"
       AvailabilityZone: !Select
         - 5
         - !GetAZs ""
@@ -232,7 +235,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.1.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.1.0/24"
       AvailabilityZone: !Select
         - 0
         - !GetAZs ""
@@ -253,7 +256,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.2.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.2.0/24"
       AvailabilityZone: !Select
         - 1
         - !GetAZs ""
@@ -275,7 +278,7 @@ Resources:
     Condition: Create3rdAZ
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.3.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.3.0/24"
       AvailabilityZone: !Select
         - 2
         - !GetAZs ""
@@ -297,7 +300,7 @@ Resources:
     Condition: Create4thAZ
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.4.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.4.0/24"
       AvailabilityZone: !Select
         - 3
         - !GetAZs ""
@@ -319,7 +322,7 @@ Resources:
     Condition: Create5thAZ
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.5.0/24
+      CidrBlock: !Sub "10.${VpcSecondOctet}.5.0/24"
       AvailabilityZone: !Select
         - 5
         - !GetAZs ""
@@ -595,7 +598,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIp: !Ref VpcCidr
+          CidrIp: !Sub "10.${VpcSecondOctet}.0.0/16"
       Tags:
         - Key: Name
           Value: sg-robosystems-vpc-endpoints
@@ -846,6 +849,12 @@ Outputs:
     Value: !Ref VPC
     Export:
       Name: !Sub ${AWS::StackName}-${Environment}-VpcId
+
+  VpcCidr:
+    Description: VPC CIDR block (for VPC peering and security groups)
+    Value: !Sub "10.${VpcSecondOctet}.0.0/16"
+    Export:
+      Name: !Sub ${AWS::StackName}-${Environment}-VpcCidr
 
   PublicSubnetIds:
     Description: Public subnet IDs (for ALBs)

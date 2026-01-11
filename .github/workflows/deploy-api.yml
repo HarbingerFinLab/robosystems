@@ -102,14 +102,21 @@ on:
         type: string
         default: "60"
 
-      # Domain & DNS Configuration (Optional - leave empty for internal-only access via bastion)
+      # Access Mode Configuration
+      api_access_mode:
+        description: "API access mode: 'public' (HTTPS with domain), 'public-http' (HTTP via ALB DNS), 'internal' (via bastion tunnel)"
+        required: false
+        type: string
+        default: "internal"
+
+      # Domain & DNS Configuration (Required only when api_access_mode=public)
       domain_name:
-        description: "Full domain name for the application (e.g., api.robosystems.ai). Leave empty for internal-only access."
+        description: "Full domain name for the application (e.g., api.robosystems.ai). Required when api_access_mode=public."
         required: false
         type: string
         default: ""
       domain_name_root:
-        description: "Root domain name for Route 53 hosted zone. Required when domain_name is provided."
+        description: "Root domain name for Route 53 hosted zone. Required when api_access_mode=public."
         required: false
         type: string
         default: ""
@@ -145,10 +152,10 @@ on:
         type: string
         default: ""
       refresh_ecs_service:
-        description: "Refresh ECS service"
+        description: "Refresh ECS service after deployment"
         required: false
         type: string
-        default: "false"
+        default: "true"
 
       # WAF Configuration (optional)
       waf_enabled:
@@ -219,24 +226,42 @@ jobs:
       - name: Deploy API CloudFormation Stack
         id: deploy-stack
         run: |
-          # Determine if this is a public (domain) or internal (no domain) deployment
+          # Determine access mode and validate configuration
+          API_ACCESS_MODE="${{ inputs.api_access_mode }}"
           DOMAIN_NAME="${{ inputs.domain_name }}"
           HOSTED_ZONE_ID=""
 
-          if [ -z "$DOMAIN_NAME" ]; then
-            echo "🔒 Internal-only deployment (no domain configured)"
-            echo "   Access will be via bastion tunnel only"
-          else
-            echo "🌐 Public deployment with domain: $DOMAIN_NAME"
-            # Look up the hosted zone ID for the root domain
-            HOSTED_ZONE_ID=$(aws route53 list-hosted-zones | jq -r ".HostedZones[] | select(.Name==\"${{ inputs.domain_name_root }}.\") | .Id" | cut -d'/' -f3)
+          echo "API Access Mode: $API_ACCESS_MODE"
 
-            if [ -z "$HOSTED_ZONE_ID" ]; then
-              echo "ERROR: No hosted zone found for domain ${{ inputs.domain_name_root }}"
+          case "$API_ACCESS_MODE" in
+            "public")
+              if [ -z "$DOMAIN_NAME" ]; then
+                echo "ERROR: domain_name is required when api_access_mode=public"
+                exit 1
+              fi
+              echo "🌐 Public deployment with custom domain: $DOMAIN_NAME"
+              # Look up the hosted zone ID for the root domain
+              HOSTED_ZONE_ID=$(aws route53 list-hosted-zones | jq -r ".HostedZones[] | select(.Name==\"${{ inputs.domain_name_root }}.\") | .Id" | cut -d'/' -f3)
+              if [ -z "$HOSTED_ZONE_ID" ]; then
+                echo "ERROR: No hosted zone found for domain ${{ inputs.domain_name_root }}"
+                exit 1
+              fi
+              echo "   Hosted zone: $HOSTED_ZONE_ID"
+              ;;
+            "public-http")
+              echo "🌐 Public deployment with ALB DNS (HTTP only, no TLS)"
+              echo "   Access will be via ALB DNS name"
+              ;;
+            "internal")
+              echo "🔒 Internal-only deployment"
+              echo "   Access will be via bastion tunnel only"
+              ;;
+            *)
+              echo "ERROR: Invalid api_access_mode: $API_ACCESS_MODE"
+              echo "   Valid values: public, public-http, internal"
               exit 1
-            fi
-            echo "   Hosted zone: $HOSTED_ZONE_ID"
-          fi
+              ;;
+          esac
 
           if aws cloudformation describe-stacks --stack-name ${{ inputs.stack_name }} 2>&1 | grep -q 'Stack with id ${{ inputs.stack_name }} does not exist'; then
             STACK_ACTION="create-stack"
@@ -248,7 +273,7 @@ jobs:
             echo "is_new_stack=false" >> $GITHUB_OUTPUT
           fi
 
-          # Build parameters - domain-related params are empty for internal deployments
+          # Build parameters
           API_STACK_PARAMS="ParameterKey=Environment,ParameterValue=${{ inputs.environment }} \
                 ParameterKey=VpcId,ParameterValue=${{ inputs.vpc_id }} \
                 ParameterKey=SubnetIds,ParameterValue=\"${{ inputs.subnet_ids }}\" \
@@ -261,6 +286,7 @@ jobs:
                 ParameterKey=Memory,ParameterValue=${{ inputs.memory }} \
                 ParameterKey=ValkeyUrl,ParameterValue=${{ inputs.valkey_url }} \
                 ParameterKey=ValkeyClientSecurityGroupId,ParameterValue=${{ inputs.valkey_sg_id }} \
+                ParameterKey=ApiAccessMode,ParameterValue=${{ inputs.api_access_mode }} \
                 ParameterKey=DomainName,ParameterValue=\"${{ inputs.domain_name }}\" \
                 ParameterKey=RootDomainName,ParameterValue=\"${{ inputs.domain_name_root }}\" \
                 ParameterKey=HostedZoneId,ParameterValue=\"$HOSTED_ZONE_ID\" \
@@ -336,7 +362,7 @@ jobs:
           echo "✅ API Security Group ID: $API_SG_ID"
 
       - name: Refresh ECS Service
-        if: inputs.refresh_ecs_service == 'true' && steps.deploy-stack.outputs.is_new_stack != 'true'
+        if: inputs.refresh_ecs_service != 'false' && steps.deploy-stack.outputs.is_new_stack != 'true'
         uses: ./.github/actions/refresh-ecs
         with:
           stack-name: ${{ inputs.stack_name }}
@@ -356,7 +382,7 @@ jobs:
           fi
 
       - name: Deploy WAF Protection
-        if: inputs.waf_enabled == 'true' && inputs.waf_stack_name != '' && inputs.domain_name != ''
+        if: inputs.waf_enabled == 'true' && inputs.waf_stack_name != '' && inputs.api_access_mode == 'public'
         id: deploy-waf
         run: |
           echo "🛡️ Deploying WAF protection for API"

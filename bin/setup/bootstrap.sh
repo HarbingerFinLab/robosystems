@@ -567,25 +567,6 @@ configure_essential_variables() {
 
     # Export for downstream scripts (gha.sh)
     export ALERT_EMAIL
-
-    # S3_NAMESPACE - auto-detected based on repository
-    # Main repo (RoboFinSystems/robosystems): no namespace
-    # Forks: use AWS account ID as namespace (auto-unique)
-    echo ""
-    print_step "S3 Namespace Configuration"
-    echo ""
-
-    local full_repo="${GITHUB_ORG}/${GITHUB_REPO}"
-    if [ "$full_repo" = "RoboFinSystems/robosystems" ]; then
-        export S3_NAMESPACE=""
-        print_success "Main repository detected - no namespace needed"
-        print_info "Buckets: robosystems-shared-raw-prod, etc."
-    else
-        export S3_NAMESPACE="$AWS_ACCOUNT_ID"
-        print_success "Fork detected - using account ID as namespace"
-        print_info "Buckets: robosystems-${AWS_ACCOUNT_ID}-shared-raw-prod, etc."
-        print_info "This ensures globally unique S3 bucket names"
-    fi
 }
 
 # =============================================================================
@@ -691,6 +672,24 @@ setup_secrets_and_variables() {
     echo ""
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         run_aws=true
+
+        # Ask about API access mode for JWT configuration
+        echo ""
+        echo "API Access Mode:"
+        echo "  1) Internal (default) - Access via bastion tunnel, no public exposure"
+        echo "  2) Public             - Internet-facing with custom domain (HTTPS)"
+        echo "  3) Public HTTP        - Internet-facing without domain (HTTP only)"
+        echo ""
+        read -p "Select access mode [1]: " access_mode_choice
+        access_mode_choice=${access_mode_choice:-1}
+
+        case "$access_mode_choice" in
+            1) export API_ACCESS_MODE="internal" ;;
+            2) export API_ACCESS_MODE="public" ;;
+            3) export API_ACCESS_MODE="public-http" ;;
+            *) export API_ACCESS_MODE="internal" ;;
+        esac
+        print_info "API access mode: $API_ACCESS_MODE"
     fi
 
     read -p "Setup GitHub Variables? (y/N): " -n 1 -r

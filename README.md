@@ -104,8 +104,10 @@ just logs-follow dagster-webserver   # Tail Dagster logs
 #### Deployment Requirements
 
 - Fork this repo
-- GHA secrets & variables initialized
-- AWS account with credentials & secrets initialized
+- AWS account with IAM Identity Center (SSO)
+- Run `just bootstrap` to configure OIDC and GitHub variables
+
+See the **[Bootstrap Guide](https://github.com/RoboFinSystems/robosystems/wiki/Bootstrap-Guide)** for complete instructions.
 
 ## Architecture
 
@@ -207,6 +209,7 @@ pip install robosystems-client
 ### User Guides (Wiki)
 
 - **[Getting Started](https://github.com/RoboFinSystems/robosystems/wiki)** - Quick start and overview
+- **[Bootstrap Guide](https://github.com/RoboFinSystems/robosystems/wiki/Bootstrap-Guide)** - Fork and deploy to your AWS account
 - **[Architecture Overview](https://github.com/RoboFinSystems/robosystems/wiki/Architecture-Overview)** - System design and components
 - **[SEC XBRL Pipeline](https://github.com/RoboFinSystems/robosystems/wiki/SEC-XBRL-Pipeline)** - Working with SEC financial data
 - **[Accounting Demo](https://github.com/RoboFinSystems/robosystems/wiki/Accounting-Demo)** - Complete guide to graph-based accounting workflows
@@ -244,6 +247,11 @@ pip install robosystems-client
 - **[Examples](/examples/README.md)** - Runnable demos and integration examples
 - **[Tests](/tests/README.md)** - Testing strategy and organization
 - **[Admin Tools](/robosystems/admin/README.md)** - Administrative utilities and scripts
+
+**Infrastructure:**
+
+- **[CloudFormation](/cloudformation/README.md)** - AWS infrastructure templates
+- **[Setup Scripts](/bin/setup/README.md)** - Bootstrap and configuration scripts
 
 **Security & Compliance:**
 

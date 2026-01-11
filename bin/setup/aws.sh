@@ -46,17 +46,14 @@ echo ""
 # =============================================================================
 
 # =============================================================================
-# VALIDATION
+# ENVIRONMENT VARIABLES
 # =============================================================================
-
-# Validate S3_NAMESPACE format if provided (must be 12-digit AWS account ID)
-if [ -n "${S3_NAMESPACE:-}" ]; then
-    if ! [[ "$S3_NAMESPACE" =~ ^[0-9]{12}$ ]]; then
-        echo "ERROR: S3_NAMESPACE must be a 12-digit AWS account ID, got: $S3_NAMESPACE"
-        exit 1
-    fi
-    echo "S3 namespace configured: $S3_NAMESPACE (fork deployment)"
-fi
+#
+# API_ACCESS_MODE   - API access mode: 'internal' (default), 'public', 'public-http'
+#                     When 'internal', sets JWT_ISSUER/JWT_AUDIENCE to 'localhost'
+# SETUP_STAGING     - Set to 'true' to also create staging secrets
+#
+# =============================================================================
 
 # =============================================================================
 # AWS SECRETS MANAGER SETUP FUNCTIONS
@@ -91,18 +88,18 @@ function create_production_secret() {
 
     echo "Setting production secret values..."
 
-    # Build S3_NAMESPACE entry if provided (for forks)
-    local s3_namespace_entry=""
-    if [ -n "${S3_NAMESPACE:-}" ]; then
-        s3_namespace_entry="\"S3_NAMESPACE\": \"${S3_NAMESPACE}\","
-        echo "Including S3_NAMESPACE: ${S3_NAMESPACE}"
+    # Build JWT entries for internal mode (localhost access via bastion tunnel)
+    local jwt_entries=""
+    if [ "${API_ACCESS_MODE:-internal}" = "internal" ]; then
+        jwt_entries="\"JWT_ISSUER\": \"localhost\", \"JWT_AUDIENCE\": \"localhost\","
+        echo "Including JWT config for internal mode (localhost)"
     fi
 
     # Set Production Secret Values
     aws secretsmanager put-secret-value \
         --secret-id "robosystems/prod" \
         --secret-string '{
-        '"${s3_namespace_entry}"'
+        '"${jwt_entries}"'
         "BILLING_ENABLED": "false",
         "CONNECTION_CREDENTIALS_KEY": "'"$PROD_CONNECTION_KEY"'",
         "CONNECTION_PLAID_ENABLED": "false",
@@ -172,18 +169,18 @@ function create_staging_secret() {
 
     echo "Setting staging secret values..."
 
-    # Build S3_NAMESPACE entry if provided (for forks)
-    local s3_namespace_entry=""
-    if [ -n "${S3_NAMESPACE:-}" ]; then
-        s3_namespace_entry="\"S3_NAMESPACE\": \"${S3_NAMESPACE}\","
-        echo "Including S3_NAMESPACE: ${S3_NAMESPACE}"
+    # Build JWT entries for internal mode (localhost access via bastion tunnel)
+    local jwt_entries=""
+    if [ "${API_ACCESS_MODE:-internal}" = "internal" ]; then
+        jwt_entries="\"JWT_ISSUER\": \"localhost\", \"JWT_AUDIENCE\": \"localhost\","
+        echo "Including JWT config for internal mode (localhost)"
     fi
 
     # Set Staging Secret Values
     aws secretsmanager put-secret-value \
         --secret-id "robosystems/staging" \
         --secret-string '{
-        '"${s3_namespace_entry}"'
+        '"${jwt_entries}"'
         "BILLING_ENABLED": "false",
         "CONNECTION_CREDENTIALS_KEY": "'"$STAGING_CONNECTION_KEY"'",
         "CONNECTION_PLAID_ENABLED": "false",

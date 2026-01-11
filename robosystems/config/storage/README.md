@@ -22,7 +22,7 @@ All storage uses four canonical buckets (defined in `env.py`):
 | `robosystems-user-{env}` | `USER_DATA_BUCKET` | User uploads, graph backups, staging |
 | `robosystems-public-data-{env}` | `PUBLIC_DATA_BUCKET` | CDN-served public content |
 
-**Namespace Support (Forks):** S3 bucket names are globally unique across all AWS accounts. Forks automatically use their AWS account ID as a namespace (set during bootstrap). For example, account `123456789012` gets buckets like `robosystems-123456789012-shared-raw-{env}`.
+**Fork Support:** S3 bucket names are globally unique across all AWS accounts. For forks, GitHub Actions workflows automatically pass your AWS account ID as a namespace to CloudFormation, creating unique bucket names like `robosystems-{account-id}-shared-raw-{env}`. Bucket names are passed to the application via environment variables from CloudFormation outputs.
 
 ## Modules
 

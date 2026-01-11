@@ -239,10 +239,12 @@ class EnvConfig:
   PORT = get_int_env("PORT", 8000)
 
   # Service URLs
+  # ROBOSYSTEMS_API_URL is set by CloudFormation based on access mode (domain or ALB DNS)
   ROBOSYSTEMS_API_URL = get_str_env("ROBOSYSTEMS_API_URL", "https://api.robosystems.ai")
-  ROBOLEDGER_URL = get_str_env("ROBOLEDGER_URL", "https://roboledger.ai")
-  ROBOINVESTOR_URL = get_str_env("ROBOINVESTOR_URL", "https://roboinvestor.ai")
-  ROBOSYSTEMS_URL = get_str_env("ROBOSYSTEMS_URL", "https://robosystems.ai")
+  # Frontend URLs - configurable via Secrets Manager for forks with custom domains
+  ROBOLEDGER_URL = get_secret_value("ROBOLEDGER_URL", "https://roboledger.ai")
+  ROBOINVESTOR_URL = get_secret_value("ROBOINVESTOR_URL", "https://roboinvestor.ai")
+  ROBOSYSTEMS_URL = get_secret_value("ROBOSYSTEMS_URL", "https://robosystems.ai")
 
   # ==========================================================================
   # FEATURE FLAGS
@@ -698,42 +700,15 @@ class EnvConfig:
   AWS_S3_ACCESS_KEY_ID = get_secret_value("AWS_S3_ACCESS_KEY_ID", "")
   AWS_S3_SECRET_ACCESS_KEY = get_secret_value("AWS_S3_SECRET_ACCESS_KEY", "")
 
-  # S3 Bucket Configuration (2026-01 restructure)
-  # Bucket names computed via shared helper (robosystems/config/buckets.py)
-  # Pattern: robosystems-{namespace}-{purpose}-{environment}
-  #
-  # S3_NAMESPACE is auto-detected during bootstrap:
-  # - Main repo (RoboFinSystems/robosystems): no namespace → robosystems-shared-raw-prod
-  # - Forks: AWS account ID as namespace → robosystems-123456789012-shared-raw-prod
-  #
-  # For local dev, use env vars to override (e.g., for LocalStack bucket names)
-  # Import is inline to avoid circular imports at module load time
-  from robosystems.config.storage.buckets import compute_bucket_name
-
-  # Namespace for S3 buckets (from secrets for forks, empty for main deployment)
-  S3_NAMESPACE = get_secret_value("S3_NAMESPACE", "")
-
-  # Core bucket configuration - computed from namespace + environment
-  # Environment variable overrides supported for local development
-  SHARED_RAW_BUCKET = get_str_env(
-    "SHARED_RAW_BUCKET", compute_bucket_name("shared-raw", S3_NAMESPACE, ENVIRONMENT)
-  )
-  SHARED_PROCESSED_BUCKET = get_str_env(
-    "SHARED_PROCESSED_BUCKET",
-    compute_bucket_name("shared-processed", S3_NAMESPACE, ENVIRONMENT),
-  )
-  USER_DATA_BUCKET = get_str_env(
-    "USER_DATA_BUCKET", compute_bucket_name("user", S3_NAMESPACE, ENVIRONMENT)
-  )
-  PUBLIC_DATA_BUCKET = get_str_env(
-    "PUBLIC_DATA_BUCKET", compute_bucket_name("public-data", S3_NAMESPACE, ENVIRONMENT)
-  )
-  DEPLOYMENT_BUCKET = get_str_env(
-    "DEPLOYMENT_BUCKET", compute_bucket_name("deployment", S3_NAMESPACE, ENVIRONMENT)
-  )
-  LOGS_BUCKET = get_str_env(
-    "LOGS_BUCKET", compute_bucket_name("logs", S3_NAMESPACE, ENVIRONMENT)
-  )
+  # S3 Bucket Configuration
+  # Bucket names are passed as env vars from CloudFormation (api.yaml, dagster.yaml)
+  # Defaults are for local development only
+  SHARED_RAW_BUCKET = get_str_env("SHARED_RAW_BUCKET", "robosystems-shared-raw")
+  SHARED_PROCESSED_BUCKET = get_str_env("SHARED_PROCESSED_BUCKET", "robosystems-shared-processed")
+  USER_DATA_BUCKET = get_str_env("USER_DATA_BUCKET", "robosystems-user")
+  PUBLIC_DATA_BUCKET = get_str_env("PUBLIC_DATA_BUCKET", "robosystems-public-data")
+  DEPLOYMENT_BUCKET = get_str_env("DEPLOYMENT_BUCKET", "robosystems-deployment")
+  LOGS_BUCKET = get_str_env("LOGS_BUCKET", "robosystems-logs")
 
   # CDN URL passed via ECS task definition (depends on CloudFront distribution)
   PUBLIC_DATA_CDN_URL = get_str_env("PUBLIC_DATA_CDN_URL", "")
@@ -747,13 +722,18 @@ class EnvConfig:
   JWT_EXPIRY_HOURS = get_float_env("JWT_EXPIRY_HOURS", 0.5)  # Default 30 minutes
 
   # JWT Issuer and Audience - configurable for different deployments
-  # Note: https:// prefix is stripped at infrastructure layer (GitHub Actions workflows)
-  # For fork deployments without public domains, set JWT_ISSUER and JWT_AUDIENCE in Secrets Manager
-  # e.g., JWT_ISSUER=localhost, JWT_AUDIENCE=localhost
-  JWT_ISSUER = get_secret_value("JWT_ISSUER", "api.robosystems.ai")
-  JWT_AUDIENCE = get_secret_list_value(
-    "JWT_AUDIENCE", "robosystems.ai,roboledger.ai,roboinvestor.ai"
+  # Default JWT_ISSUER is derived from ROBOSYSTEMS_API_URL (strips protocol)
+  # Override via Secrets Manager for custom deployments:
+  # - internal mode: set JWT_ISSUER=localhost (access via bastion tunnel)
+  # - public-http mode: uses ALB DNS automatically, or set custom value
+  # Derive default JWT issuer/audience from ROBOSYSTEMS_API_URL, stripping protocol
+  _jwt_default_domain = (
+    os.getenv("ROBOSYSTEMS_API_URL", "https://api.robosystems.ai")
+    .replace("https://", "")
+    .replace("http://", "")
   )
+  JWT_ISSUER = get_secret_value("JWT_ISSUER", _jwt_default_domain)
+  JWT_AUDIENCE = get_secret_list_value("JWT_AUDIENCE", _jwt_default_domain)
 
   # Authentication Security Settings (configurable per environment)
   TOKEN_GRACE_PERIOD_MINUTES = get_int_env("TOKEN_GRACE_PERIOD_MINUTES", 5)
