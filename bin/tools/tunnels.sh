@@ -207,7 +207,7 @@ discover_infrastructure() {
     # Discover API ALB endpoint
     echo -e "${YELLOW}Looking for API ALB endpoint...${NC}"
 
-    local api_stack="RoboSystemsApi${env_capitalized}"
+    local api_stack="RoboSystemsAPI${env_capitalized}"
     API_ENDPOINT=$(aws cloudformation describe-stacks \
         --stack-name "$api_stack" \
         --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
