@@ -619,8 +619,6 @@ Resources:
             # Observability Configuration
             - Name: OTEL_ENABLED
               Value: !If [HasObservabilityStack, "true", "false"]
-            - Name: OTEL_FORCE_ENABLE
-              Value: "false"
             - Name: OTEL_SERVICE_NAME
               Value: !Sub "robosystems-api-${Environment}"
             - Name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -654,6 +652,11 @@ Resources:
               Value: !Sub "{{resolve:secretsmanager:robosystems/${Environment}/postgres:SecretString:password}}"
             - Name: DAGSTER_POSTGRES_DB
               Value: dagster
+            # Dagster GraphQL endpoint (for job submission via Service Discovery)
+            - Name: DAGSTER_HOST
+              Value: !Sub webserver.dagster.${Environment}.robosystems.local
+            - Name: DAGSTER_PORT
+              Value: "3000"
           # Secrets are fetched directly by the application using secrets_manager.py
           # The container has IAM permissions to access robosystems/{env}/* secrets
         # ADOT Collector Sidecar (only if observability stack is configured)
@@ -1057,6 +1060,12 @@ Outputs:
     Value: !Ref ApiALB
     Export:
       Name: !Sub ${AWS::StackName}-ApiALBArn
+
+  ApiSecurityGroupId:
+    Description: Security group ID for API ECS tasks (for Dagster access)
+    Value: !Ref ApiSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiSecurityGroupId
 
   # Admin Key Outputs
   AdminKeySecretArn:

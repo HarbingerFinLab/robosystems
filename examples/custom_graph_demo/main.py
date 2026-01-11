@@ -24,7 +24,9 @@ from pathlib import Path
 
 
 DEMO_DIR = Path(__file__).parent
-DEFAULT_CREDENTIALS_FILE = Path(__file__).resolve().parents[1] / "credentials" / "config.json"
+DEFAULT_CREDENTIALS_FILE = (
+  Path(__file__).resolve().parents[1] / "credentials" / "config.json"
+)
 
 
 def run_script(script_name: str, args: list[str] | None = None):
@@ -80,6 +82,11 @@ def main():
     default=str(DEFAULT_CREDENTIALS_FILE),
     help="Path to credentials file shared across demo scripts",
   )
+  parser.add_argument(
+    "--real-s3",
+    action="store_true",
+    help="Use real AWS S3 instead of LocalStack (for fork/production deployments)",
+  )
 
   args = parser.parse_args()
   credentials_path = Path(args.credentials_file).expanduser()
@@ -120,10 +127,16 @@ def main():
   print(f"Base URL: {args.base_url}")
   print(f"Create new user: {args.new_user}")
   print(f"Create new graph: {args.new_graph}")
+  print(f"S3: {'AWS S3' if args.real_s3 else 'LocalStack'}")
   print("Regenerate data: True (always)")
   print("=" * 70)
 
-  step2_args = ["--base-url", args.base_url, "--credentials-file", str(credentials_path)]
+  step2_args = [
+    "--base-url",
+    args.base_url,
+    "--credentials-file",
+    str(credentials_path),
+  ]
   if not args.new_graph:
     step2_args.append("--reuse")
   run_script("02_create_graph.py", step2_args)
@@ -132,7 +145,14 @@ def main():
   step3_args = ["--regenerate", "--credentials-file", str(credentials_path)]
   run_script("03_generate_data.py", step3_args)
 
-  step4_args = ["--base-url", args.base_url, "--credentials-file", str(credentials_path)]
+  step4_args = [
+    "--base-url",
+    args.base_url,
+    "--credentials-file",
+    str(credentials_path),
+  ]
+  if args.real_s3:
+    step4_args.append("--real-s3")
   run_script("04_upload_ingest.py", step4_args)
 
   if not args.skip_queries:

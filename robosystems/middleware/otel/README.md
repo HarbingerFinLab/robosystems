@@ -259,7 +259,6 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 
 # Environment Control
 ENVIRONMENT=prod                      # prod/staging enables OTEL
-OTEL_FORCE_ENABLE=false              # Force enable in dev
 
 # Auto-instrumentation
 OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
@@ -328,7 +327,7 @@ service:
 docker compose --profile observability up -d
 
 # Enable OTEL in development
-export OTEL_FORCE_ENABLE=true
+export OTEL_ENABLED=true
 export OTEL_SERVICE_NAME=robosystems-api-dev
 
 # Access monitoring tools

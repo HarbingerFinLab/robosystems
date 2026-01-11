@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Accounting Demo Upload & Ingest
+Element Mapping Demo Upload & Ingest
 
-This script uploads and ingests accounting data:
+This script uploads and ingests element mapping demo data:
 1. Upload ALL parquet files (nodes + relationships)
 2. Ingest everything ONCE
 
@@ -81,9 +81,7 @@ def upload_directory(
     print(f"   Size: {file_size:,} bytes")
 
     try:
-      result = extensions.files.upload(
-        graph_id, table_name, str(file_path)
-      )
+      result = extensions.files.upload(graph_id, table_name, str(file_path))
 
       if result.success:
         print(
@@ -162,6 +160,11 @@ def main():
     default="http://localhost:8000",
     help="API base URL (default: http://localhost:8000)",
   )
+  parser.add_argument(
+    "--real-s3",
+    action="store_true",
+    help="Use real AWS S3 instead of LocalStack (for fork/production deployments)",
+  )
 
   args = parser.parse_args()
 
@@ -177,15 +180,19 @@ def main():
       )
       sys.exit(1)
 
+    # Use LocalStack for local dev, real AWS S3 for fork/production
+    s3_endpoint = None if args.real_s3 else "http://localhost:4566"
+
     print("\n" + "=" * 70)
-    print("📊 Accounting Demo - Upload & Ingest")
+    print("📊 Element Mapping Demo - Upload & Ingest")
     print("=" * 70)
     print(f"Graph ID: {graph_id}")
+    print(f"S3: {'AWS S3' if args.real_s3 else 'LocalStack (' + s3_endpoint + ')'}")
 
     config = RoboSystemsExtensionConfig(
       base_url=args.base_url,
       headers={"X-API-Key": api_key},
-      s3_endpoint_url="http://localhost:4566",  # LocalStack S3 endpoint
+      s3_endpoint_url=s3_endpoint,
     )
     extensions = RoboSystemsExtensions(config)
 

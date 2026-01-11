@@ -188,6 +188,11 @@ on:
         description: "GitHub token for checkout (optional - falls back to github.token)"
         required: false
 
+    outputs:
+      api_sg_id:
+        description: "API ECS task security group ID (for Dagster access)"
+        value: ${{ jobs.action.outputs.api_sg_id }}
+
 jobs:
   action:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
@@ -195,6 +200,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    outputs:
+      api_sg_id: ${{ steps.get-outputs.outputs.api_sg_id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -316,6 +323,17 @@ jobs:
           stack-name: ${{ inputs.stack_name }}
           timeout: "1800"
           interval: "10"
+
+      - name: Get Stack Outputs
+        id: get-outputs
+        run: |
+          # Get API security group ID for Dagster access
+          API_SG_ID=$(aws cloudformation describe-stacks \
+            --stack-name ${{ inputs.stack_name }} \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiSecurityGroupId'].OutputValue" \
+            --output text 2>/dev/null || echo "")
+          echo "api_sg_id=$API_SG_ID" >> $GITHUB_OUTPUT
+          echo "✅ API Security Group ID: $API_SG_ID"
 
       - name: Refresh ECS Service
         if: inputs.refresh_ecs_service == 'true' && steps.deploy-stack.outputs.is_new_stack != 'true'
