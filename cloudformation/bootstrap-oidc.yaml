@@ -311,6 +311,20 @@ Resources:
                   - cloudwatch:*
                 Resource: "*"
 
+              # Amazon Managed Grafana
+              - Sid: Grafana
+                Effect: Allow
+                Action:
+                  - grafana:*
+                Resource: "*"
+
+              # Amazon Managed Prometheus (APS)
+              - Sid: Prometheus
+                Effect: Allow
+                Action:
+                  - aps:*
+                Resource: "*"
+
               # EventBridge
               - Sid: Events
                 Effect: Allow
