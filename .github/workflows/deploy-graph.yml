@@ -68,6 +68,11 @@ on:
         type: string
         description: Enable xlarge tier writers
         default: ""
+      lbug_shared_enabled:
+        required: false
+        type: string
+        description: Enable shared tier writers (public repositories)
+        default: ""
       # Graph Scaling Configuration (passed from parent workflow)
       lbug_standard_min_instances:
         required: false
@@ -210,6 +215,7 @@ jobs:
             export STANDARD_ENABLED_PROD="true"  # Always enabled
             export LBUG_LARGE_ENABLED_PROD="${{ inputs.lbug_large_enabled }}"
             export LBUG_XLARGE_ENABLED_PROD="${{ inputs.lbug_xlarge_enabled }}"
+            export LBUG_SHARED_ENABLED_PROD="${{ inputs.lbug_shared_enabled }}"
             # Export scaling variables for production (passed from parent workflow)
             export LBUG_STANDARD_MIN_INSTANCES_PROD="${{ inputs.lbug_standard_min_instances }}"
             export LBUG_STANDARD_MAX_INSTANCES_PROD="${{ inputs.lbug_standard_max_instances }}"
@@ -226,6 +232,7 @@ jobs:
             export STANDARD_ENABLED_STAGING="true"  # Always enabled
             export LBUG_LARGE_ENABLED_STAGING="${{ inputs.lbug_large_enabled }}"
             export LBUG_XLARGE_ENABLED_STAGING="${{ inputs.lbug_xlarge_enabled }}"
+            export LBUG_SHARED_ENABLED_STAGING="${{ inputs.lbug_shared_enabled }}"
             # Export scaling variables for staging (passed from parent workflow)
             export LBUG_STANDARD_MIN_INSTANCES_STAGING="${{ inputs.lbug_standard_min_instances }}"
             export LBUG_STANDARD_MAX_INSTANCES_STAGING="${{ inputs.lbug_standard_max_instances }}"

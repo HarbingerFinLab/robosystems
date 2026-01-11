@@ -459,6 +459,7 @@ jobs:
       # Graph Tier Configuration
       lbug_large_enabled: ${{ vars.LBUG_LARGE_ENABLED_STAGING || 'false' }}
       lbug_xlarge_enabled: ${{ vars.LBUG_XLARGE_ENABLED_STAGING || 'false' }}
+      lbug_shared_enabled: ${{ vars.LBUG_SHARED_ENABLED_STAGING || 'false' }}
       # Graph Scaling Configuration
       lbug_standard_min_instances: ${{ vars.LBUG_STANDARD_MIN_INSTANCES_STAGING }}
       lbug_standard_max_instances: ${{ vars.LBUG_STANDARD_MAX_INSTANCES_STAGING }}
