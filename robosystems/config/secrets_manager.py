@@ -356,6 +356,9 @@ SECRET_MAPPINGS = {
   "SHARED_REPO_SCHEDULE_ENABLED": (None, "SHARED_REPO_SCHEDULE_ENABLED"),
   # Default configuration
   "ORG_GRAPHS_DEFAULT_LIMIT": (None, "ORG_GRAPHS_DEFAULT_LIMIT"),
+  # JWT configuration (for internal/fork deployments without public domains)
+  "JWT_ISSUER": (None, "JWT_ISSUER"),
+  "JWT_AUDIENCE": (None, "JWT_AUDIENCE"),
 }
 
 
@@ -400,3 +403,25 @@ def get_secret_value(key: str, default: str = "") -> str:
     # Log the error but don't fail - return default
     logger.warning(f"Failed to retrieve secret '{key}' from Secrets Manager: {e}")
     return default
+
+
+def get_secret_list_value(
+  key: str, default: str = "", separator: str = ","
+) -> list[str]:
+  """
+  Get a list secret value from AWS Secrets Manager.
+
+  Retrieves a comma-separated string from Secrets Manager and splits it into a list.
+
+  Args:
+      key: The key name to retrieve (e.g., "JWT_AUDIENCE")
+      default: Default comma-separated value if not found
+      separator: String separator for list items (default: comma)
+
+  Returns:
+      List of strings from secret or default
+  """
+  value = get_secret_value(key, default)
+  if not value:
+    return []
+  return [item.strip() for item in value.split(separator) if item.strip()]

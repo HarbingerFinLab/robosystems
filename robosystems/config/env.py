@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 # Import secrets manager with graceful fallback
 # This handles cases where boto3 isn't installed or circular imports occur
 try:
-  from .secrets_manager import get_secret_value
+  from .secrets_manager import get_secret_list_value, get_secret_value
 
   SECRETS_MANAGER_AVAILABLE = True
 except ImportError:
@@ -38,6 +38,18 @@ except ImportError:
     Simply returns environment variable or default value.
     """
     return os.getenv(key, default)
+
+  def get_secret_list_value(
+    key: str, default: str = "", separator: str = ","
+  ) -> list[str]:
+    """
+    Fallback implementation when secrets_manager isn't available.
+    Returns environment variable split by separator or default value split.
+    """
+    value = os.getenv(key, default)
+    if not value:
+      return []
+    return [item.strip() for item in value.split(separator) if item.strip()]
 
 
 from .constants import (
@@ -736,8 +748,10 @@ class EnvConfig:
 
   # JWT Issuer and Audience - configurable for different deployments
   # Note: https:// prefix is stripped at infrastructure layer (GitHub Actions workflows)
-  JWT_ISSUER = get_str_env("JWT_ISSUER", "api.robosystems.ai")
-  JWT_AUDIENCE = get_list_env(
+  # For fork deployments without public domains, set JWT_ISSUER and JWT_AUDIENCE in Secrets Manager
+  # e.g., JWT_ISSUER=localhost, JWT_AUDIENCE=localhost
+  JWT_ISSUER = get_secret_value("JWT_ISSUER", "api.robosystems.ai")
+  JWT_AUDIENCE = get_secret_list_value(
     "JWT_AUDIENCE", "robosystems.ai,roboledger.ai,roboinvestor.ai"
   )
 
