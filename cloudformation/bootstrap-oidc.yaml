@@ -318,6 +318,13 @@ Resources:
                   - events:*
                 Resource: "*"
 
+              # Service Discovery (Cloud Map) - for ECS service discovery
+              - Sid: ServiceDiscovery
+                Effect: Allow
+                Action:
+                  - servicediscovery:*
+                Resource: "*"
+
               # STS
               - Sid: STS
                 Effect: Allow

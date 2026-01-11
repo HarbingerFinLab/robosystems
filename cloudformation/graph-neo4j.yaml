@@ -701,18 +701,16 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
           PropagateAtLaunch: true
-    CreationPolicy: !If
-      - HasMinInstances
-      - ResourceSignal:
-          Count: !Ref MinInstances
-          Timeout: PT15M # Neo4j needs more time than LadybugDB (15 min vs 5 min)
-      - !Ref AWS::NoValue
+    CreationPolicy:
+      ResourceSignal:
+        Count: !If [HasMinInstances, !Ref MinInstances, 0]
+        Timeout: PT15M # Neo4j needs more time than LadybugDB
     UpdatePolicy:
       AutoScalingRollingUpdate:
         MinInstancesInService: 0
         MaxBatchSize: 1
-        PauseTime: PT7M # Moderate pause for Neo4j startup (LadybugDB uses 5 min)
-        WaitOnResourceSignals: true
+        PauseTime: PT7M # Moderate pause for Neo4j startup
+        WaitOnResourceSignals: !If [HasMinInstances, true, false]
         SuspendProcesses:
           - AlarmNotification
           - AZRebalance

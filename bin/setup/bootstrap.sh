@@ -474,19 +474,28 @@ configure_essential_variables() {
 
     # AWS_SNS_ALERT_EMAIL - required for CloudWatch alarms (GitHub variable)
     print_step "Alert Email Configuration"
-    echo ""
-    echo "CloudWatch alarms will send notifications to this email."
-    echo "You'll receive a confirmation email from AWS to activate alerts."
-    echo ""
-    read -p "Enter alert email address: " ALERT_EMAIL
 
-    if [ -z "$ALERT_EMAIL" ]; then
-        print_error "Alert email is required for deployment"
-        exit 1
+    # Check if already set
+    EXISTING_EMAIL=$(gh variable get AWS_SNS_ALERT_EMAIL 2>/dev/null || echo "")
+
+    if [ -n "$EXISTING_EMAIL" ]; then
+        print_success "AWS_SNS_ALERT_EMAIL already set: $EXISTING_EMAIL"
+        ALERT_EMAIL="$EXISTING_EMAIL"
+    else
+        echo ""
+        echo "CloudWatch alarms will send notifications to this email."
+        echo "You'll receive a confirmation email from AWS to activate alerts."
+        echo ""
+        read -p "Enter alert email address: " ALERT_EMAIL
+
+        if [ -z "$ALERT_EMAIL" ]; then
+            print_error "Alert email is required for deployment"
+            exit 1
+        fi
+
+        gh variable set AWS_SNS_ALERT_EMAIL --body "$ALERT_EMAIL"
+        print_success "Set AWS_SNS_ALERT_EMAIL (GitHub variable)"
     fi
-
-    gh variable set AWS_SNS_ALERT_EMAIL --body "$ALERT_EMAIL"
-    print_success "Set AWS_SNS_ALERT_EMAIL (GitHub variable)"
 
     # S3_NAMESPACE - auto-detected based on repository
     # Main repo (RoboFinSystems/robosystems): no namespace
@@ -785,6 +794,24 @@ main() {
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         print_info "Bootstrap cancelled"
         exit 0
+    fi
+
+    # Environment choice - collected once and passed downstream
+    echo ""
+    echo "Which environments do you want to set up?"
+    echo "  1) Production only (recommended for getting started)"
+    echo "  2) Production + Staging (full setup)"
+    echo ""
+    read -p "Select [1]: " env_choice
+    env_choice=${env_choice:-1}
+
+    # Export for downstream scripts (aws.sh, gha.sh)
+    if [ "$env_choice" = "2" ]; then
+        export SETUP_STAGING=true
+        print_success "Configuring: Production + Staging"
+    else
+        export SETUP_STAGING=false
+        print_success "Configuring: Production only"
     fi
 
     # Setup direnv for AWS profile

@@ -130,6 +130,34 @@ function setup_full_config() {
     echo "Setting up full configuration with all currently used variables..."
     echo ""
 
+    # Check if environment choice was passed from bootstrap.sh
+    local setup_staging=false
+    if [ -n "${SETUP_STAGING:-}" ]; then
+        # Use the value from bootstrap.sh
+        if [ "$SETUP_STAGING" = "true" ]; then
+            setup_staging=true
+            echo "Environment: Production + Staging (from bootstrap)"
+        else
+            echo "Environment: Production only (from bootstrap)"
+        fi
+    else
+        # Ask interactively if not set
+        echo "Which environments do you want to configure?"
+        echo "  1) Production only (recommended for getting started)"
+        echo "  2) Production + Staging (full setup)"
+        echo ""
+        read -p "Select [1]: " env_choice
+        env_choice=${env_choice:-1}
+
+        if [ "$env_choice" = "2" ]; then
+            setup_staging=true
+            echo "Configuring: Production + Staging"
+        else
+            echo "Configuring: Production only"
+        fi
+    fi
+    echo ""
+
     # Domain configuration (optional for VPC-only deployments)
     echo "📋 Domain Configuration:"
     echo "   Leave empty for VPC-only deployment (access via bastion tunnel)"
@@ -153,7 +181,16 @@ function setup_full_config() {
     REPO_NAME=${REPO_NAME:-"robosystems-service"}
     REPOSITORY_NAME="${GITHUB_ORG}/${REPO_NAME}"
     read -p "Enter AWS Account ID: " AWS_ACCOUNT_ID
-    read -p "Enter AWS SNS Alert Email: " AWS_SNS_ALERT_EMAIL
+
+    # Check if alert email is already set
+    EXISTING_EMAIL=$(gh variable get AWS_SNS_ALERT_EMAIL 2>/dev/null || echo "")
+    if [ -n "$EXISTING_EMAIL" ]; then
+        echo "AWS_SNS_ALERT_EMAIL already set: $EXISTING_EMAIL"
+        AWS_SNS_ALERT_EMAIL="$EXISTING_EMAIL"
+    else
+        read -p "Enter AWS SNS Alert Email: " AWS_SNS_ALERT_EMAIL
+    fi
+
     read -p "Enter ECR Repository Name [robosystems]: " ECR_REPOSITORY
     ECR_REPOSITORY=${ECR_REPOSITORY:-"robosystems"}
 
@@ -168,17 +205,21 @@ function setup_full_config() {
     gh variable set AWS_ACCOUNT_ID --body "$AWS_ACCOUNT_ID"
     gh variable set AWS_REGION --body "us-east-1"
     gh variable set ENVIRONMENT_PROD --body "prod"
-    gh variable set ENVIRONMENT_STAGING --body "staging"
+    if $setup_staging; then
+        gh variable set ENVIRONMENT_STAGING --body "staging"
+    fi
 
     # Domain Configuration (skip for VPC-only deployment - workflows default to empty)
     if [ -n "$ROOT_DOMAIN" ]; then
         gh variable set API_DOMAIN_NAME_ROOT --body "$ROOT_DOMAIN"
         gh variable set API_DOMAIN_NAME_PROD --body "api.$ROOT_DOMAIN"
-        gh variable set API_DOMAIN_NAME_STAGING --body "staging.api.$ROOT_DOMAIN"
         gh variable set ROBOSYSTEMS_API_URL_PROD --body "https://api.$ROOT_DOMAIN"
-        gh variable set ROBOSYSTEMS_API_URL_STAGING --body "https://staging.api.$ROOT_DOMAIN"
         gh variable set ROBOSYSTEMS_APP_URL_PROD --body "https://$ROOT_DOMAIN"
-        gh variable set ROBOSYSTEMS_APP_URL_STAGING --body "https://staging.$ROOT_DOMAIN"
+        if $setup_staging; then
+            gh variable set API_DOMAIN_NAME_STAGING --body "staging.api.$ROOT_DOMAIN"
+            gh variable set ROBOSYSTEMS_API_URL_STAGING --body "https://staging.api.$ROOT_DOMAIN"
+            gh variable set ROBOSYSTEMS_APP_URL_STAGING --body "https://staging.$ROOT_DOMAIN"
+        fi
     fi
     # VPC-only: domain variables not set, workflows use || '' fallbacks
 
@@ -188,57 +229,69 @@ function setup_full_config() {
     # API Scaling Configuration
     gh variable set API_MIN_CAPACITY_PROD --body "1"
     gh variable set API_MAX_CAPACITY_PROD --body "10"
-    gh variable set API_MIN_CAPACITY_STAGING --body "1"
-    gh variable set API_MAX_CAPACITY_STAGING --body "2"
     gh variable set API_ASG_REFRESH_PROD --body "true"
-    gh variable set API_ASG_REFRESH_STAGING --body "true"
+    if $setup_staging; then
+        gh variable set API_MIN_CAPACITY_STAGING --body "1"
+        gh variable set API_MAX_CAPACITY_STAGING --body "2"
+        gh variable set API_ASG_REFRESH_STAGING --body "true"
+    fi
 
     # Dagster Daemon Configuration
     gh variable set DAGSTER_DAEMON_CPU_PROD --body "1024"
-    gh variable set DAGSTER_DAEMON_CPU_STAGING --body "1024"
     gh variable set DAGSTER_DAEMON_MEMORY_PROD --body "2048"
-    gh variable set DAGSTER_DAEMON_MEMORY_STAGING --body "2048"
+    if $setup_staging; then
+        gh variable set DAGSTER_DAEMON_CPU_STAGING --body "1024"
+        gh variable set DAGSTER_DAEMON_MEMORY_STAGING --body "2048"
+    fi
 
     # Dagster Webserver Configuration
     gh variable set DAGSTER_WEBSERVER_CPU_PROD --body "512"
-    gh variable set DAGSTER_WEBSERVER_CPU_STAGING --body "512"
     gh variable set DAGSTER_WEBSERVER_MEMORY_PROD --body "1024"
-    gh variable set DAGSTER_WEBSERVER_MEMORY_STAGING --body "1024"
+    if $setup_staging; then
+        gh variable set DAGSTER_WEBSERVER_CPU_STAGING --body "512"
+        gh variable set DAGSTER_WEBSERVER_MEMORY_STAGING --body "1024"
+    fi
 
     # Dagster Run Job Configuration (EcsRunLauncher - Fargate)
     gh variable set DAGSTER_RUN_JOB_CPU_PROD --body "1024"
-    gh variable set DAGSTER_RUN_JOB_CPU_STAGING --body "1024"
     gh variable set DAGSTER_RUN_JOB_MEMORY_PROD --body "4096"
-    gh variable set DAGSTER_RUN_JOB_MEMORY_STAGING --body "4096"
     gh variable set DAGSTER_MAX_CONCURRENT_RUNS_PROD --body "20"
-    gh variable set DAGSTER_MAX_CONCURRENT_RUNS_STAGING --body "20"
+    if $setup_staging; then
+        gh variable set DAGSTER_RUN_JOB_CPU_STAGING --body "1024"
+        gh variable set DAGSTER_RUN_JOB_MEMORY_STAGING --body "4096"
+        gh variable set DAGSTER_MAX_CONCURRENT_RUNS_STAGING --body "20"
+    fi
 
     # Dagster Deployment Options
     gh variable set DAGSTER_REFRESH_ECS_PROD --body "true"
-    gh variable set DAGSTER_REFRESH_ECS_STAGING --body "true"
     gh variable set RUN_MIGRATIONS_PROD --body "true"
-    gh variable set RUN_MIGRATIONS_STAGING --body "true"
+    if $setup_staging; then
+        gh variable set DAGSTER_REFRESH_ECS_STAGING --body "true"
+        gh variable set RUN_MIGRATIONS_STAGING --body "true"
+    fi
 
     # Dagster Monitoring Configuration
     gh variable set DAGSTER_CONTAINER_INSIGHTS_PROD --body "disabled"
-    gh variable set DAGSTER_CONTAINER_INSIGHTS_STAGING --body "disabled"
+    if $setup_staging; then
+        gh variable set DAGSTER_CONTAINER_INSIGHTS_STAGING --body "disabled"
+    fi
 
     # Database Configuration
     gh variable set DATABASE_ENGINE_PROD --body "postgres"
-    gh variable set DATABASE_ENGINE_STAGING --body "postgres"
     gh variable set DATABASE_INSTANCE_SIZE_PROD --body "db.t4g.small"
-    gh variable set DATABASE_INSTANCE_SIZE_STAGING --body "db.t4g.small"
     gh variable set DATABASE_ALLOCATED_STORAGE_PROD --body "20"
-    gh variable set DATABASE_ALLOCATED_STORAGE_STAGING --body "20"
     gh variable set DATABASE_MAX_ALLOCATED_STORAGE_PROD --body "100"
-    gh variable set DATABASE_MAX_ALLOCATED_STORAGE_STAGING --body "100"
     gh variable set DATABASE_MULTI_AZ_ENABLED_PROD --body "false"
-    gh variable set DATABASE_MULTI_AZ_ENABLED_STAGING --body "false"
     gh variable set DATABASE_SECRETS_ROTATION_DAYS --body "90"
-
-    # Database Versions (pin to override template defaults)
     gh variable set DATABASE_POSTGRES_VERSION_PROD --body "16.11"
-    gh variable set DATABASE_POSTGRES_VERSION_STAGING --body "16.11"
+    if $setup_staging; then
+        gh variable set DATABASE_ENGINE_STAGING --body "postgres"
+        gh variable set DATABASE_INSTANCE_SIZE_STAGING --body "db.t4g.small"
+        gh variable set DATABASE_ALLOCATED_STORAGE_STAGING --body "20"
+        gh variable set DATABASE_MAX_ALLOCATED_STORAGE_STAGING --body "100"
+        gh variable set DATABASE_MULTI_AZ_ENABLED_STAGING --body "false"
+        gh variable set DATABASE_POSTGRES_VERSION_STAGING --body "16.11"
+    fi
 
     # VPC Flow Logs Configuration (SOC 2 - VPC-level, not environment-specific)
     gh variable set VPC_FLOW_LOGS_ENABLED --body "true"
@@ -252,58 +305,69 @@ function setup_full_config() {
 
     # Valkey Configuration
     gh variable set VALKEY_NODE_TYPE_PROD --body "cache.t4g.micro"
-    gh variable set VALKEY_NODE_TYPE_STAGING --body "cache.t4g.micro"
     gh variable set VALKEY_NUM_NODES_PROD --body "1"
-    gh variable set VALKEY_NUM_NODES_STAGING --body "1"
     gh variable set VALKEY_ENCRYPTION_ENABLED_PROD --body "true"
-    gh variable set VALKEY_ENCRYPTION_ENABLED_STAGING --body "true"
     gh variable set VALKEY_SECRET_ROTATION_ENABLED_PROD --body "true"
-    gh variable set VALKEY_SECRET_ROTATION_ENABLED_STAGING --body "true"
     gh variable set VALKEY_ROTATION_SCHEDULE_DAYS_PROD --body "90"
-    gh variable set VALKEY_ROTATION_SCHEDULE_DAYS_STAGING --body "90"
     gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_PROD --body "7"
-    gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_STAGING --body "0"
-
     gh variable set VALKEY_VERSION_PROD --body "8.1"
-    gh variable set VALKEY_VERSION_STAGING --body "8.1"
+    if $setup_staging; then
+        gh variable set VALKEY_NODE_TYPE_STAGING --body "cache.t4g.micro"
+        gh variable set VALKEY_NUM_NODES_STAGING --body "1"
+        gh variable set VALKEY_ENCRYPTION_ENABLED_STAGING --body "true"
+        gh variable set VALKEY_SECRET_ROTATION_ENABLED_STAGING --body "true"
+        gh variable set VALKEY_ROTATION_SCHEDULE_DAYS_STAGING --body "90"
+        gh variable set VALKEY_SNAPSHOT_RETENTION_DAYS_STAGING --body "0"
+        gh variable set VALKEY_VERSION_STAGING --body "8.1"
+    fi
 
     # LadybugDB Writer Configuration - Standard Tier
     gh variable set LBUG_STANDARD_ENABLED_PROD --body "true"
-    gh variable set LBUG_STANDARD_ENABLED_STAGING --body "true"
     gh variable set LBUG_STANDARD_MIN_INSTANCES_PROD --body "1"
     gh variable set LBUG_STANDARD_MAX_INSTANCES_PROD --body "10"
-    gh variable set LBUG_STANDARD_MIN_INSTANCES_STAGING --body "1"
-    gh variable set LBUG_STANDARD_MAX_INSTANCES_STAGING --body "5"
+    if $setup_staging; then
+        gh variable set LBUG_STANDARD_ENABLED_STAGING --body "true"
+        gh variable set LBUG_STANDARD_MIN_INSTANCES_STAGING --body "1"
+        gh variable set LBUG_STANDARD_MAX_INSTANCES_STAGING --body "5"
+    fi
 
     # LadybugDB Writer Configuration - Large Tier
     gh variable set LBUG_LARGE_ENABLED_PROD --body "false"
-    gh variable set LBUG_LARGE_ENABLED_STAGING --body "false"
     gh variable set LBUG_LARGE_MIN_INSTANCES_PROD --body "0"
     gh variable set LBUG_LARGE_MAX_INSTANCES_PROD --body "20"
-    gh variable set LBUG_LARGE_MIN_INSTANCES_STAGING --body "0"
-    gh variable set LBUG_LARGE_MAX_INSTANCES_STAGING --body "5"
+    if $setup_staging; then
+        gh variable set LBUG_LARGE_ENABLED_STAGING --body "false"
+        gh variable set LBUG_LARGE_MIN_INSTANCES_STAGING --body "0"
+        gh variable set LBUG_LARGE_MAX_INSTANCES_STAGING --body "5"
+    fi
 
     # LadybugDB Writer Configuration - XLarge Tier
     gh variable set LBUG_XLARGE_ENABLED_PROD --body "false"
-    gh variable set LBUG_XLARGE_ENABLED_STAGING --body "false"
     gh variable set LBUG_XLARGE_MIN_INSTANCES_PROD --body "0"
     gh variable set LBUG_XLARGE_MAX_INSTANCES_PROD --body "10"
-    gh variable set LBUG_XLARGE_MIN_INSTANCES_STAGING --body "0"
-    gh variable set LBUG_XLARGE_MAX_INSTANCES_STAGING --body "5"
+    if $setup_staging; then
+        gh variable set LBUG_XLARGE_ENABLED_STAGING --body "false"
+        gh variable set LBUG_XLARGE_MIN_INSTANCES_STAGING --body "0"
+        gh variable set LBUG_XLARGE_MAX_INSTANCES_STAGING --body "5"
+    fi
 
-    # LadybugDB Writer Configuration - Shared Repository
-    gh variable set LBUG_SHARED_ENABLED_PROD --body "true"
-    gh variable set LBUG_SHARED_ENABLED_STAGING --body "true"
+    # LadybugDB Writer Configuration - Shared Repository (opt-in)
+    gh variable set LBUG_SHARED_ENABLED_PROD --body "false"
     gh variable set LBUG_SHARED_MIN_INSTANCES_PROD --body "1"
     gh variable set LBUG_SHARED_MAX_INSTANCES_PROD --body "3"
-    gh variable set LBUG_SHARED_MIN_INSTANCES_STAGING --body "1"
-    gh variable set LBUG_SHARED_MAX_INSTANCES_STAGING --body "2"
+    if $setup_staging; then
+        gh variable set LBUG_SHARED_ENABLED_STAGING --body "false"
+        gh variable set LBUG_SHARED_MIN_INSTANCES_STAGING --body "1"
+        gh variable set LBUG_SHARED_MAX_INSTANCES_STAGING --body "2"
+    fi
 
     # Neo4j Writer Configuration (optional backend)
     gh variable set NEO4J_COMMUNITY_LARGE_ENABLED_PROD --body "false"
-    gh variable set NEO4J_COMMUNITY_LARGE_ENABLED_STAGING --body "false"
     gh variable set NEO4J_ENTERPRISE_XLARGE_ENABLED_PROD --body "false"
-    gh variable set NEO4J_ENTERPRISE_XLARGE_ENABLED_STAGING --body "false"
+    if $setup_staging; then
+        gh variable set NEO4J_COMMUNITY_LARGE_ENABLED_STAGING --body "false"
+        gh variable set NEO4J_ENTERPRISE_XLARGE_ENABLED_STAGING --body "false"
+    fi
 
     # Graph AMI Configuration (updated via Graph Maintenance workflow)
     # Look up latest Amazon Linux 2023 ARM64 AMI from AWS SSM
@@ -312,20 +376,20 @@ function setup_full_config() {
     if [ -n "$LATEST_AMI" ]; then
         print_success "Found latest AMI: $LATEST_AMI"
         gh variable set GRAPH_AMI_ID_PROD --body "$LATEST_AMI"
-        gh variable set GRAPH_AMI_ID_STAGING --body "$LATEST_AMI"
+        if $setup_staging; then
+            gh variable set GRAPH_AMI_ID_STAGING --body "$LATEST_AMI"
+        fi
     else
         print_warning "Could not look up latest AMI from AWS SSM (requires AWS CLI auth)"
         print_warning "Skipping GRAPH_AMI_ID_* - set manually or run graph-maintenance workflow"
     fi
-    # Opt-in: set to "true" to enable monthly scheduled AMI checks
-    # gh variable set GRAPH_AMI_AUTO_UPDATE --body "true"
-    # Opt-in: set to "true" to also trigger deploy when scheduled AMI update finds a new AMI
-    # gh variable set GRAPH_AMI_AUTO_DEPLOY --body "true"
 
     # Graph Settings
     gh variable set GRAPH_API_KEY_ROTATION_DAYS --body "90"
     gh variable set GRAPH_UPDATE_CONTAINERS_PROD --body "true"
-    gh variable set GRAPH_UPDATE_CONTAINERS_STAGING --body "true"
+    if $setup_staging; then
+        gh variable set GRAPH_UPDATE_CONTAINERS_STAGING --body "true"
+    fi
 
     # GitHub Actions Runner Configuration
     # Default: "github-hosted" uses GitHub-hosted runners (ubuntu-latest)
@@ -339,14 +403,18 @@ function setup_full_config() {
 
     # Features Configuration
     gh variable set OBSERVABILITY_ENABLED_PROD --body "true"
-    gh variable set OBSERVABILITY_ENABLED_STAGING --body "true"
+    if $setup_staging; then
+        gh variable set OBSERVABILITY_ENABLED_STAGING --body "true"
+    fi
 
     # WAF Configuration (environment-specific)
     gh variable set WAF_ENABLED_PROD --body "true"
-    gh variable set WAF_ENABLED_STAGING --body "true"
     gh variable set WAF_RATE_LIMIT_PER_IP --body "10000"
     gh variable set WAF_GEO_BLOCKING_ENABLED --body "false"
     gh variable set WAF_AWS_MANAGED_RULES_ENABLED --body "true"
+    if $setup_staging; then
+        gh variable set WAF_ENABLED_STAGING --body "true"
+    fi
 
     # Infrastructure Configuration
     gh variable set MAX_AVAILABILITY_ZONES --body "5"
@@ -354,7 +422,9 @@ function setup_full_config() {
     # Public Domain Configuration (optional for frontend apps, skip if no domain)
     if [ -n "$ROOT_DOMAIN" ]; then
         gh variable set PUBLIC_DOMAIN_NAME_PROD --body "public.$ROOT_DOMAIN"
-        gh variable set PUBLIC_DOMAIN_NAME_STAGING --body "public-staging.$ROOT_DOMAIN"
+        if $setup_staging; then
+            gh variable set PUBLIC_DOMAIN_NAME_STAGING --body "public-staging.$ROOT_DOMAIN"
+        fi
     fi
 
     # Additional Application URLs (optional, for multi-app ecosystems)
@@ -366,7 +436,9 @@ function setup_full_config() {
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             read -p "RoboLedger domain (e.g., roboledger.ai): " ROBOLEDGER_DOMAIN
             gh variable set ROBOLEDGER_APP_URL_PROD --body "https://$ROBOLEDGER_DOMAIN"
-            gh variable set ROBOLEDGER_APP_URL_STAGING --body "https://staging.$ROBOLEDGER_DOMAIN"
+            if $setup_staging; then
+                gh variable set ROBOLEDGER_APP_URL_STAGING --body "https://staging.$ROBOLEDGER_DOMAIN"
+            fi
         fi
 
         read -p "Configure RoboInvestor app URLs? (y/N): " -n 1 -r
@@ -374,7 +446,9 @@ function setup_full_config() {
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             read -p "RoboInvestor domain (e.g., roboinvestor.ai): " ROBOINVESTOR_DOMAIN
             gh variable set ROBOINVESTOR_APP_URL_PROD --body "https://$ROBOINVESTOR_DOMAIN"
-            gh variable set ROBOINVESTOR_APP_URL_STAGING --body "https://staging.$ROBOINVESTOR_DOMAIN"
+            if $setup_staging; then
+                gh variable set ROBOINVESTOR_APP_URL_STAGING --body "https://staging.$ROBOINVESTOR_DOMAIN"
+            fi
         fi
     fi
 
@@ -386,15 +460,23 @@ function setup_full_config() {
     echo ""
     echo "📋 Summary of configured variables:"
     if [ -n "$ROOT_DOMAIN" ]; then
-        echo "  🌐 Domains: api.$ROOT_DOMAIN, staging.api.$ROOT_DOMAIN"
+        if $setup_staging; then
+            echo "  🌐 Domains: api.$ROOT_DOMAIN, staging.api.$ROOT_DOMAIN"
+        else
+            echo "  🌐 Domain: api.$ROOT_DOMAIN (prod only)"
+        fi
     else
         echo "  🌐 Domain: VPC-only (bastion tunnel access)"
     fi
     echo "  📦 Repository: $REPOSITORY_NAME"
     echo "  🐳 ECR: $ECR_REPOSITORY"
-    echo "  🔧 Total variables configured: 81"
+    if $setup_staging; then
+        echo "  🔧 Environments: Production + Staging"
+    else
+        echo "  🔧 Environment: Production only"
+    fi
     echo ""
-    echo "All variables have been set to their current production defaults."
+    echo "All variables have been set to their current defaults."
 }
 
 # =============================================================================

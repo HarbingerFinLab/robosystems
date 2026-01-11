@@ -272,6 +272,30 @@ function main() {
     echo "AWS Account: $aws_identity"
     echo ""
 
+    # Check if environment choice was passed from bootstrap.sh
+    local setup_staging=false
+    if [ -n "${SETUP_STAGING:-}" ]; then
+        # Use the value from bootstrap.sh
+        if [ "$SETUP_STAGING" = "true" ]; then
+            setup_staging=true
+            echo "Environment: Production + Staging (from bootstrap)"
+        else
+            echo "Environment: Production only (from bootstrap)"
+        fi
+    else
+        # Ask interactively if not set
+        echo "Which environments do you want to set up?"
+        echo "  1) Production only (recommended for getting started)"
+        echo "  2) Production + Staging (full setup)"
+        echo ""
+        read -p "Select [1]: " env_choice
+        env_choice=${env_choice:-1}
+
+        if [ "$env_choice" = "2" ]; then
+            setup_staging=true
+        fi
+    fi
+
     # Check what already exists
     local prod_exists=false
     local staging_exists=false
@@ -282,8 +306,10 @@ function main() {
         staging_exists=true
     fi
 
-    if $prod_exists && $staging_exists; then
-        echo "✅ Both secrets already exist - nothing to do"
+    # Check if there's nothing to do
+    if $prod_exists && { ! $setup_staging || $staging_exists; }; then
+        echo ""
+        echo "✅ Requested secrets already exist - nothing to do"
         echo ""
         echo "To update individual values, use AWS Console or CLI:"
         echo "   aws secretsmanager get-secret-value --secret-id robosystems/prod"
@@ -291,15 +317,18 @@ function main() {
         return 0
     fi
 
+    echo ""
     if $prod_exists; then
         echo "ℹ️  Production secret exists (will skip)"
     else
         echo "⚡ Production secret will be created"
     fi
-    if $staging_exists; then
-        echo "ℹ️  Staging secret exists (will skip)"
-    else
-        echo "⚡ Staging secret will be created"
+    if $setup_staging; then
+        if $staging_exists; then
+            echo "ℹ️  Staging secret exists (will skip)"
+        else
+            echo "⚡ Staging secret will be created"
+        fi
     fi
     echo ""
 
@@ -317,8 +346,11 @@ function main() {
 
     create_production_secret
     echo ""
-    create_staging_secret
-    echo ""
+
+    if $setup_staging; then
+        create_staging_secret
+        echo ""
+    fi
 
     echo "✅ AWS Secrets Manager setup completed!"
     echo ""
