@@ -8,15 +8,6 @@ services:
     command: /app/bin/entrypoint.sh
     environment:
       - DOCKER_PROFILE=api
-      - ENVIRONMENT=dev
-      - OTEL_FORCE_ENABLE=true
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
-      # Dagster environment for reporting AssetMaterializations from direct staging
-      - DAGSTER_POSTGRES_HOST=pg
-      - DAGSTER_POSTGRES_PORT=5432
-      - DAGSTER_POSTGRES_USER=postgres
-      - DAGSTER_POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DAGSTER_POSTGRES_DB=dagster
     env_file:
       - .env
     ports:
@@ -49,7 +40,6 @@ services:
     command: /app/bin/entrypoint.sh
     environment:
       - DOCKER_PROFILE=ladybug-writer
-      - ENVIRONMENT=dev
       - GRAPH_BACKEND_TYPE=ladybug
       - LBUG_PORT=8001
       - LBUG_DATABASE_PATH=/app/data/lbug-dbs
@@ -90,14 +80,6 @@ services:
     command: /app/bin/entrypoint.sh
     environment:
       - DOCKER_PROFILE=dagster
-      - ENVIRONMENT=dev
-      - DAGSTER_HOME=/app/dagster_home
-      - DAGSTER_PORT=3003
-      - DAGSTER_POSTGRES_HOST=pg
-      - DAGSTER_POSTGRES_PORT=5432
-      - DAGSTER_POSTGRES_USER=postgres
-      - DAGSTER_POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DAGSTER_POSTGRES_DB=dagster
     env_file:
       - .env
     ports:
@@ -128,14 +110,7 @@ services:
     command: /app/bin/entrypoint.sh
     environment:
       - DOCKER_PROFILE=dagster-daemon
-      - ENVIRONMENT=dev
       - RUN_MIGRATIONS=true
-      - DAGSTER_HOME=/app/dagster_home
-      - DAGSTER_POSTGRES_HOST=pg
-      - DAGSTER_POSTGRES_PORT=5432
-      - DAGSTER_POSTGRES_USER=postgres
-      - DAGSTER_POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DAGSTER_POSTGRES_DB=dagster
     env_file:
       - .env
     volumes:
@@ -264,11 +239,7 @@ services:
     command: /app/bin/entrypoint.sh
     environment:
       - DOCKER_PROFILE=neo4j-writer
-      - ENVIRONMENT=dev
       - GRAPH_BACKEND_TYPE=neo4j_community
-      - NEO4J_URI=bolt://neo4j-db:7687
-      - NEO4J_USERNAME=neo4j
-      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
       - GRAPH_API_PORT=8002
       - CLUSTER_TIER=enterprise
     env_file:

@@ -94,6 +94,13 @@ Parameters:
     AllowedPattern: ^(sg-[0-9a-f]+)?$
     Default: ""
 
+  # API Access (for job submission via GraphQL)
+  ApiSecurityGroupId:
+    Type: String
+    Description: Security group ID for API service to submit Dagster jobs
+    AllowedPattern: ^(sg-[0-9a-f]+)?$
+    Default: ""
+
   # Monitoring
   LogRetentionDays:
     Type: Number
@@ -142,6 +149,7 @@ Parameters:
 
 Conditions:
   HasBastionAccess: !Not [!Equals [!Ref BastionSecurityGroupId, ""]]
+  HasApiAccess: !Not [!Equals [!Ref ApiSecurityGroupId, ""]]
 
 Resources:
   # ========================================
@@ -255,6 +263,18 @@ Resources:
       ToPort: 3000
       SourceSecurityGroupId: !Ref BastionSecurityGroupId
       Description: Allow bastion host to access Dagster webserver
+
+  # Allow API to submit jobs to Dagster webserver (GraphQL)
+  ApiToDagsterIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HasApiAccess
+    Properties:
+      GroupId: !Ref DagsterSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3000
+      ToPort: 3000
+      SourceSecurityGroupId: !Ref ApiSecurityGroupId
+      Description: Allow API service to submit Dagster jobs via GraphQL
 
   # ========================================
   # LOG GROUPS

@@ -105,6 +105,13 @@ on:
         type: string
         default: ""
 
+      # API Access (for Dagster job submission)
+      api_sg_id:
+        description: "Security group ID for API service to submit Dagster jobs (optional)"
+        required: false
+        type: string
+        default: ""
+
       # Monitoring Configuration
       container_insights_enabled:
         description: "Enable Container Insights for ECS cluster (enabled/disabled)"
@@ -206,6 +213,7 @@ jobs:
                 ParameterKey=ValkeyClientSecurityGroupId,ParameterValue=${{ inputs.valkey_sg_id }} \
                 ParameterKey=DatabaseSecurityGroupId,ParameterValue=${{ inputs.database_sg_id }} \
                 ParameterKey=BastionSecurityGroupId,ParameterValue=${{ inputs.bastion_sg_id }} \
+                ParameterKey=ApiSecurityGroupId,ParameterValue=${{ inputs.api_sg_id }} \
                 ParameterKey=ContainerInsightsEnabled,ParameterValue=${{ inputs.container_insights_enabled }} \
                 ParameterKey=SharedRawBucketArn,ParameterValue=\"${{ inputs.shared_raw_bucket_arn }}\" \
                 ParameterKey=SharedProcessedBucketArn,ParameterValue=\"${{ inputs.shared_processed_bucket_arn }}\" \

@@ -94,6 +94,11 @@ def main():
     default="Acme Consulting LLC",
     help="Company name for the demo entity (default: Acme Consulting LLC)",
   )
+  parser.add_argument(
+    "--real-s3",
+    action="store_true",
+    help="Use real AWS S3 instead of LocalStack (for fork/production deployments)",
+  )
 
   args = parser.parse_args()
 
@@ -133,6 +138,7 @@ def main():
   print(f"Company: {args.company}")
   print(f"Create new user: {args.new_user}")
   print(f"Create new graph: {args.new_graph}")
+  print(f"S3: {'AWS S3' if args.real_s3 else 'LocalStack'}")
   print("Regenerate data: True (always)")
   print("=" * 70)
 
@@ -146,6 +152,8 @@ def main():
   run_script("03_generate_data.py", step3_args)
 
   step4_args = ["--base-url", args.base_url]
+  if args.real_s3:
+    step4_args.append("--real-s3")
   run_script("04_upload_ingest.py", step4_args)
 
   if not args.skip_queries:

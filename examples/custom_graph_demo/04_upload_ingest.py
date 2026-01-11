@@ -34,7 +34,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from examples.credentials.utils import get_graph_id
 
 DEMO_DIR = Path(__file__).parent
-DEFAULT_CREDENTIALS_FILE = Path(__file__).resolve().parents[1] / "credentials" / "config.json"
+DEFAULT_CREDENTIALS_FILE = (
+  Path(__file__).resolve().parents[1] / "credentials" / "config.json"
+)
 DATA_DIR = DEMO_DIR / "data"
 NODES_DIR = DATA_DIR / "nodes"
 RELATIONSHIPS_DIR = DATA_DIR / "relationships"
@@ -124,7 +126,9 @@ def wait_for_staging(
   while True:
     elapsed = time.time() - start_time
     if elapsed > timeout_seconds:
-      print(f"\n⚠️  Staging timeout after {timeout_seconds}s - some files may not be staged")
+      print(
+        f"\n⚠️  Staging timeout after {timeout_seconds}s - some files may not be staged"
+      )
       return False
 
     # Get all files for the graph
@@ -244,6 +248,11 @@ def main() -> None:
     default=str(DEFAULT_CREDENTIALS_FILE),
     help="Path to credentials file (default: credentials/config.json)",
   )
+  parser.add_argument(
+    "--real-s3",
+    action="store_true",
+    help="Use real AWS S3 instead of LocalStack (for fork/production deployments)",
+  )
   args = parser.parse_args()
   credentials_path = Path(args.credentials_file).expanduser()
 
@@ -268,18 +277,22 @@ def main() -> None:
   node_files = _list_parquet_files(NODES_DIR, EXPECTED_NODE_TABLES)
   relationship_files = _list_parquet_files(RELATIONSHIPS_DIR, EXPECTED_REL_TABLES)
 
+  # Use LocalStack for local dev, real AWS S3 for fork/production
+  s3_endpoint = None if args.real_s3 else "http://localhost:4566"
+
   print("\n" + "=" * 70)
   print("📊 Custom Graph Demo - Upload & Ingest")
   print("=" * 70)
   print(f"Graph ID: {graph_id}")
   print(f"Base URL: {args.base_url}")
+  print(f"S3: {'AWS S3' if args.real_s3 else 'LocalStack (' + s3_endpoint + ')'}")
   print(f"Credentials: {credentials_path}")
   print("=" * 70)
 
   config = RoboSystemsExtensionConfig(
     base_url=args.base_url,
     headers={"X-API-Key": api_key},
-    s3_endpoint_url="http://localhost:4566",  # LocalStack S3 endpoint
+    s3_endpoint_url=s3_endpoint,
   )
   extensions = RoboSystemsExtensions(config)
 

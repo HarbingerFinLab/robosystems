@@ -445,7 +445,7 @@ class EnvConfig:
 
   # Dagster Configuration (for job orchestration)
   DAGSTER_HOST = get_str_env("DAGSTER_HOST", "dagster-webserver")
-  DAGSTER_PORT = get_int_env("DAGSTER_PORT", 3003)
+  DAGSTER_PORT = get_int_env("DAGSTER_PORT", 3000)
 
   # Shared repository backend selection (dev/local only)
   # In AWS environments, backend is determined by graph.yml tier configuration

@@ -118,16 +118,16 @@ demo-sec-query all="false":
     uv run examples/sec_demo/query_examples.py {{ if all == "true" { "--all" } else { "" } }}
 
 # Run accounting demo end-to-end (flags: new-user,new-graph,skip-queries)
-demo-accounting flags="new-graph" base_url="http://localhost:8000":
-    uv run examples/accounting_demo/main.py --base-url {{base_url}} {{ if flags != "" { "--flags " + flags } else { "" } }}
+demo-accounting flags="new-graph" real_s3="false" base_url="http://localhost:8000":
+    uv run examples/accounting_demo/main.py --base-url {{base_url}} {{ if flags != "" { "--flags " + flags } else { "" } }} {{ if real_s3 == "true" { "--real-s3" } else { "" } }}
 
 # Run custom graph demo end-to-end (flags: new-user,new-graph,skip-queries)
-demo-custom-graph flags="new-graph" base_url="http://localhost:8000":
-    uv run examples/custom_graph_demo/main.py --base-url {{base_url}} {{ if flags != "" { "--flags " + flags } else { "" } }}
+demo-custom-graph flags="new-graph" real_s3="false" base_url="http://localhost:8000":
+    uv run examples/custom_graph_demo/main.py --base-url {{base_url}} {{ if flags != "" { "--flags " + flags } else { "" } }} {{ if real_s3 == "true" { "--real-s3" } else { "" } }}
 
 # Run element mapping demo end-to-end (demonstrates CoA → US-GAAP aggregation)
-demo-element-mapping flags="new-graph" base_url="http://localhost:8000":
-    uv run examples/element_mapping_demo/main.py --base-url {{base_url}} {{ if flags != "" { "--flags " + flags } else { "" } }}
+demo-element-mapping flags="new-graph" real_s3="false" base_url="http://localhost:8000":
+    uv run examples/element_mapping_demo/main.py --base-url {{base_url}} {{ if flags != "" { "--flags " + flags } else { "" } }} {{ if real_s3 == "true" { "--real-s3" } else { "" } }}
 
 
 ## Testing ##
