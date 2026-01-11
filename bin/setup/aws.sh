@@ -291,8 +291,17 @@ function main() {
         read -p "Select [1]: " env_choice
         env_choice=${env_choice:-1}
 
+        # Validate input
+        if [[ ! "$env_choice" =~ ^[12]$ ]]; then
+            echo "⚠️  Invalid choice '$env_choice', defaulting to production only"
+            env_choice=1
+        fi
+
         if [ "$env_choice" = "2" ]; then
             setup_staging=true
+            echo "Configuring: Production + Staging"
+        else
+            echo "Configuring: Production only"
         fi
     fi
 

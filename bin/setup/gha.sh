@@ -149,6 +149,12 @@ function setup_full_config() {
         read -p "Select [1]: " env_choice
         env_choice=${env_choice:-1}
 
+        # Validate input
+        if [[ ! "$env_choice" =~ ^[12]$ ]]; then
+            print_warning "Invalid choice '$env_choice', defaulting to production only"
+            env_choice=1
+        fi
+
         if [ "$env_choice" = "2" ]; then
             setup_staging=true
             echo "Configuring: Production + Staging"
@@ -182,13 +188,19 @@ function setup_full_config() {
     REPOSITORY_NAME="${GITHUB_ORG}/${REPO_NAME}"
     read -p "Enter AWS Account ID: " AWS_ACCOUNT_ID
 
-    # Check if alert email is already set
-    EXISTING_EMAIL=$(gh variable get AWS_SNS_ALERT_EMAIL 2>/dev/null || echo "")
-    if [ -n "$EXISTING_EMAIL" ]; then
-        echo "AWS_SNS_ALERT_EMAIL already set: $EXISTING_EMAIL"
-        AWS_SNS_ALERT_EMAIL="$EXISTING_EMAIL"
+    # Check if alert email is already available (from bootstrap or GitHub)
+    if [ -n "${ALERT_EMAIL:-}" ]; then
+        # Passed from bootstrap.sh
+        echo "AWS_SNS_ALERT_EMAIL: $ALERT_EMAIL (from bootstrap)"
+        AWS_SNS_ALERT_EMAIL="$ALERT_EMAIL"
     else
-        read -p "Enter AWS SNS Alert Email: " AWS_SNS_ALERT_EMAIL
+        EXISTING_EMAIL=$(gh variable get AWS_SNS_ALERT_EMAIL 2>/dev/null || echo "")
+        if [ -n "$EXISTING_EMAIL" ]; then
+            echo "AWS_SNS_ALERT_EMAIL already set: $EXISTING_EMAIL"
+            AWS_SNS_ALERT_EMAIL="$EXISTING_EMAIL"
+        else
+            read -p "Enter AWS SNS Alert Email: " AWS_SNS_ALERT_EMAIL
+        fi
     fi
 
     read -p "Enter ECR Repository Name [robosystems]: " ECR_REPOSITORY

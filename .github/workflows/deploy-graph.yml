@@ -112,10 +112,10 @@ on:
 
       # AMI Configuration
       ami_id:
-        description: "Amazon Linux 2023 ARM64 AMI ID for graph instances"
+        description: "Amazon Linux 2023 ARM64 AMI ID for graph instances (looked up if not provided)"
         required: false
         type: string
-        default: "ami-05ec8931dc5ae74ec"
+        default: ""
 
       # Notification Configuration
       aws_sns_alert_email:
