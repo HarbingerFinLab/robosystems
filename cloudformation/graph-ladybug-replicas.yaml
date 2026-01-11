@@ -412,18 +412,16 @@ Resources:
         - Key: NodeType
           Value: shared_replica
           PropagateAtLaunch: true
-    CreationPolicy: !If
-      - HasMinInstances
-      - ResourceSignal:
-          Count: !Ref MinInstances
-          Timeout: PT15M
-      - !Ref AWS::NoValue
+    CreationPolicy:
+      ResourceSignal:
+        Count: !If [HasMinInstances, !Ref MinInstances, 0]
+        Timeout: PT15M
     UpdatePolicy:
       AutoScalingRollingUpdate:
-        MinInstancesInService: 1
+        MinInstancesInService: !If [HasMinInstances, 1, 0]
         MaxBatchSize: 1
         PauseTime: PT5M
-        WaitOnResourceSignals: true
+        WaitOnResourceSignals: !If [HasMinInstances, true, false]
 
   # CPU-based Auto Scaling
   ReplicaCPUScalingPolicy:

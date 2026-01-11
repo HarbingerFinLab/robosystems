@@ -215,7 +215,6 @@ Resources:
         - arm64
       Timeout: 300
       MemorySize: 256
-      ReservedConcurrentExecutions: 10
       Role: !GetAtt VolumeManagerRole.Arn
       Environment:
         Variables:

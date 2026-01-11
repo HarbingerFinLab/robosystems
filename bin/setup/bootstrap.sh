@@ -466,6 +466,61 @@ configure_github() {
 }
 
 # =============================================================================
+# SSO USER EMAIL DETECTION
+# =============================================================================
+
+get_sso_user_email() {
+    # Try to get the current SSO user's email from AWS Identity Store
+    # Returns empty string if not found
+
+    # Get identity store ID from SSO admin
+    local store_id
+    store_id=$(aws sso-admin list-instances \
+        --query 'Instances[0].IdentityStoreId' \
+        --output text 2>/dev/null) || return 0
+
+    if [ -z "$store_id" ] || [ "$store_id" = "None" ]; then
+        return 0
+    fi
+
+    # Get current caller identity ARN to extract username
+    local caller_arn
+    caller_arn=$(aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null) || return 0
+
+    # Extract username from ARN (format: ...assumed-role/AWSReservedSSO_.../username)
+    local sso_username
+    sso_username=$(echo "$caller_arn" | sed -n 's|.*/||p')
+
+    if [ -z "$sso_username" ]; then
+        return 0
+    fi
+
+    # Look up user in identity store by username
+    local user_id
+    user_id=$(aws identitystore list-users \
+        --identity-store-id "$store_id" \
+        --filters "AttributePath=UserName,AttributeValue=$sso_username" \
+        --query 'Users[0].UserId' \
+        --output text 2>/dev/null) || return 0
+
+    if [ -z "$user_id" ] || [ "$user_id" = "None" ]; then
+        return 0
+    fi
+
+    # Get user's email
+    local email
+    email=$(aws identitystore describe-user \
+        --identity-store-id "$store_id" \
+        --user-id "$user_id" \
+        --query 'Emails[0].Value' \
+        --output text 2>/dev/null) || return 0
+
+    if [ -n "$email" ] && [ "$email" != "None" ]; then
+        echo "$email"
+    fi
+}
+
+# =============================================================================
 # ESSENTIAL GITHUB VARIABLES
 # =============================================================================
 
@@ -474,19 +529,44 @@ configure_essential_variables() {
 
     # AWS_SNS_ALERT_EMAIL - required for CloudWatch alarms (GitHub variable)
     print_step "Alert Email Configuration"
-    echo ""
-    echo "CloudWatch alarms will send notifications to this email."
-    echo "You'll receive a confirmation email from AWS to activate alerts."
-    echo ""
-    read -p "Enter alert email address: " ALERT_EMAIL
 
-    if [ -z "$ALERT_EMAIL" ]; then
-        print_error "Alert email is required for deployment"
-        exit 1
+    # Check if already set in GitHub
+    EXISTING_EMAIL=$(gh variable get AWS_SNS_ALERT_EMAIL 2>/dev/null || echo "")
+
+    if [ -n "$EXISTING_EMAIL" ]; then
+        print_success "AWS_SNS_ALERT_EMAIL already set: $EXISTING_EMAIL"
+        ALERT_EMAIL="$EXISTING_EMAIL"
+    else
+        # Try to auto-detect from SSO user
+        print_info "Detecting SSO user email..."
+        ALERT_EMAIL=$(get_sso_user_email)
+
+        if [ -n "$ALERT_EMAIL" ]; then
+            print_success "Detected SSO user email: $ALERT_EMAIL"
+            read -p "Use this email for alerts? (Y/n): " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Nn]$ ]]; then
+                read -p "Enter alert email address: " ALERT_EMAIL
+            fi
+        else
+            echo ""
+            echo "CloudWatch alarms will send notifications to this email."
+            echo "You'll receive a confirmation email from AWS to activate alerts."
+            echo ""
+            read -p "Enter alert email address: " ALERT_EMAIL
+        fi
+
+        if [ -z "$ALERT_EMAIL" ]; then
+            print_error "Alert email is required for deployment"
+            exit 1
+        fi
+
+        gh variable set AWS_SNS_ALERT_EMAIL --body "$ALERT_EMAIL"
+        print_success "Set AWS_SNS_ALERT_EMAIL (GitHub variable)"
     fi
 
-    gh variable set AWS_SNS_ALERT_EMAIL --body "$ALERT_EMAIL"
-    print_success "Set AWS_SNS_ALERT_EMAIL (GitHub variable)"
+    # Export for downstream scripts (gha.sh)
+    export ALERT_EMAIL
 
     # S3_NAMESPACE - auto-detected based on repository
     # Main repo (RoboFinSystems/robosystems): no namespace
@@ -785,6 +865,30 @@ main() {
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         print_info "Bootstrap cancelled"
         exit 0
+    fi
+
+    # Environment choice - collected once and passed downstream
+    echo ""
+    echo "Which environments do you want to set up?"
+    echo "  1) Production only (recommended for getting started)"
+    echo "  2) Production + Staging (full setup)"
+    echo ""
+    read -p "Select [1]: " env_choice
+    env_choice=${env_choice:-1}
+
+    # Validate input
+    if [[ ! "$env_choice" =~ ^[12]$ ]]; then
+        print_warning "Invalid choice '$env_choice', defaulting to production only"
+        env_choice=1
+    fi
+
+    # Export for downstream scripts (aws.sh, gha.sh)
+    if [ "$env_choice" = "2" ]; then
+        export SETUP_STAGING=true
+        print_success "Configuring: Production + Staging"
+    else
+        export SETUP_STAGING=false
+        print_success "Configuring: Production only"
     fi
 
     # Setup direnv for AWS profile

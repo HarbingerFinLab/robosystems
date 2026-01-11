@@ -219,7 +219,7 @@ production:
       # Deployment configuration
       deployment:
         enable_var: LBUG_SHARED_ENABLED_PROD
-        enabled_default: true
+        enabled_default: false  # Opt-in: shared repository cluster
 
     # =========================================================================
     # NEO4J COMMUNITY LARGE TIER - Optional (DISABLED)
@@ -520,7 +520,7 @@ staging:
 
       deployment:
         enable_var: LBUG_SHARED_ENABLED_STAGING
-        enabled_default: true
+        enabled_default: false  # Opt-in: shared repository cluster
 
     # =========================================================================
     # NEO4J COMMUNITY LARGE TIER - Staging (DISABLED)

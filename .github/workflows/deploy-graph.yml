@@ -112,10 +112,10 @@ on:
 
       # AMI Configuration
       ami_id:
-        description: "Amazon Linux 2023 ARM64 AMI ID for graph instances"
+        description: "Amazon Linux 2023 ARM64 AMI ID for graph instances (looked up if not provided)"
         required: false
         type: string
-        default: "ami-05ec8931dc5ae74ec"
+        default: ""
 
       # Notification Configuration
       aws_sns_alert_email:
@@ -129,6 +129,55 @@ on:
         required: false
 
 jobs:
+  # Step 0: Resolve AMI (lookup latest if not provided)
+  resolve-ami:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      ami_id: ${{ steps.resolve.outputs.ami_id }}
+    steps:
+      - name: Check if AMI lookup needed
+        id: check
+        run: |
+          if [ -n "${{ inputs.ami_id }}" ]; then
+            echo "skip_lookup=true" >> $GITHUB_OUTPUT
+            echo "✅ Using provided AMI: ${{ inputs.ami_id }}"
+          else
+            echo "skip_lookup=false" >> $GITHUB_OUTPUT
+            echo "🔍 No AMI provided, will lookup latest"
+          fi
+
+      - name: Checkout (for action)
+        if: steps.check.outputs.skip_lookup == 'false'
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions/get-latest-ami
+
+      - name: Configure AWS credentials
+        if: steps.check.outputs.skip_lookup == 'false'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Get Latest AMI
+        if: steps.check.outputs.skip_lookup == 'false'
+        id: lookup
+        uses: ./.github/actions/get-latest-ami
+        with:
+          architecture: arm64
+
+      - name: Resolve AMI ID
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.ami_id }}" ]; then
+            echo "ami_id=${{ inputs.ami_id }}" >> $GITHUB_OUTPUT
+          else
+            echo "ami_id=${{ steps.lookup.outputs.ami_id }}" >> $GITHUB_OUTPUT
+          fi
+
   # Step 1: Prepare Writer Matrix
   prepare-writer-matrix:
     runs-on: ubuntu-latest
@@ -241,23 +290,14 @@ jobs:
               MIN_VAR_NAME="${TIER_NAME}_MIN_INSTANCES_${ENV_SUFFIX}"
               MAX_VAR_NAME="${TIER_NAME}_MAX_INSTANCES_${ENV_SUFFIX}"
 
-              # Get GitHub variable values - REQUIRED (no fallback)
-              MIN_INSTANCES="${!MIN_VAR_NAME}"
-              MAX_INSTANCES="${!MAX_VAR_NAME}"
-
-              # Validate that scaling variables are set
-              if [ -z "$MIN_INSTANCES" ] || [ -z "$MAX_INSTANCES" ]; then
-                echo "❌ ERROR: Scaling variables must be set in GitHub Actions variables"
-                echo "   Missing: $MIN_VAR_NAME and/or $MAX_VAR_NAME"
-                echo "   Tier: ${WRITER_NAME}"
-                echo ""
-                echo "   Set these variables at: https://github.com/${{ github.repository }}/settings/variables/actions"
-                exit 1
-              fi
+              # Get GitHub variable values with sensible defaults for slim deployment
+              MIN_INSTANCES="${!MIN_VAR_NAME:-1}"
+              MAX_INSTANCES="${!MAX_VAR_NAME:-1}"
 
               echo "  📊 Scaling for ${WRITER_NAME}: min=$MIN_INSTANCES, max=$MAX_INSTANCES"
-              echo "     (MIN_VAR: $MIN_VAR_NAME=$MIN_INSTANCES)"
-              echo "     (MAX_VAR: $MAX_VAR_NAME=$MAX_INSTANCES)"
+              if [ -z "${!MIN_VAR_NAME}" ] || [ -z "${!MAX_VAR_NAME}" ]; then
+                echo "     (using defaults - override with $MIN_VAR_NAME / $MAX_VAR_NAME)"
+              fi
 
               # Build the matrix entry from writer config with nested instance specs
               # Include backend field for routing to correct workflow (ladybug vs neo4j)
@@ -320,7 +360,7 @@ jobs:
 
   # Step 2a: Deploy Graph Writers (LadybugDB Backend)
   deploy-graph-ladybug:
-    needs: [prepare-writer-matrix]
+    needs: [prepare-writer-matrix, resolve-ami]
     if: fromJson(needs.prepare-writer-matrix.outputs.lbug_matrix).include[0] != null
     permissions:
       id-token: write
@@ -348,7 +388,7 @@ jobs:
       shared_repositories: ${{ matrix.shared_repositories }}
       # Instance Configuration
       instance_type: ${{ matrix.instance_type }}
-      ami_id: ${{ inputs.ami_id }}
+      ami_id: ${{ needs.resolve-ami.outputs.ami_id }}
       # Valkey Configuration
       valkey_sg_id: ${{ inputs.valkey_sg_id }}
       # Other Configuration

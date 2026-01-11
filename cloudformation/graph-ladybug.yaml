@@ -589,18 +589,16 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
           PropagateAtLaunch: true
-    CreationPolicy: !If
-      - HasMinInstances
-      - ResourceSignal:
-          Count: !Ref MinInstances
-          Timeout: PT15M
-      - !Ref AWS::NoValue
+    CreationPolicy:
+      ResourceSignal:
+        Count: !If [HasMinInstances, !Ref MinInstances, 0]
+        Timeout: PT15M
     UpdatePolicy:
       AutoScalingRollingUpdate:
         MinInstancesInService: 0 # Allow full flexibility since instances are protected
         MaxBatchSize: 1
         PauseTime: PT5M
-        WaitOnResourceSignals: true
+        WaitOnResourceSignals: !If [HasMinInstances, true, false]
         SuspendProcesses:
           - AlarmNotification
           - AZRebalance
