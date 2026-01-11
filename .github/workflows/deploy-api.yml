@@ -114,19 +114,6 @@ on:
         type: string
         default: ""
 
-      # JWT Configuration (Authentication)
-      jwt_issuer:
-        description: "JWT token issuer domain (without https:// prefix, defaults to domain_name if not provided)"
-        required: false
-        type: string
-        default: ""
-      jwt_audience:
-        description: "JWT token audience domains (comma-separated, without https:// prefix)"
-        required: false
-        type: string
-        default: ""
-
-
       # Cache Configuration
       valkey_url:
         description: "Valkey ElastiCache endpoint URL from Valkey stack"
@@ -270,8 +257,6 @@ jobs:
                 ParameterKey=DomainName,ParameterValue=\"${{ inputs.domain_name }}\" \
                 ParameterKey=RootDomainName,ParameterValue=\"${{ inputs.domain_name_root }}\" \
                 ParameterKey=HostedZoneId,ParameterValue=\"$HOSTED_ZONE_ID\" \
-                ParameterKey=JwtIssuer,ParameterValue=\"${{ inputs.jwt_issuer }}\" \
-                ParameterKey=JwtAudience,ParameterValue=\"${{ inputs.jwt_audience }}\" \
                 ParameterKey=MinCapacity,ParameterValue=${{ inputs.min_capacity }} \
                 ParameterKey=MaxCapacity,ParameterValue=${{ inputs.max_capacity }} \
                 ParameterKey=CPUTargetValue,ParameterValue=${{ inputs.cpu_target_value }} \

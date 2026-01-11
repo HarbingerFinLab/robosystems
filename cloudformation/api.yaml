@@ -122,16 +122,6 @@ Parameters:
     Description: Route53 Hosted Zone ID for the domain. Required when DomainName is provided.
     Default: ""
 
-  # JWT Configuration (Authentication)
-  JwtIssuer:
-    Type: String
-    Description: JWT token issuer domain (without https:// prefix)
-    Default: ""
-  JwtAudience:
-    Type: CommaDelimitedList
-    Description: JWT token audience domains (comma-separated, without https:// prefix)
-    Default: ""
-
   # Observability & Monitoring
   LogRetentionDays:
     Type: Number
@@ -645,11 +635,9 @@ Resources:
                 - HasDomain
                 - !Sub "https://${DomainName}"
                 - !Sub "http://${ApiALB.DNSName}"
-            # JWT Configuration (passed to application for token issuer/audience)
-            - Name: JWT_ISSUER
-              Value: !Ref JwtIssuer
-            - Name: JWT_AUDIENCE
-              Value: !Join [",", !Ref JwtAudience]
+            # JWT Configuration: Handled by application via secrets_manager.py
+            # Defaults: JWT_ISSUER=api.robosystems.ai, JWT_AUDIENCE=robosystems.ai,roboledger.ai,roboinvestor.ai
+            # Override via AWS Secrets Manager (robosystems/{env}) for forks/custom deployments
             # Email Configuration
             - Name: EMAIL_FROM_ADDRESS
               Value: !Ref EmailFromAddress
@@ -1109,4 +1097,4 @@ Outputs:
 
       LIMITATIONS (internal-only mode):
       - OAuth integrations (Google, QuickBooks) will NOT work - external providers cannot redirect to internal URLs
-      - JWT tokens use default issuer (api.robosystems.ai) unless JwtIssuer parameter is overridden
+      - JWT tokens use default issuer/audience (api.robosystems.ai) - override via AWS Secrets Manager for forks
