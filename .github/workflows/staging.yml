@@ -78,9 +78,7 @@ jobs:
       waf_stack: ${{ steps.load.outputs.waf_stack }}
       cloudtrail_stack: ${{ steps.load.outputs.cloudtrail_stack }}
       dagster_stack: ${{ steps.load.outputs.dagster_stack }}
-      domain_name_root: ${{ steps.config.outputs.domain_name_root }}
-      jwt_issuer: ${{ steps.config.outputs.jwt_issuer }}
-      jwt_audience: ${{ steps.config.outputs.jwt_audience }}
+      domain_name_root: ${{ steps.load.outputs.domain_name_root }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -116,33 +114,8 @@ jobs:
           echo "cloudtrail_stack=$(./bin/tools/stack-config.sh $ENV cloudtrail)" >> $GITHUB_OUTPUT
           echo "dagster_stack=$(./bin/tools/stack-config.sh $ENV dagster)" >> $GITHUB_OUTPUT
 
-      - name: Set Environment Configuration
-        id: config
-        shell: bash
-        run: |
-          # Domain and JWT configuration for staging
-          # Leave API_DOMAIN_NAME_ROOT empty for isolated deployment (no custom domains)
+          # Domain configuration - leave empty for isolated deployment (no custom domains)
           echo "domain_name_root=${{ vars.API_DOMAIN_NAME_ROOT || '' }}" >> $GITHUB_OUTPUT
-
-          # Strip https:// prefix from JWT issuer and audience URLs
-          JWT_ISSUER="${{ vars.ROBOSYSTEMS_API_URL_STAGING || '' }}"
-          JWT_ISSUER="${JWT_ISSUER#https://}"
-          JWT_ISSUER="${JWT_ISSUER#http://}"
-          echo "jwt_issuer=$JWT_ISSUER" >> $GITHUB_OUTPUT
-
-          JWT_AUD1="${{ vars.ROBOSYSTEMS_APP_URL_STAGING || '' }}"
-          JWT_AUD1="${JWT_AUD1#https://}"
-          JWT_AUD1="${JWT_AUD1#http://}"
-
-          JWT_AUD2="${{ vars.ROBOLEDGER_APP_URL_STAGING || '' }}"
-          JWT_AUD2="${JWT_AUD2#https://}"
-          JWT_AUD2="${JWT_AUD2#http://}"
-
-          JWT_AUD3="${{ vars.ROBOINVESTOR_APP_URL_STAGING || '' }}"
-          JWT_AUD3="${JWT_AUD3#https://}"
-          JWT_AUD3="${JWT_AUD3#http://}"
-
-          echo "jwt_audience=$JWT_AUD1,$JWT_AUD2,$JWT_AUD3" >> $GITHUB_OUTPUT
 
   build:
     needs: [runner]
@@ -535,9 +508,6 @@ jobs:
       # Leave API_DOMAIN_NAME_STAGING empty for internal-only access via bastion tunnel
       domain_name: ${{ vars.API_DOMAIN_NAME_STAGING || '' }}
       domain_name_root: ${{ needs.stack-config.outputs.domain_name_root }}
-      # JWT Configuration
-      jwt_issuer: ${{ needs.stack-config.outputs.jwt_issuer }}
-      jwt_audience: ${{ needs.stack-config.outputs.jwt_audience }}
       # Cache Configuration
       valkey_url: ${{ needs.deploy-valkey.outputs.valkey_url }}
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}
