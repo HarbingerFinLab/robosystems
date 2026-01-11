@@ -203,14 +203,14 @@ Resources:
                   - s3:GetBucketLocation
                 Resource: "*"
 
-              # DynamoDB - scoped to RoboSystems tables
+              # DynamoDB - for graph infrastructure registries (instance, graph, volume)
               - Sid: DynamoDB
                 Effect: Allow
                 Action:
                   - dynamodb:*
                 Resource:
-                  - !Sub arn:aws:dynamodb:*:${AWS::AccountId}:table/RoboSystems*
-                  - !Sub arn:aws:dynamodb:*:${AWS::AccountId}:table/RoboSystems*/index/*
+                  - !Sub arn:aws:dynamodb:*:${AWS::AccountId}:table/robosystems-graph-*
+                  - !Sub arn:aws:dynamodb:*:${AWS::AccountId}:table/robosystems-graph-*/index/*
               - Sid: DynamoDBGlobal
                 Effect: Allow
                 Action:

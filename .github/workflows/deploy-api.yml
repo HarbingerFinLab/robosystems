@@ -137,6 +137,20 @@ on:
         required: true
         type: string
 
+      # S3 Bucket Configuration (from S3 stack outputs)
+      shared_processed_bucket_arn:
+        description: "ARN of shared processed data bucket (from S3 stack)"
+        required: true
+        type: string
+      deployment_bucket_arn:
+        description: "ARN of deployment bucket (from S3 stack)"
+        required: true
+        type: string
+      user_data_bucket_arn:
+        description: "ARN of user data bucket (from S3 stack)"
+        required: true
+        type: string
+
       # Other Configuration
       prometheus_stack_name:
         description: "Name of the Prometheus CloudFormation stack for this environment"
@@ -265,7 +279,10 @@ jobs:
                 ParameterKey=FargateSpotWeight,ParameterValue=${{ inputs.fargate_spot_weight }} \
                 ParameterKey=FargateWeight,ParameterValue=${{ inputs.fargate_weight }} \
                 ParameterKey=PrometheusStackName,ParameterValue=\"${{ inputs.prometheus_stack_name }}\" \
-                ParameterKey=EmailFromAddress,ParameterValue=\"${{ inputs.aws_sns_alert_email }}\""
+                ParameterKey=EmailFromAddress,ParameterValue=\"${{ inputs.aws_sns_alert_email }}\" \
+                ParameterKey=SharedProcessedBucketArn,ParameterValue=\"${{ inputs.shared_processed_bucket_arn }}\" \
+                ParameterKey=DeploymentBucketArn,ParameterValue=\"${{ inputs.deployment_bucket_arn }}\" \
+                ParameterKey=UserDataBucketArn,ParameterValue=\"${{ inputs.user_data_bucket_arn }}\""
 
           # Deploy or update the stack
           if [ "$STACK_ACTION" = "create-stack" ]; then

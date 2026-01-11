@@ -41,12 +41,13 @@ on:
         type: string
         default: ""
 
-      # UserData Script Configuration
-      deployment_bucket:
-        description: "S3 bucket containing deployment scripts"
-        required: false
+      # S3 Bucket Configuration (from S3 stack outputs)
+      deployment_bucket_arn:
+        description: "ARN of deployment bucket (from S3 stack output)"
+        required: true
         type: string
-        default: ""
+
+      # UserData Script Configuration
       userdata_script_key:
         description: "S3 key for Bastion UserData script"
         required: false
@@ -123,12 +124,10 @@ jobs:
             echo "Adding Valkey client security group: ${{ inputs.valkey_sg_id }}"
           fi
 
-          # Add UserData script configuration if provided
-          if [ -n "${{ inputs.deployment_bucket }}" ] && [ "${{ inputs.deployment_bucket }}" != "" ]; then
-            BASTION_PARAMS="$BASTION_PARAMS ParameterKey=DeploymentBucket,ParameterValue=${{ inputs.deployment_bucket }}"
-            echo "Adding deployment bucket: ${{ inputs.deployment_bucket }}"
-          fi
+          # Add S3 bucket configuration (required)
+          BASTION_PARAMS="$BASTION_PARAMS ParameterKey=DeploymentBucketArn,ParameterValue=${{ inputs.deployment_bucket_arn }}"
 
+          # Add UserData script key if provided
           if [ -n "${{ inputs.userdata_script_key }}" ] && [ "${{ inputs.userdata_script_key }}" != "" ]; then
             BASTION_PARAMS="$BASTION_PARAMS ParameterKey=UserDataScriptKey,ParameterValue=${{ inputs.userdata_script_key }}"
             echo "Adding UserData script key: ${{ inputs.userdata_script_key }}"

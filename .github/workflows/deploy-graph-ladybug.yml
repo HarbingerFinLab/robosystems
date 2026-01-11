@@ -217,6 +217,33 @@ jobs:
           echo "  - Pro: Volumes can always be reattached after instance replacement"
           echo "  - Con: No multi-AZ redundancy (AZ failure affects this tier)"
 
+      - name: Get S3 Bucket Configuration
+        id: s3_config
+        run: |
+          # Determine S3 stack name based on environment
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            S3_STACK_NAME="RoboSystemsS3Prod"
+          else
+            S3_STACK_NAME="RoboSystemsS3Staging"
+          fi
+
+          # Query S3 stack outputs for bucket names/ARNs (single source of truth)
+          S3_OUTPUTS=$(aws cloudformation describe-stacks \
+            --stack-name "$S3_STACK_NAME" \
+            --query 'Stacks[0].Outputs' \
+            --output json)
+
+          DEPLOYMENT_BUCKET_ARN=$(echo "$S3_OUTPUTS" | jq -r '.[] | select(.OutputKey=="DeploymentBucketArn") | .OutputValue')
+          SHARED_PROCESSED_BUCKET_ARN=$(echo "$S3_OUTPUTS" | jq -r '.[] | select(.OutputKey=="SharedProcessedBucketArn") | .OutputValue')
+          USER_DATA_BUCKET_ARN=$(echo "$S3_OUTPUTS" | jq -r '.[] | select(.OutputKey=="UserDataBucketArn") | .OutputValue')
+
+          echo "deployment_bucket_arn=$DEPLOYMENT_BUCKET_ARN" >> $GITHUB_OUTPUT
+          echo "shared_processed_bucket_arn=$SHARED_PROCESSED_BUCKET_ARN" >> $GITHUB_OUTPUT
+          echo "user_data_bucket_arn=$USER_DATA_BUCKET_ARN" >> $GITHUB_OUTPUT
+
+          echo "📦 S3 Bucket Configuration:"
+          echo "  Deployment: $DEPLOYMENT_BUCKET_ARN"
+
       - name: Deploy Graph LadybugDB CloudFormation stack
         id: deploy-stack
         run: |
@@ -236,6 +263,9 @@ jobs:
           SUBNET_PARAM="${{ steps.az_selection.outputs.selected_subnet }}"
 
           LBUG_STACK_PARAMS="ParameterKey=Environment,ParameterValue=${{ inputs.environment }} \
+                ParameterKey=DeploymentBucketArn,ParameterValue=${{ steps.s3_config.outputs.deployment_bucket_arn }} \
+                ParameterKey=SharedProcessedBucketArn,ParameterValue=${{ steps.s3_config.outputs.shared_processed_bucket_arn }} \
+                ParameterKey=UserDataBucketArn,ParameterValue=${{ steps.s3_config.outputs.user_data_bucket_arn }} \
                 ParameterKey=SNSAlertEmail,ParameterValue=${{ inputs.aws_sns_alert_email }} \
                 ParameterKey=VpcId,ParameterValue=${{ inputs.vpc_id }} \
                 ParameterKey=VpcCidr,ParameterValue=\"10.0.0.0/16\" \

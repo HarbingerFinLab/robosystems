@@ -6,11 +6,31 @@
 set -e
 
 ENVIRONMENT="${1:-prod}"
-BUCKET_NAME="robosystems-deployment-${ENVIRONMENT}"
 REGION="${AWS_REGION:-us-east-1}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Determine S3 stack name based on environment
+if [ "$ENVIRONMENT" = "prod" ]; then
+    S3_STACK_NAME="RoboSystemsS3Prod"
+else
+    S3_STACK_NAME="RoboSystemsS3Staging"
+fi
+
+# Get deployment bucket name from S3 stack output (single source of truth)
+# Falls back to default naming if stack query fails
+BUCKET_NAME=$(aws cloudformation describe-stacks \
+    --stack-name "$S3_STACK_NAME" \
+    --query "Stacks[0].Outputs[?OutputKey=='DeploymentBucketName'].OutputValue" \
+    --output text \
+    --region "$REGION" 2>/dev/null) || BUCKET_NAME=""
+
+if [ -z "$BUCKET_NAME" ] || [ "$BUCKET_NAME" = "None" ]; then
+    echo "Warning: Could not get bucket name from S3 stack ($S3_STACK_NAME), using default"
+    BUCKET_NAME="robosystems-deployment-${ENVIRONMENT}"
+fi
+
 echo "Packaging UserData scripts for ${ENVIRONMENT} environment..."
+echo "Using deployment bucket: ${BUCKET_NAME}"
 
 # Upload UserData scripts
 echo "Uploading UserData scripts to S3..."

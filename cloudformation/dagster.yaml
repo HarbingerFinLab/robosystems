@@ -117,12 +117,28 @@ Parameters:
     Default: Dagster
     Description: Component tag for resource identification and billing
 
-Mappings:
-  StackNames:
-    prod:
-      S3: RoboSystemsS3Prod
-    staging:
-      S3: RoboSystemsS3Staging
+  # S3 Bucket Configuration (from S3 stack outputs)
+  SharedRawBucketArn:
+    Type: String
+    Description: ARN of shared raw data bucket (from S3 stack output)
+  SharedProcessedBucketArn:
+    Type: String
+    Description: ARN of shared processed data bucket (from S3 stack output)
+  DeploymentBucketArn:
+    Type: String
+    Description: ARN of deployment bucket (from S3 stack output)
+  UserDataBucketArn:
+    Type: String
+    Description: ARN of user data bucket (from S3 stack output)
+  PublicDataBucketArn:
+    Type: String
+    Description: ARN of public data bucket (from S3 stack output)
+  LogsBucketArn:
+    Type: String
+    Description: ARN of logs bucket for Dagster compute logs (from S3 stack output)
+  PublicDataCDNURL:
+    Type: String
+    Description: CloudFront CDN URL for public data (from S3 stack output)
 
 Conditions:
   HasBastionAccess: !Not [!Equals [!Ref BastionSecurityGroupId, ""]]
@@ -310,18 +326,18 @@ Resources:
                   - s3:ListBucket
                   - s3:GetBucketLocation
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-raw-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-raw-${Environment}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-public-data-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-public-data-${Environment}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-logs-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-logs-${Environment}/*"
+                  - !Ref SharedRawBucketArn
+                  - !Sub "${SharedRawBucketArn}/*"
+                  - !Ref SharedProcessedBucketArn
+                  - !Sub "${SharedProcessedBucketArn}/*"
+                  - !Ref DeploymentBucketArn
+                  - !Sub "${DeploymentBucketArn}/*"
+                  - !Ref UserDataBucketArn
+                  - !Sub "${UserDataBucketArn}/*"
+                  - !Ref PublicDataBucketArn
+                  - !Sub "${PublicDataBucketArn}/*"
+                  - !Ref LogsBucketArn
+                  - !Sub "${LogsBucketArn}/*"
               # DynamoDB for graph registries (needed for shared master discovery)
               - Effect: Allow
                 Action:
@@ -526,9 +542,23 @@ Resources:
               Value: !Ref DagsterCluster
             - Name: DAGSTER_ECS_LAUNCH_TYPE
               Value: FARGATE
-            # S3 compute logs bucket for Dagster UI
+            # S3 Bucket Configuration (derived from ARN parameters)
+            - Name: SHARED_RAW_BUCKET
+              Value: !Select [5, !Split [":", !Ref SharedRawBucketArn]]
+            - Name: SHARED_PROCESSED_BUCKET
+              Value: !Select [5, !Split [":", !Ref SharedProcessedBucketArn]]
+            - Name: USER_DATA_BUCKET
+              Value: !Select [5, !Split [":", !Ref UserDataBucketArn]]
+            - Name: PUBLIC_DATA_BUCKET
+              Value: !Select [5, !Split [":", !Ref PublicDataBucketArn]]
+            - Name: DEPLOYMENT_BUCKET
+              Value: !Select [5, !Split [":", !Ref DeploymentBucketArn]]
+            - Name: LOGS_BUCKET
+              Value: !Select [5, !Split [":", !Ref LogsBucketArn]]
             - Name: DAGSTER_COMPUTE_LOGS_BUCKET
-              Value: !Sub robosystems-logs-${Environment}
+              Value: !Select [5, !Split [":", !Ref LogsBucketArn]]
+            - Name: PUBLIC_DATA_CDN_URL
+              Value: !Ref PublicDataCDNURL
             # Run coordinator configuration
             - Name: DAGSTER_MAX_CONCURRENT_RUNS
               Value: !Ref MaxConcurrentRuns
@@ -600,9 +630,23 @@ Resources:
               Value: !Ref DagsterCluster
             - Name: DAGSTER_ECS_LAUNCH_TYPE
               Value: FARGATE
-            # S3 compute logs bucket for Dagster UI
+            # S3 Bucket Configuration (derived from ARN parameters)
+            - Name: SHARED_RAW_BUCKET
+              Value: !Select [5, !Split [":", !Ref SharedRawBucketArn]]
+            - Name: SHARED_PROCESSED_BUCKET
+              Value: !Select [5, !Split [":", !Ref SharedProcessedBucketArn]]
+            - Name: USER_DATA_BUCKET
+              Value: !Select [5, !Split [":", !Ref UserDataBucketArn]]
+            - Name: PUBLIC_DATA_BUCKET
+              Value: !Select [5, !Split [":", !Ref PublicDataBucketArn]]
+            - Name: DEPLOYMENT_BUCKET
+              Value: !Select [5, !Split [":", !Ref DeploymentBucketArn]]
+            - Name: LOGS_BUCKET
+              Value: !Select [5, !Split [":", !Ref LogsBucketArn]]
             - Name: DAGSTER_COMPUTE_LOGS_BUCKET
-              Value: !Sub robosystems-logs-${Environment}
+              Value: !Select [5, !Split [":", !Ref LogsBucketArn]]
+            - Name: PUBLIC_DATA_CDN_URL
+              Value: !Ref PublicDataCDNURL
             # Run coordinator configuration (shared config with daemon)
             - Name: DAGSTER_MAX_CONCURRENT_RUNS
               Value: !Ref MaxConcurrentRuns
@@ -673,15 +717,23 @@ Resources:
               Value: !Ref ValkeyUrl
             - Name: AWS_REGION
               Value: !Ref AWS::Region
-            # CDN URL for public data (text block externalization in SEC processing)
-            - Name: PUBLIC_DATA_CDN_URL
-              Value:
-                Fn::ImportValue: !Sub
-                  - "${S3StackName}-${Environment}-PublicDataCDNURL"
-                  - S3StackName: !FindInMap [StackNames, !Ref Environment, S3]
-            # S3 compute logs bucket for Dagster UI
+            # S3 Bucket Configuration (derived from ARN parameters)
+            - Name: SHARED_RAW_BUCKET
+              Value: !Select [5, !Split [":", !Ref SharedRawBucketArn]]
+            - Name: SHARED_PROCESSED_BUCKET
+              Value: !Select [5, !Split [":", !Ref SharedProcessedBucketArn]]
+            - Name: USER_DATA_BUCKET
+              Value: !Select [5, !Split [":", !Ref UserDataBucketArn]]
+            - Name: PUBLIC_DATA_BUCKET
+              Value: !Select [5, !Split [":", !Ref PublicDataBucketArn]]
+            - Name: DEPLOYMENT_BUCKET
+              Value: !Select [5, !Split [":", !Ref DeploymentBucketArn]]
+            - Name: LOGS_BUCKET
+              Value: !Select [5, !Split [":", !Ref LogsBucketArn]]
             - Name: DAGSTER_COMPUTE_LOGS_BUCKET
-              Value: !Sub robosystems-logs-${Environment}
+              Value: !Select [5, !Split [":", !Ref LogsBucketArn]]
+            - Name: PUBLIC_DATA_CDN_URL
+              Value: !Ref PublicDataCDNURL
             # Run coordinator configuration (shared config)
             - Name: DAGSTER_MAX_CONCURRENT_RUNS
               Value: !Ref MaxConcurrentRuns

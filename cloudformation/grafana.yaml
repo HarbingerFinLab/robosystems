@@ -144,8 +144,9 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:s3:::aws-athena-query-results-${AWS::AccountId}-${AWS::Region}"
                   - !Sub "arn:${AWS::Partition}:s3:::aws-athena-query-results-${AWS::AccountId}-${AWS::Region}/*"
                   # CUR bucket for cost dashboards - see bin/tools/grafana/README.md
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-cur"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-cur/*"
+                  # Pattern supports: robosystems-cur (main) or robosystems-{namespace}-cur (forks)
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems*cur"
+                  - !Sub "arn:${AWS::Partition}:s3:::robosystems*cur/*"
               # Allow Glue access for Athena data catalog
               - Effect: Allow
                 Action:

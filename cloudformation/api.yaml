@@ -186,6 +186,17 @@ Parameters:
     Default: API
     Description: Component tag for resource identification and billing
 
+  # S3 Bucket Configuration (from S3 stack outputs)
+  SharedProcessedBucketArn:
+    Type: String
+    Description: ARN of shared processed data bucket (from S3 stack output)
+  DeploymentBucketArn:
+    Type: String
+    Description: ARN of deployment bucket (from S3 stack output)
+  UserDataBucketArn:
+    Type: String
+    Description: ARN of user data bucket (from S3 stack output)
+
 Conditions:
   HasObservabilityStack: !Not [!Equals [!Ref PrometheusStackName, ""]]
   IsProduction: !Equals [!Ref Environment, "prod"]
@@ -343,10 +354,10 @@ Resources:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
+                  - !Ref SharedProcessedBucketArn
+                  - !Sub "${SharedProcessedBucketArn}/*"
+                  - !Ref DeploymentBucketArn
+                  - !Sub "${DeploymentBucketArn}/*"
               # Read/Write access to user data bucket for uploads/temp files
               - Effect: Allow
                 Action:
@@ -355,8 +366,8 @@ Resources:
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*"
+                  - !Ref UserDataBucketArn
+                  - !Sub "${UserDataBucketArn}/*"
               # SES permissions for sending emails
               - Effect: Allow
                 Action:
@@ -608,6 +619,13 @@ Resources:
             # Cache & Message Queue Configuration
             - Name: VALKEY_URL
               Value: !Ref ValkeyUrl
+            # S3 Bucket Configuration (derived from ARN parameters)
+            - Name: SHARED_PROCESSED_BUCKET
+              Value: !Select [5, !Split [":", !Ref SharedProcessedBucketArn]]
+            - Name: USER_DATA_BUCKET
+              Value: !Select [5, !Split [":", !Ref UserDataBucketArn]]
+            - Name: DEPLOYMENT_BUCKET
+              Value: !Select [5, !Split [":", !Ref DeploymentBucketArn]]
             # Observability Configuration
             - Name: OTEL_ENABLED
               Value: !If [HasObservabilityStack, "true", "false"]

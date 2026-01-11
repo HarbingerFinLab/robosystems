@@ -45,6 +45,9 @@ SHARED_INSTANCE_NAME="${SHARED_INSTANCE_NAME:-shared-writer}"
 # Set CloudWatch namespace (environment is dimensionalized in metrics)
 CLOUDWATCH_NAMESPACE="${CloudWatchNamespace:-RoboSystems/Graph}"
 
+# Deployment bucket is passed from CloudFormation, with fallback for backwards compatibility
+DEPLOYMENT_BUCKET="${DEPLOYMENT_BUCKET:-robosystems-deployment-${ENVIRONMENT}}"
+
 # ==================================================================================
 # SYSTEM SETUP
 # ==================================================================================
@@ -238,31 +241,31 @@ aws ec2 create-tags \
 echo "Downloading shared infrastructure scripts..."
 
 # Download common graph scripts
-aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/setup-cloudwatch-graph.sh \
+aws s3 cp s3://${DEPLOYMENT_BUCKET}/userdata/common/setup-cloudwatch-graph.sh \
     /usr/local/bin/setup-cloudwatch-graph.sh || {
   echo "ERROR: Could not download CloudWatch setup script from S3"
   exit 1
 }
 
-aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/register-graph-instance.sh \
+aws s3 cp s3://${DEPLOYMENT_BUCKET}/userdata/common/register-graph-instance.sh \
     /usr/local/bin/register-graph-instance.sh || {
   echo "ERROR: Could not download instance registration script from S3"
   exit 1
 }
 
-aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/run-graph-container.sh \
+aws s3 cp s3://${DEPLOYMENT_BUCKET}/userdata/common/run-graph-container.sh \
     /usr/local/bin/run-graph-container.sh || {
   echo "ERROR: Could not download container runner script from S3"
   exit 1
 }
 
-aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/graph-health-check.sh \
+aws s3 cp s3://${DEPLOYMENT_BUCKET}/userdata/common/graph-health-check.sh \
     /usr/local/bin/graph-health-check.sh || {
   echo "ERROR: Could not download health check script from S3"
   exit 1
 }
 
-aws s3 cp s3://robosystems-deployment-${ENVIRONMENT}/userdata/common/graph-lifecycle.sh \
+aws s3 cp s3://${DEPLOYMENT_BUCKET}/userdata/common/graph-lifecycle.sh \
     /usr/local/bin/graph-lifecycle.sh || {
   echo "ERROR: Could not download lifecycle script from S3"
   exit 1
