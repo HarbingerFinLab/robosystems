@@ -66,6 +66,11 @@ Parameters:
     MaxValue: 50
     Description: Desired number of replica instances
 
+  # S3 Bucket Configuration (from S3 stack outputs)
+  DeploymentBucketArn:
+    Type: String
+    Description: ARN of deployment bucket (from S3 stack output)
+
   # Docker Configuration
   ECRRepositoryUrl:
     Type: String
@@ -196,8 +201,8 @@ Resources:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*
-                  - !Sub arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}
+                  - !Sub "${DeploymentBucketArn}/*"
+                  - !Ref DeploymentBucketArn
               # DynamoDB for instance registration (read-only replicas still register)
               - Effect: Allow
                 Action:

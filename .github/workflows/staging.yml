@@ -336,6 +336,7 @@ jobs:
         deploy-vpc,
         deploy-postgres,
         deploy-valkey,
+        deploy-s3,
       ]
     uses: ./.github/workflows/deploy-bastion.yml
     with:
@@ -350,6 +351,8 @@ jobs:
       public_subnet_ids: ${{ needs.deploy-vpc.outputs.public_subnet_ids }}
       # Security Groups (SSM-only access - no SSH parameters needed)
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}
+      # S3 Bucket Configuration (from S3 stack outputs)
+      deployment_bucket_arn: ${{ needs.deploy-s3.outputs.deployment_bucket_arn }}
     secrets:
       ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
@@ -526,6 +529,10 @@ jobs:
       waf_rate_limit_per_ip: ${{ vars.WAF_RATE_LIMIT_PER_IP || '10000' }}
       waf_enable_geo_blocking: ${{ vars.WAF_GEO_BLOCKING_ENABLED || 'false' }}
       waf_enable_aws_managed_rules: ${{ vars.WAF_AWS_MANAGED_RULES_ENABLED || 'true' }}
+      # S3 Bucket Configuration (from S3 stack outputs)
+      shared_processed_bucket_arn: ${{ needs.deploy-s3.outputs.shared_processed_bucket_arn }}
+      deployment_bucket_arn: ${{ needs.deploy-s3.outputs.deployment_bucket_arn }}
+      user_data_bucket_arn: ${{ needs.deploy-s3.outputs.user_data_bucket_arn }}
       # Other Configuration
       prometheus_stack_name: ${{ needs.deploy-prometheus.outputs.prometheus_stack_name || '' }}
       aws_sns_alert_email: ${{ vars.AWS_SNS_ALERT_EMAIL }}
@@ -582,6 +589,14 @@ jobs:
       bastion_sg_id: ${{ needs.deploy-bastion.outputs.bastion_sg_id }}
       # Monitoring Configuration
       container_insights_enabled: ${{ vars.DAGSTER_CONTAINER_INSIGHTS_STAGING || 'disabled' }}
+      # S3 Bucket Configuration (from S3 stack outputs)
+      shared_raw_bucket_arn: ${{ needs.deploy-s3.outputs.shared_raw_bucket_arn }}
+      shared_processed_bucket_arn: ${{ needs.deploy-s3.outputs.shared_processed_bucket_arn }}
+      deployment_bucket_arn: ${{ needs.deploy-s3.outputs.deployment_bucket_arn }}
+      user_data_bucket_arn: ${{ needs.deploy-s3.outputs.user_data_bucket_arn }}
+      public_data_bucket_arn: ${{ needs.deploy-s3.outputs.public_data_bucket_arn }}
+      logs_bucket_arn: ${{ needs.deploy-s3.outputs.logs_bucket_arn }}
+      public_data_cdn_url: ${{ needs.deploy-s3.outputs.public_data_cdn_url }}
       # Other Configuration
       refresh_ecs_service: ${{ vars.DAGSTER_REFRESH_ECS_STAGING || 'true' }}
     secrets:

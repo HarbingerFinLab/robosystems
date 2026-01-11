@@ -39,10 +39,9 @@ Parameters:
     ConstraintDescription: Must be a valid ARM64 instance type
 
   # Script Configuration
-  DeploymentBucket:
+  DeploymentBucketArn:
     Type: String
-    Description: S3 bucket containing deployment scripts
-    Default: ""
+    Description: ARN of deployment bucket (from S3 stack output)
   UserDataScriptKey:
     Type: String
     Description: S3 key for Bastion UserData script
@@ -60,7 +59,6 @@ Parameters:
 
 Conditions:
   HasValkeySecurityGroup: !Not [!Equals [!Ref ValkeySecurityGroupId, ""]]
-  HasDeploymentBucket: !Not [!Equals [!Ref DeploymentBucket, ""]]
 
 Resources:
   # Security group for bastion host (SSM access - no inbound ports needed)
@@ -150,14 +148,9 @@ Resources:
                 Action:
                   - s3:GetObject
                   - s3:ListBucket
-                Resource: !If
-                  - HasDeploymentBucket
-                  - - !Sub "arn:${AWS::Partition}:s3:::${DeploymentBucket}/*"
-                    - !Sub "arn:${AWS::Partition}:s3:::${DeploymentBucket}"
-                    - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
-                    - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
-                  - - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
-                    - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
+                Resource:
+                  - !Ref DeploymentBucketArn
+                  - !Sub "${DeploymentBucketArn}/*"
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -271,13 +264,10 @@ Resources:
           echo "Starting Bastion Host initialization at $(date)"
 
           # Download the UserData script from S3
-          SCRIPT_BUCKET="${DeploymentBucket}"
+          # Extract bucket name from ARN (arn:aws:s3:::bucket-name -> bucket-name)
+          DEPLOYMENT_BUCKET_ARN="${DeploymentBucketArn}"
+          SCRIPT_BUCKET=$(echo "$DEPLOYMENT_BUCKET_ARN" | cut -d: -f6)
           SCRIPT_KEY="${UserDataScriptKey}"
-
-          # Use deployment bucket or environment-based default
-          if [ -z "$SCRIPT_BUCKET" ]; then
-            SCRIPT_BUCKET="robosystems-deployment-${Environment}"
-          fi
 
           echo "Downloading UserData script from s3://$SCRIPT_BUCKET/$SCRIPT_KEY"
           aws s3 cp "s3://$SCRIPT_BUCKET/$SCRIPT_KEY" /tmp/bastion-userdata.sh --region ${AWS::Region}

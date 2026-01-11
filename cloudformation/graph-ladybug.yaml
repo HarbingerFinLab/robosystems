@@ -11,6 +11,18 @@ Parameters:
     Description: Environment name (prod or staging)
     ConstraintDescription: Must be prod or staging
 
+  # S3 Bucket Configuration (from S3 stack outputs)
+  # Bucket names are derived from ARNs using !Select [5, !Split [":", ARN]]
+  DeploymentBucketArn:
+    Type: String
+    Description: ARN of deployment bucket (from S3 stack output)
+  SharedProcessedBucketArn:
+    Type: String
+    Description: ARN of shared processed bucket (from S3 stack output)
+  UserDataBucketArn:
+    Type: String
+    Description: ARN of user data bucket (from S3 stack output)
+
   # Infrastructure & Networking
   VpcId:
     Type: AWS::EC2::VPC::Id
@@ -260,10 +272,10 @@ Resources:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-deployment-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}/*"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-shared-processed-${Environment}"
+                  - !Sub "${DeploymentBucketArn}/*"
+                  - !Ref DeploymentBucketArn
+                  - !Sub "${SharedProcessedBucketArn}/*"
+                  - !Ref SharedProcessedBucketArn
               # Full access to user data bucket for backups and staging tables
               - Effect: Allow
                 Action:
@@ -272,8 +284,8 @@ Resources:
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}"
-                  - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*"
+                  - !Ref UserDataBucketArn
+                  - !Sub "${UserDataBucketArn}/*"
               - Effect: Allow
                 Action:
                   - ec2:CreateSnapshot
@@ -489,8 +501,12 @@ Resources:
               done
             fi
 
+            # Extract bucket name from ARN (arn:aws:s3:::bucket-name -> bucket-name)
+            DEPLOYMENT_BUCKET_ARN="${DeploymentBucketArn}"
+            DEPLOYMENT_BUCKET=$(echo "$DEPLOYMENT_BUCKET_ARN" | cut -d: -f6)
+
             # Download and execute setup script
-            aws s3 cp s3://robosystems-deployment-${Environment}/userdata/ladybug-writer.sh /tmp/lbug-setup.sh || {
+            aws s3 cp s3://${!DEPLOYMENT_BUCKET}/userdata/ladybug-writer.sh /tmp/lbug-setup.sh || {
               echo "ERROR: Failed to download setup script from S3"
               exit 1
             }
@@ -498,6 +514,7 @@ Resources:
 
             # Export required environment variables for the setup script
             export ENVIRONMENT="${Environment}"
+            export DEPLOYMENT_BUCKET="$DEPLOYMENT_BUCKET"
             # Export SHARED_REPOSITORIES for shared repository deployments
             [ "${WriterTier}" = "ladybug-shared" ] && [ -n "${SharedRepositories}" ] && export SHARED_REPOSITORIES="${SharedRepositories}"
             export INSTANCE_TYPE=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-type)

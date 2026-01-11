@@ -77,6 +77,11 @@ on:
         required: false
         type: string
         default: "false"
+      user_data_bucket_arn:
+        description: "ARN of user data bucket for CloudTrail data events (optional, from S3 stack)"
+        required: false
+        type: string
+        default: ""
 
     outputs:
       vpc_id:
@@ -286,7 +291,8 @@ jobs:
           CLOUDTRAIL_PARAMS="ParameterKey=Environment,ParameterValue=$CLOUDTRAIL_ENV \
                       ParameterKey=EnableCloudTrail,ParameterValue=${{ inputs.cloudtrail_enabled }} \
                       ParameterKey=LogRetentionDays,ParameterValue=${{ inputs.cloudtrail_log_retention_days }} \
-                      ParameterKey=DataEventsEnabled,ParameterValue=${{ inputs.cloudtrail_data_events_enabled }}"
+                      ParameterKey=DataEventsEnabled,ParameterValue=${{ inputs.cloudtrail_data_events_enabled }} \
+                      ParameterKey=UserDataBucketArn,ParameterValue=${{ inputs.user_data_bucket_arn }}"
 
           echo "CloudTrail enabled: ${{ inputs.cloudtrail_enabled }}"
           echo "CloudTrail log retention days: ${{ inputs.cloudtrail_log_retention_days }}"

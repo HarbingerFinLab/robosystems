@@ -119,6 +119,36 @@ on:
         type: string
         default: "true"
 
+      # S3 Bucket Configuration (from S3 stack outputs)
+      shared_raw_bucket_arn:
+        description: "ARN of shared raw data bucket (from S3 stack)"
+        required: true
+        type: string
+      shared_processed_bucket_arn:
+        description: "ARN of shared processed data bucket (from S3 stack)"
+        required: true
+        type: string
+      deployment_bucket_arn:
+        description: "ARN of deployment bucket (from S3 stack)"
+        required: true
+        type: string
+      user_data_bucket_arn:
+        description: "ARN of user data bucket (from S3 stack)"
+        required: true
+        type: string
+      public_data_bucket_arn:
+        description: "ARN of public data bucket (from S3 stack)"
+        required: true
+        type: string
+      logs_bucket_arn:
+        description: "ARN of logs bucket for Dagster compute logs (from S3 stack)"
+        required: true
+        type: string
+      public_data_cdn_url:
+        description: "CloudFront CDN URL for public data (from S3 stack)"
+        required: true
+        type: string
+
     secrets:
       ACTIONS_TOKEN:
         description: "GitHub token for checkout (optional - falls back to github.token)"
@@ -176,7 +206,14 @@ jobs:
                 ParameterKey=ValkeyClientSecurityGroupId,ParameterValue=${{ inputs.valkey_sg_id }} \
                 ParameterKey=DatabaseSecurityGroupId,ParameterValue=${{ inputs.database_sg_id }} \
                 ParameterKey=BastionSecurityGroupId,ParameterValue=${{ inputs.bastion_sg_id }} \
-                ParameterKey=ContainerInsightsEnabled,ParameterValue=${{ inputs.container_insights_enabled }}"
+                ParameterKey=ContainerInsightsEnabled,ParameterValue=${{ inputs.container_insights_enabled }} \
+                ParameterKey=SharedRawBucketArn,ParameterValue=\"${{ inputs.shared_raw_bucket_arn }}\" \
+                ParameterKey=SharedProcessedBucketArn,ParameterValue=\"${{ inputs.shared_processed_bucket_arn }}\" \
+                ParameterKey=DeploymentBucketArn,ParameterValue=\"${{ inputs.deployment_bucket_arn }}\" \
+                ParameterKey=UserDataBucketArn,ParameterValue=\"${{ inputs.user_data_bucket_arn }}\" \
+                ParameterKey=PublicDataBucketArn,ParameterValue=\"${{ inputs.public_data_bucket_arn }}\" \
+                ParameterKey=LogsBucketArn,ParameterValue=\"${{ inputs.logs_bucket_arn }}\" \
+                ParameterKey=PublicDataCDNURL,ParameterValue=\"${{ inputs.public_data_cdn_url }}\""
 
           # Deploy or update the stack
           if [ "$STACK_ACTION" = "create-stack" ]; then

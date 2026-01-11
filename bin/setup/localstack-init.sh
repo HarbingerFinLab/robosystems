@@ -34,6 +34,9 @@ awslocal s3api put-bucket-cors \
   --bucket robosystems-public-data \
   --cors-configuration '{"CORSRules":[{"AllowedOrigins":["*"],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"MaxAge":3600}]}' || echo "CORS already configured for robosystems-public-data"
 
+# Note: deployment and logs buckets are infrastructure-only (prod/staging)
+# They're not needed for local development
+
 # Local test bucket (for pytest)
 awslocal s3api create-bucket \
   --bucket robosystems-local \

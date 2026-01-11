@@ -51,6 +51,12 @@ Parameters:
     Default: ""
     Description: Comma-separated list of S3 bucket names to monitor for data events (leave empty to use defaults)
 
+  # S3 Bucket Configuration (from S3 stack outputs - for data events monitoring)
+  UserDataBucketArn:
+    Type: String
+    Default: ""
+    Description: ARN of user data bucket for default data events monitoring (optional)
+
 Conditions:
   CreateCloudTrail: !Equals [!Ref EnableCloudTrail, "true"]
   EnableDataEvents: !And
@@ -60,6 +66,7 @@ Conditions:
     - !Equals
       - !Join ["", !Ref MonitoredBuckets]
       - ""
+  HasUserDataBucket: !Not [!Equals [!Ref UserDataBucketArn, ""]]
 
 Resources:
   # S3 Bucket for CloudTrail logs
@@ -160,8 +167,11 @@ Resources:
                       - InnerItem: !Join
                           - "/*,arn:${AWS::Partition}:s3:::"
                           - !Ref MonitoredBuckets
-                  # Default critical buckets if none specified (user data with backups/uploads)
-                  - - !Sub "arn:${AWS::Partition}:s3:::robosystems-user-${Environment}/*"
+                  # Default: monitor user data bucket if ARN provided (from S3 stack)
+                  - !If
+                    - HasUserDataBucket
+                    - - !Sub "${UserDataBucketArn}/*"
+                    - !Ref AWS::NoValue
             - !Ref AWS::NoValue
       Tags:
         - Key: Name
