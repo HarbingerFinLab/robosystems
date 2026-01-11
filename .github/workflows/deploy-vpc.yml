@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: "5"
+      vpc_second_octet:
+        description: "Second octet for VPC CIDR (10.X.0.0/16). Change to avoid overlap for VPC peering."
+        required: false
+        type: string
+        default: "0"
 
       # VPC Flow Logs Configuration
       vpc_flow_logs_enabled:
@@ -141,10 +146,12 @@ jobs:
           # Set up parameters for VPC configuration
           VPC_PARAMS="ParameterKey=DeployVpcEndpoints,ParameterValue=${{ inputs.endpoint_mode }} \
                       ParameterKey=MaxAvailabilityZones,ParameterValue=${{ inputs.max_availability_zones }} \
+                      ParameterKey=VpcSecondOctet,ParameterValue=${{ inputs.vpc_second_octet }} \
                       ParameterKey=EnableVPCFlowLogs,ParameterValue=${{ inputs.vpc_flow_logs_enabled }} \
                       ParameterKey=FlowLogsRetentionDays,ParameterValue=${{ inputs.vpc_flow_logs_retention_days }} \
                       ParameterKey=FlowLogsTrafficType,ParameterValue=${{ inputs.vpc_flow_logs_traffic_type }}"
 
+          echo "Using VPC CIDR: 10.${{ inputs.vpc_second_octet }}.0.0/16"
           echo "Using VPC endpoint mode: ${{ inputs.endpoint_mode }}"
           echo "Using max availability zones: ${{ inputs.max_availability_zones }}"
           echo "VPC Flow Logs enabled: ${{ inputs.vpc_flow_logs_enabled }}"

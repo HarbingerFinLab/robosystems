@@ -18,8 +18,6 @@ VALKEY_ENDPOINT=""
 DAGSTER_ENDPOINT=""
 API_ENDPOINT=""
 
-# Bastion management variables
-BASTION_WAS_STARTED="false"
 
 # Colors for output
 RED='\033[0;31m'
@@ -28,7 +26,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Cleanup function to stop bastion if we started it
+# Cleanup function
 cleanup_on_exit() {
     echo ""
     echo -e "${YELLOW}Cleaning up...${NC}"
@@ -36,11 +34,17 @@ cleanup_on_exit() {
     # Kill any background SSM sessions
     pkill -f "session-manager-plugin" 2>/dev/null || true
 
-    # Use parameter expansion with defaults for safety
-    if [[ "${BASTION_WAS_STARTED:-false}" == "true" ]] && [[ -n "${BASTION_INSTANCE_ID:-}" ]]; then
-        echo -e "${YELLOW}Stopping bastion instance (was originally stopped)...${NC}"
-        aws ec2 stop-instances --instance-ids "$BASTION_INSTANCE_ID" --region "${AWS_REGION:-us-east-1}" >/dev/null 2>&1 || true
-        echo -e "${GREEN}✓ Bastion instance stop command sent${NC}"
+    # Prompt user to optionally stop the bastion
+    if [[ -n "${BASTION_INSTANCE_ID:-}" ]] && [[ -t 0 ]]; then
+        echo ""
+        read -t 10 -p "Stop bastion instance? (y/N): " -n 1 -r stop_choice || true
+        echo ""
+
+        if [[ "${stop_choice:-}" =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}Stopping bastion instance...${NC}"
+            aws ec2 stop-instances --instance-ids "$BASTION_INSTANCE_ID" --region "${AWS_REGION:-us-east-1}" >/dev/null 2>&1 || true
+            echo -e "${GREEN}✓ Bastion stopped${NC}"
+        fi
     fi
 
     echo -e "${GREEN}Done.${NC}"
@@ -246,9 +250,6 @@ check_bastion_status() {
     if [[ "$instance_state" == "stopped" ]]; then
         echo -e "${YELLOW}Starting bastion instance...${NC}"
         aws ec2 start-instances --instance-ids "$BASTION_INSTANCE_ID" --region "$AWS_REGION" >/dev/null
-
-        # Mark that we started the bastion
-        BASTION_WAS_STARTED="true"
 
         # Wait for instance to be running
         echo -e "${BLUE}Waiting for instance to reach running state...${NC}"

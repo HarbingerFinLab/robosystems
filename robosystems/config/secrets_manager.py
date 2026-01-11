@@ -169,25 +169,6 @@ class SecretsManager:
         raise
       return {}
 
-  def get_s3_buckets(self) -> dict[str, str]:
-    """
-    Get all S3 bucket names from secrets.
-
-    Returns:
-        Dictionary mapping bucket purposes to bucket names.
-    """
-    # Import here to avoid circular imports
-    from robosystems.config.storage.buckets import get_all_bucket_names
-
-    # Get namespace from base secret (empty string for main deployment)
-    # S3_NAMESPACE is auto-detected during bootstrap:
-    # - Main repo (RoboFinSystems/robosystems): no namespace
-    # - Forks: AWS account ID as namespace
-    base_secrets = self.get_secret()
-    namespace = base_secrets.get("S3_NAMESPACE", "")
-
-    return get_all_bucket_names(namespace=namespace, environment=self.environment)
-
   def get_database_url(self) -> str:
     """
     Get the database URL from secrets.
@@ -266,33 +247,6 @@ def get_secrets_manager() -> SecretsManager:
   return _secrets_manager
 
 
-def get_s3_bucket_name(purpose: str) -> str:
-  """
-  Get an S3 bucket name for a specific purpose.
-
-  Args:
-      purpose: The purpose of the bucket (e.g., "shared_raw", "shared_processed", "user_data")
-
-  Returns:
-      The bucket name with proper environment suffix.
-  """
-  manager = get_secrets_manager()
-  buckets = manager.get_s3_buckets()
-
-  # Map convenience aliases to bucket keys
-  purpose_map = {
-    "public": "public_data",
-  }
-
-  mapped_purpose = purpose_map.get(purpose, purpose)
-  bucket_name = buckets.get(mapped_purpose, "")
-
-  if not bucket_name:
-    logger.warning(f"No bucket found for purpose: {purpose}")
-
-  return bucket_name
-
-
 # Secret mapping configuration
 # This could be externalized to a YAML/JSON file if it grows too large
 SECRET_MAPPINGS = {
@@ -359,6 +313,10 @@ SECRET_MAPPINGS = {
   # JWT configuration (for internal/fork deployments without public domains)
   "JWT_ISSUER": (None, "JWT_ISSUER"),
   "JWT_AUDIENCE": (None, "JWT_AUDIENCE"),
+  # Service URLs (for forks with custom domains)
+  "ROBOSYSTEMS_URL": (None, "ROBOSYSTEMS_URL"),
+  "ROBOLEDGER_URL": (None, "ROBOLEDGER_URL"),
+  "ROBOINVESTOR_URL": (None, "ROBOINVESTOR_URL"),
 }
 
 

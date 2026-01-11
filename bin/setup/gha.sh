@@ -224,8 +224,14 @@ function setup_full_config() {
         gh variable delete ENVIRONMENT_STAGING --yes 2>/dev/null || true
     fi
 
-    # Domain Configuration (skip for VPC-only deployment - workflows default to empty)
+    # API Access Mode & Domain Configuration
+    # Modes: 'public' (HTTPS with domain), 'public-http' (HTTP via ALB DNS), 'internal' (bastion tunnel)
+    # Workflows default to 'internal' if not set - explicit setting here for visibility
+    # API_ACCESS_MODE may be pre-set by bootstrap.sh
+    local access_mode="${API_ACCESS_MODE:-}"
     if [ -n "$ROOT_DOMAIN" ]; then
+        # Domain provided - must be public mode
+        access_mode="public"
         gh variable set API_DOMAIN_NAME_ROOT --body "$ROOT_DOMAIN"
         gh variable set API_DOMAIN_NAME_PROD --body "api.$ROOT_DOMAIN"
         gh variable set ROBOSYSTEMS_API_URL_PROD --body "https://api.$ROOT_DOMAIN"
@@ -235,8 +241,16 @@ function setup_full_config() {
             gh variable set ROBOSYSTEMS_API_URL_STAGING --body "https://staging.api.$ROOT_DOMAIN"
             gh variable set ROBOSYSTEMS_APP_URL_STAGING --body "https://staging.$ROOT_DOMAIN"
         fi
+    elif [ -z "$access_mode" ]; then
+        # No domain and no pre-set mode - default to internal
+        access_mode="internal"
     fi
-    # VPC-only: domain variables not set, workflows use || '' fallbacks
+    # Set the access mode variable
+    gh variable set API_ACCESS_MODE_PROD --body "$access_mode"
+    if $setup_staging; then
+        gh variable set API_ACCESS_MODE_STAGING --body "$access_mode"
+    fi
+    # To use public-http mode (ALB DNS, no TLS): gh variable set API_ACCESS_MODE_PROD --body "public-http"
 
     # Admin API access (set to your IP for restricted access)
     gh variable set ADMIN_ALLOWED_CIDRS --body "0.0.0.0/32"
@@ -433,6 +447,10 @@ function setup_full_config() {
 
     # Infrastructure Configuration
     gh variable set MAX_AVAILABILITY_ZONES --body "5"
+
+    # VPC Configuration - Set to non-zero for VPC peering with other 10.x VPCs
+    # Default 0 = 10.0.0.0/16, set to 2 = 10.2.0.0/16 to peer with another 10.0.0.0/16
+    gh variable set VPC_SECOND_OCTET --body "0"
 
     # Public Domain Configuration (optional for frontend apps, skip if no domain)
     if [ -n "$ROOT_DOMAIN" ]; then

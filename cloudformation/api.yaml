@@ -108,18 +108,32 @@ Parameters:
     MaxValue: 100
     Description: Weight for FARGATE_SPOT capacity provider (Spot instances)
 
-  # Domain & DNS Configuration (Optional - when empty, ALB is internal-only)
+  # Access Mode Configuration
+  ApiAccessMode:
+    Type: String
+    Default: internal
+    AllowedValues:
+      - public
+      - public-http
+      - internal
+    Description: |
+      API access mode:
+      - public: Internet-facing ALB with custom domain and HTTPS (requires DomainName)
+      - public-http: Internet-facing ALB with AWS DNS, HTTP only (no domain needed)
+      - internal: Internal ALB accessible via bastion tunnel only
+
+  # Domain & DNS Configuration (Required only when ApiAccessMode=public)
   DomainName:
     Type: String
-    Description: Full domain name for the API (e.g., api.robosystems.ai). Leave empty for internal-only access via bastion tunnel.
+    Description: Full domain name for the API (e.g., api.robosystems.ai). Required when ApiAccessMode=public.
     Default: ""
   RootDomainName:
     Type: String
-    Description: Root domain name (e.g., robosystems.ai). Required when DomainName is provided.
+    Description: Root domain name (e.g., robosystems.ai). Required when ApiAccessMode=public.
     Default: ""
   HostedZoneId:
     Type: String
-    Description: Route53 Hosted Zone ID for the domain. Required when DomainName is provided.
+    Description: Route53 Hosted Zone ID for the domain. Required when ApiAccessMode=public.
     Default: ""
 
   # Observability & Monitoring
@@ -190,8 +204,15 @@ Parameters:
 Conditions:
   HasObservabilityStack: !Not [!Equals [!Ref PrometheusStackName, ""]]
   IsProduction: !Equals [!Ref Environment, "prod"]
+  # Access mode conditions
   HasDomain: !Not [!Equals [!Ref DomainName, ""]]
-  IsInternal: !Equals [!Ref DomainName, ""]
+  IsPublicWithDomain: !Equals [!Ref ApiAccessMode, "public"]
+  IsPublicHttp: !Equals [!Ref ApiAccessMode, "public-http"]
+  IsInternal: !Equals [!Ref ApiAccessMode, "internal"]
+  # Combined condition: internet-facing ALB (public or public-http)
+  IsInternetFacing: !Or
+    - !Equals [!Ref ApiAccessMode, "public"]
+    - !Equals [!Ref ApiAccessMode, "public-http"]
 
 Mappings:
   LogRetentionPolicies:
@@ -203,10 +224,10 @@ Mappings:
       Operational: 30
 
 Resources:
-  # ACM Certificate (only when public domain is configured)
+  # ACM Certificate (only when public mode with custom domain)
   ApiCertificate:
     Type: AWS::CertificateManager::Certificate
-    Condition: HasDomain
+    Condition: IsPublicWithDomain
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
@@ -514,10 +535,10 @@ Resources:
         - Key: CreatedBy
           Value: CloudFormation
 
-  # Security Group Rule - Direct HTTPS to ALB (only when public domain is configured)
+  # Security Group Rule - Direct HTTPS to ALB (only when public mode with custom domain)
   PublicHTTPSToALBSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
-    Condition: HasDomain
+    Condition: IsPublicWithDomain
     Properties:
       GroupId: !Ref ALBSecurityGroup
       IpProtocol: tcp
@@ -526,21 +547,21 @@ Resources:
       CidrIp: 0.0.0.0/0
       Description: Allow direct HTTPS traffic to ALB
 
-  # Security Group Rule - Public HTTP to ALB (for redirect to HTTPS)
-  # Only created when domain is configured (public-facing ALB)
+  # Security Group Rule - Public HTTP to ALB (internet-facing modes)
+  # Created for both 'public' (redirect to HTTPS) and 'public-http' (direct access)
   PublicHTTPToALBSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
-    Condition: HasDomain
+    Condition: IsInternetFacing
     Properties:
       GroupId: !Ref ALBSecurityGroup
       IpProtocol: tcp
       FromPort: 80
       ToPort: 80
       CidrIp: 0.0.0.0/0
-      Description: Allow HTTP traffic for redirect to HTTPS
+      Description: Allow HTTP traffic to ALB
 
   # Security Group Rule - Internal HTTP to ALB (via bastion tunnel)
-  # Only created when no domain (internal ALB) - restricted to VPC CIDR
+  # Only created when internal mode - restricted to VPC CIDR
   InternalHTTPToALBSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Condition: IsInternal
@@ -832,7 +853,7 @@ Resources:
         ScaleInCooldown: 180
 
   # Application Load Balancer
-  # When HasDomain: internet-facing in public subnets
+  # When IsInternetFacing (public or public-http): internet-facing in public subnets
   # When IsInternal: internal in private subnets (access via bastion tunnel)
   ApiALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -840,8 +861,8 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub robosystems-api-${Environment}-alb
-      Scheme: !If [HasDomain, internet-facing, internal]
-      Subnets: !If [HasDomain, !Ref PublicSubnetIds, !Ref SubnetIds]
+      Scheme: !If [IsInternetFacing, internet-facing, internal]
+      Subnets: !If [IsInternetFacing, !Ref PublicSubnetIds, !Ref SubnetIds]
       SecurityGroups:
         - !Ref ALBSecurityGroup
       Tags:
@@ -888,10 +909,10 @@ Resources:
         - Key: CreatedBy
           Value: CloudFormation
 
-  # HTTPS Listener (only when public domain is configured)
+  # HTTPS Listener (only when public mode with custom domain)
   ApiHttpsListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
-    Condition: HasDomain
+    Condition: IsPublicWithDomain
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
@@ -904,10 +925,10 @@ Resources:
       Certificates:
         - CertificateArn: !Ref ApiCertificate
 
-  # Admin API IP Whitelist Rule (Allow) - only for public-facing ALB
+  # Admin API IP Whitelist Rule (Allow) - only for public mode with custom domain
   AdminApiAllowRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Condition: HasDomain
+    Condition: IsPublicWithDomain
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
@@ -925,10 +946,10 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref ApiTargetGroup
 
-  # Admin API IP Deny Rule (Block unauthorized IPs) - only for public-facing ALB
+  # Admin API IP Deny Rule (Block unauthorized IPs) - only for public mode with custom domain
   AdminApiDenyRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Condition: HasDomain
+    Condition: IsPublicWithDomain
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
@@ -947,8 +968,9 @@ Resources:
             MessageBody: '{"error": "Forbidden", "detail": "Admin API access restricted to authorized IP addresses"}'
 
   # HTTP Listener - always exists (unconditional)
-  # Public mode: redirects to HTTPS
-  # Internal mode: forwards directly to target group
+  # public mode: redirects to HTTPS
+  # public-http mode: forwards directly to target group (HTTP only)
+  # internal mode: forwards directly to target group (HTTP via tunnel)
   ApiHttpListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     DeletionPolicy: Delete
@@ -956,7 +978,7 @@ Resources:
     Properties:
       DefaultActions:
         - !If
-          - HasDomain
+          - IsPublicWithDomain
           - Type: redirect
             RedirectConfig:
               Protocol: HTTPS
@@ -971,10 +993,10 @@ Resources:
       Port: 80
       Protocol: HTTP
 
-  # Route 53 Record (points directly to ALB) - only when public domain is configured
+  # Route 53 Record (points directly to ALB) - only when public mode with custom domain
   ApiDNSRecord:
     Type: AWS::Route53::RecordSet
-    Condition: HasDomain
+    Condition: IsPublicWithDomain
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
@@ -1024,10 +1046,13 @@ Resources:
       TreatMissingData: notBreaching
 
 Outputs:
+  ApiAccessMode:
+    Description: API access mode (public, public-http, or internal)
+    Value: !Ref ApiAccessMode
   ApiUrl:
-    Description: URL of the API endpoint (HTTPS when domain configured, HTTP via tunnel when internal)
+    Description: URL of the API endpoint
     Value: !If
-      - HasDomain
+      - IsPublicWithDomain
       - !Sub https://${DomainName}
       - !Sub http://${ApiALB.DNSName}
   LoadBalancerDNS:
@@ -1037,7 +1062,7 @@ Outputs:
       Name: !Sub ${AWS::StackName}-LoadBalancerDNS
   LoadBalancerScheme:
     Description: ALB scheme (internet-facing or internal)
-    Value: !If [HasDomain, internet-facing, internal]
+    Value: !If [IsInternetFacing, internet-facing, internal]
   ClusterName:
     Description: Name of the ECS Cluster
     Value: !Ref ApiCluster
@@ -1050,7 +1075,7 @@ Outputs:
     Description: Auto Scaling Target Resource ID
     Value: !Sub service/robosystems-api-${Environment}-cluster/robosystems-api-${Environment}-service
   CertificateArn:
-    Condition: HasDomain
+    Condition: IsPublicWithDomain
     Description: ACM Certificate ARN
     Value: !Ref ApiCertificate
     Export:
@@ -1075,8 +1100,8 @@ Outputs:
       Name: !Sub ${AWS::StackName}-AdminKeySecretArn
 
   AdminKeyInstructions:
-    Condition: HasDomain
-    Description: Instructions for using the admin key (public access)
+    Condition: IsPublicWithDomain
+    Description: Instructions for using the admin key (public access with domain)
     Value: !Sub |
       Admin key has been created in AWS Secrets Manager.
 
@@ -1087,6 +1112,25 @@ Outputs:
 
       Use the key as a Bearer token:
       curl -H "Authorization: Bearer <KEY>" https://${DomainName}/admin/v1/subscriptions
+
+  PublicHttpAccessInstructions:
+    Condition: IsPublicHttp
+    Description: Instructions for accessing public API via ALB DNS (HTTP only)
+    Value: !Sub |
+      This API is configured for public HTTP access (no domain/TLS).
+
+      API endpoint: http://${ApiALB.DNSName}
+
+      Admin key location:
+      aws secretsmanager get-secret-value --secret-id robosystems/${Environment}/admin --region ${AWS::Region}
+
+      Example API call:
+      curl -H "Authorization: Bearer <KEY>" http://${ApiALB.DNSName}/admin/v1/subscriptions
+
+      LIMITATIONS (public-http mode):
+      - No TLS encryption - credentials/tokens sent in plain text
+      - OAuth integrations (Google, QuickBooks) will NOT work - providers require HTTPS redirect URLs
+      - JWT tokens use default issuer/audience (api.robosystems.ai) - override via AWS Secrets Manager for forks
 
   InternalAccessInstructions:
     Condition: IsInternal
@@ -1104,6 +1148,6 @@ Outputs:
       Example API call (with tunnel running):
       curl -H "Authorization: Bearer <KEY>" http://localhost:8000/admin/v1/subscriptions
 
-      LIMITATIONS (internal-only mode):
+      LIMITATIONS (internal mode):
       - OAuth integrations (Google, QuickBooks) will NOT work - external providers cannot redirect to internal URLs
       - JWT tokens use default issuer/audience (api.robosystems.ai) - override via AWS Secrets Manager for forks
