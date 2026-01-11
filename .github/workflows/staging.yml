@@ -13,7 +13,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Guard: Verify staging environment is enabled
+  check-staging-enabled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if staging is enabled
+        run: |
+          if [ "${{ vars.ENVIRONMENT_STAGING }}" != "staging" ]; then
+            echo "❌ Staging environment is not enabled"
+            echo ""
+            echo "To enable staging deployments, set the GitHub variable:"
+            echo "  gh variable set ENVIRONMENT_STAGING --body staging"
+            echo ""
+            echo "Or run: just setup-gha (select 'Production + Staging')"
+            exit 1
+          fi
+          echo "✅ Staging environment is enabled"
+
   runner:
+    needs: [check-staging-enabled]
     runs-on: ubuntu-latest
     outputs:
       runners_available: ${{ steps.select.outputs.runners_available }}

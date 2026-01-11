@@ -643,53 +643,89 @@ setup_ecr_repository() {
 }
 
 # =============================================================================
-# AWS SECRETS
+# AWS SECRETS & GITHUB VARIABLES SETUP
 # =============================================================================
 
-setup_aws_secrets() {
-    print_header "AWS Secrets Manager Setup"
+prompt_environment_choice() {
+    # Prompt for environment choice and export for downstream scripts
+    echo ""
+    echo "Which environments do you want to configure?"
+    echo "  1) Production only (recommended for getting started)"
+    echo "  2) Production + Staging (full setup)"
+    echo ""
+    read -p "Select [1]: " env_choice
+    env_choice=${env_choice:-1}
 
-    echo "The application requires secrets and feature flags to start."
-    echo "This creates them with auto-generated keys and sensible defaults."
+    # Validate input
+    if [[ ! "$env_choice" =~ ^[12]$ ]]; then
+        print_warning "Invalid choice '$env_choice', defaulting to production only"
+        env_choice=1
+    fi
+
+    if [ "$env_choice" = "2" ]; then
+        export SETUP_STAGING=true
+        print_success "Configuring: Production + Staging"
+    else
+        export SETUP_STAGING=false
+        print_success "Configuring: Production only"
+    fi
+}
+
+setup_secrets_and_variables() {
+    print_header "Application Configuration"
+
+    echo "The following optional setup steps are available:"
     echo ""
-    print_info "Safe to run - existing secrets are NOT overwritten"
+    echo "  AWS Secrets Manager - Application secrets & feature flags"
+    echo "                        (required for deployment, safe to re-run)"
+    echo ""
+    echo "  GitHub Variables    - ~80 variables for custom domains, scaling,"
+    echo "                        instance sizes, etc. (optional, has defaults)"
     echo ""
 
-    read -p "Create application secrets & feature flags? (Y/n): " -n 1 -r
+    # Ask what to configure
+    local run_aws=false
+    local run_gha=false
+
+    read -p "Setup AWS Secrets Manager? (Y/n): " -n 1 -r
     echo ""
-    if [[ $REPLY =~ ^[Nn]$ ]]; then
-        print_warning "Skipping secrets - deploy will fail without them!"
-        print_info "Run 'just setup-aws' before deploying"
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        run_aws=true
+    fi
+
+    read -p "Setup GitHub Variables? (y/N): " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        run_gha=true
+    fi
+
+    # If neither selected, we're done
+    if ! $run_aws && ! $run_gha; then
+        print_info "Skipping optional configuration"
+        echo ""
+        print_info "Run later if needed:"
+        echo "   just setup-aws   # AWS Secrets (required before deploy)"
+        echo "   just setup-gha   # GitHub Variables (optional)"
         return 0
     fi
 
-    # Export profile for the aws.sh script
+    # Only prompt for environment choice if we're running something
+    prompt_environment_choice
+
+    # Export profile for scripts
     export AWS_PROFILE="${SSO_PROFILE}"
 
-    # Run the existing setup script
-    ./bin/setup/aws.sh
-}
+    # Run selected setups
+    if $run_aws; then
+        echo ""
+        print_step "Running AWS Secrets Manager setup..."
+        ./bin/setup/aws.sh
+    fi
 
-# =============================================================================
-# OPTIONAL: FULL GITHUB VARIABLES
-# =============================================================================
-
-prompt_full_gha_setup() {
-    print_header "Full GitHub Variables (Optional)"
-
-    echo "Basic deployment works with the 3 variables already set."
-    echo "The full setup adds ~80 variables for custom domains, instance"
-    echo "sizes, scaling policies, and other production customizations."
-    echo ""
-    print_info "This is NOT required - workflows use sensible defaults"
-    echo ""
-
-    read -p "Run full GitHub variable setup? (y/N): " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    if $run_gha; then
+        echo ""
+        print_step "Running GitHub Variables setup..."
         ./bin/setup/gha.sh
-    else
-        print_info "Skipping - run 'just setup-gha' later if needed"
     fi
 }
 
@@ -867,30 +903,6 @@ main() {
         exit 0
     fi
 
-    # Environment choice - collected once and passed downstream
-    echo ""
-    echo "Which environments do you want to set up?"
-    echo "  1) Production only (recommended for getting started)"
-    echo "  2) Production + Staging (full setup)"
-    echo ""
-    read -p "Select [1]: " env_choice
-    env_choice=${env_choice:-1}
-
-    # Validate input
-    if [[ ! "$env_choice" =~ ^[12]$ ]]; then
-        print_warning "Invalid choice '$env_choice', defaulting to production only"
-        env_choice=1
-    fi
-
-    # Export for downstream scripts (aws.sh, gha.sh)
-    if [ "$env_choice" = "2" ]; then
-        export SETUP_STAGING=true
-        print_success "Configuring: Production + Staging"
-    else
-        export SETUP_STAGING=false
-        print_success "Configuring: Production only"
-    fi
-
     # Setup direnv for AWS profile
     setup_direnv
 
@@ -922,11 +934,8 @@ main() {
     # Check GitHub secrets
     check_github_secrets
 
-    # Setup AWS secrets
-    setup_aws_secrets
-
-    # Optional: full GitHub variable setup
-    prompt_full_gha_setup
+    # Setup AWS secrets and GitHub variables (with environment choice)
+    setup_secrets_and_variables
 
     # Summary
     show_summary

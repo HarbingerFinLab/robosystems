@@ -219,6 +219,9 @@ function setup_full_config() {
     gh variable set ENVIRONMENT_PROD --body "prod"
     if $setup_staging; then
         gh variable set ENVIRONMENT_STAGING --body "staging"
+    else
+        # Explicitly remove staging variable to prevent accidental deployments
+        gh variable delete ENVIRONMENT_STAGING --yes 2>/dev/null || true
     fi
 
     # Domain Configuration (skip for VPC-only deployment - workflows default to empty)
