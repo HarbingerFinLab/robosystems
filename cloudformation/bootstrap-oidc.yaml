@@ -29,7 +29,7 @@ Resources:
   # Tells AWS to trust tokens issued by GitHub Actions
   GitHubOIDCProvider:
     Type: AWS::IAM::OIDCProvider
-    DeletionPolicy: Retain
+    DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
       Url: https://token.actions.githubusercontent.com
@@ -54,7 +54,7 @@ Resources:
   # =============================================================================
   GitHubActionsRole:
     Type: AWS::IAM::Role
-    DeletionPolicy: Retain
+    DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
       RoleName: !Sub ${ServiceTag}GitHubActionsRole
@@ -382,7 +382,7 @@ Resources:
   # =============================================================================
   GitHubActionsFrontendRole:
     Type: AWS::IAM::Role
-    DeletionPolicy: Retain
+    DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
     Properties:
       RoleName: !Sub ${ServiceTag}GitHubActionsFrontendRole
