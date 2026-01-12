@@ -3,7 +3,7 @@
 RoboSystems is an enterprise-grade financial knowledge graph platform that transforms complex financial data into actionable intelligence through graph-based analytics and AI-powered insights.
 
 - **Graph-Based Financial Intelligence**: Leverages graph database technology to model complex financial relationships
-- **GraphRAG Architecture**: Knowledge graph-based retrieval-augmented generation for LLM-powered financial analysis
+- **AI-Native Architecture**: Context graph-based intelligence for LLM-powered financial analysis
 - **Model Context Protocol (MCP)**: Standardized server and [client](https://www.npmjs.com/package/@robosystems/mcp) for LLM integration
 - **Multi-Source Data Integration**: SEC XBRL filings, QuickBooks accounting data, and custom financial datasets
 - **Enterprise-Ready Infrastructure**: Multi-tenant architecture with tiered scaling and production-grade query management
@@ -11,14 +11,15 @@ RoboSystems is an enterprise-grade financial knowledge graph platform that trans
 
 ## Core Features
 
-- **Multi-Tenant Graph Databases**: Isolated graph databases with tiered cluster-based scaling
-- **AI Agent Interface**: Natural language financial analysis via Model Context Protocol (MCP)
+- **LadybugDB Graph Database**: Purpose-built embedded graph database with columnar storage optimized for financial analytics
+- **Multi-Tenant Architecture**: Isolated graph databases with tiered scaling (Standard, Professional, Enterprise)
+- **Subgraphs (Workspaces)**: Create isolated environments for development, testing, and team collaboration within a parent graph
+- **AI Agent Interface**: Natural language financial analysis with text-to-Cypher via Model Context Protocol (MCP)
 - **Entity & Generic Graphs**: Curated schemas for RoboLedger/RoboInvestor, plus custom schema support
-- **Shared Repositories**: SEC XBRL filings knowledge graph for context mining
+- **Shared Repositories**: SEC XBRL filings knowledge graph for context mining and benchmarking
 - **QuickBooks Integration**: Complete accounting synchronization with trial balance creation
 - **DuckDB Staging System**: High-performance data validation and bulk ingestion pipeline
-- **Credit-Based Billing**: AI operations consume credits based on token usage
-- **Query Queue System**: Production-ready query management with admission control
+- **Credit-Based Billing**: Flexible credits for AI operations based on token usage or storage overage
 
 ## Quick Start
 
@@ -38,11 +39,11 @@ just start
 
 This initializes the `.env` file and starts the complete RoboSystems stack with:
 
-- Graph database (LadybugDB by default, Neo4j optional)
+- LadybugDB graph database (embedded columnar storage)
 - PostgreSQL with automatic migrations
 - Dagster for data pipeline orchestration
 - Valkey for caching and SSE messaging
-- All development services
+- DuckDB staging for data ingestion
 
 ### Local Development
 
@@ -72,9 +73,10 @@ Each demo has a corresponding [Wiki article](https://github.com/RoboFinSystems/r
 ### Testing
 
 ```bash
-just test                   # Default test suite
-just test-cov               # Tests with coverage
 just test-all               # Tests with code quality
+just test                   # Default test suite
+just test adapters          # Test specific module
+just test-cov               # Tests with coverage
 ```
 
 ### Log Monitoring
@@ -116,15 +118,17 @@ RoboSystems is built on a modern, scalable architecture with:
 **Application Layer:**
 
 - FastAPI REST API with versioned endpoints (`/v1/`)
-- MCP Server for AI-powered financial analytics
+- MCP Server for AI-powered graph database access
+- Agent Interface for text-to-Cypher natural language queries
 - Dagster for data pipeline orchestration and background jobs
 
-**Graph Database System:**
+**LadybugDB Graph Database:**
 
-- Pluggable backends (LadybugDB by default, Neo4j optional)
+- Embedded columnar graph database purpose-built for financial analytics
+- Native DuckDB integration for high-performance staging and ingestion
 - Multi-tenant isolation with dedicated databases per entity
-- DuckDB staging system for high-performance data ingestion
-- Tiered infrastructure from multi-tenant to dedicated instances
+- Subgraph support for development workspaces and team collaboration
+- Tiered infrastructure: Standard (multi-tenant), Professional (dedicated), Enterprise (maximum scale)
 
 **Data Layer:**
 
@@ -135,10 +139,10 @@ RoboSystems is built on a modern, scalable architecture with:
 
 **Infrastructure:**
 
-- ECS Fargate for API/Workers (ARM64/Graviton)
-- EC2 auto-scaling groups for graph database writers
+- ECS Fargate for API, Workers, and Dagster (ARM64/Graviton with Spot capacity)
+- EC2 auto-scaling groups for LadybugDB writer clusters
 - RDS PostgreSQL + ElastiCache Valkey
-- CloudFormation-managed infrastructure
+- CloudFormation-managed infrastructure with GitHub OIDC deployment
 
 **For detailed architecture documentation, see the [Architecture Overview](https://github.com/RoboFinSystems/robosystems/wiki/Architecture-Overview) in the Wiki.**
 
@@ -155,13 +159,15 @@ RoboSystems is built on a modern, scalable architecture with:
 
 - Multi-agent architecture with intelligent routing
 - Dynamic agent selection based on query context
-- Parallel query processing with GraphRAG-enabled responses
+- Parallel query processing with context-aware responses
 - Extensible framework for custom domain expertise
 
 ### Credit System
 
-- **AI-Focused**: Credits consumed only by AI operations (Anthropic/OpenAI API calls)
-- **Token-Based Billing**: Actual token usage determines credit consumption
+- **Credit Value Anchor**: 1 credit = 1 GB/day of storage
+- **Flexible Usage**: Use credits for AI operations OR storage overage—your choice
+- **AI Operations**: Token-based billing for Anthropic Claude API calls via AWS Bedrock
+- **Storage Overage**: Credits convert to additional storage beyond tier allocation
 - **Sustainable Operations**: Credit-based model enables transparent cost tracking and predictable billing aligned with actual usage
 
 ## Client Libraries
