@@ -26,9 +26,9 @@ on:
         required: true
         type: string
       
-      # Namespace Configuration (auto-computed by caller: main repo = empty, forks = account ID)
+      # Namespace Configuration (AWS account ID for globally unique bucket names)
       namespace:
-        description: "S3 bucket namespace. Main repo uses empty, forks use AWS account ID for uniqueness."
+        description: "S3 bucket namespace (AWS account ID). Creates buckets like robosystems-{account}-{purpose}-{env}."
         required: false
         type: string
         default: ""
@@ -184,7 +184,7 @@ jobs:
 
           S3_STACK_PARAMS="ParameterKey=Environment,ParameterValue=${{ inputs.environment }}"
 
-          # Add namespace parameter if provided (for forks)
+          # Add namespace parameter if provided
           if [ -n "${{ inputs.namespace }}" ]; then
             S3_STACK_PARAMS="$S3_STACK_PARAMS \
                   ParameterKey=Namespace,ParameterValue=${{ inputs.namespace }}"

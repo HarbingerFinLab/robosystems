@@ -532,10 +532,16 @@ Resources:
                 Effect: Allow
                 Action:
                   - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                   - logs:DescribeLogGroups
                   - logs:DescribeLogStreams
+                  - logs:TagLogGroup
+                  - logs:UntagLogGroup
+                  - logs:PutRetentionPolicy
+                  - logs:DeleteRetentionPolicy
+                  - logs:ListTagsLogGroup
                 Resource: "*"
 
               # Route53 - for DNS
@@ -543,6 +549,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - route53:ChangeResourceRecordSets
+                  - route53:GetChange
                   - route53:GetHostedZone
                   - route53:ListHostedZones
                   - route53:ListResourceRecordSets
@@ -581,6 +588,9 @@ Resources:
                   - sns:SetTopicAttributes
                   - sns:ListTopics
                   - sns:ListSubscriptionsByTopic
+                  - sns:TagResource
+                  - sns:UntagResource
+                  - sns:ListTagsForResource
                 Resource: "*"
 
               # IAM - for creating ECS task roles and execution roles
@@ -593,6 +603,7 @@ Resources:
                   - iam:UpdateRole
                   - iam:TagRole
                   - iam:UntagRole
+                  - iam:ListRoleTags
                   - iam:AttachRolePolicy
                   - iam:DetachRolePolicy
                   - iam:PutRolePolicy
@@ -612,6 +623,7 @@ Resources:
                   - ec2:DescribeSubnets
                   - ec2:DescribeSecurityGroups
                   - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeManagedPrefixLists
                 Resource: "*"
 
               # EC2 Security Groups - create/manage for ECS tasks
@@ -625,6 +637,7 @@ Resources:
                   - ec2:RevokeSecurityGroupIngress
                   - ec2:RevokeSecurityGroupEgress
                   - ec2:CreateTags
+                  - ec2:DeleteTags
                 Resource: "*"
 
               # STS - for identity
@@ -641,6 +654,9 @@ Resources:
                   - cloudwatch:PutMetricAlarm
                   - cloudwatch:DeleteAlarms
                   - cloudwatch:DescribeAlarms
+                  - cloudwatch:TagResource
+                  - cloudwatch:UntagResource
+                  - cloudwatch:ListTagsForResource
                 Resource: "*"
       Tags:
         - Key: Name

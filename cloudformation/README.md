@@ -203,9 +203,9 @@ Templates have cross-stack dependencies that determine deployment order:
 **Dependencies**: None (standalone)
 
 **Key Resources**:
-- `robosystems-deployment-{env}-{account}` - Deployment artifacts (userdata scripts, Lambda packages)
-- `robosystems-shared-processed-{env}-{account}` - SEC/shared data processing
-- `robosystems-user-data-{env}-{account}` - User-uploaded files
+- `robosystems-{account}-deployment-{env}` - Deployment artifacts (userdata scripts, Lambda packages)
+- `robosystems-{account}-shared-processed-{env}` - SEC/shared data processing
+- `robosystems-{account}-user-{env}` - User-uploaded files
 
 **Parameters**:
 | Parameter | Default | Description |

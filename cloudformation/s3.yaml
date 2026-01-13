@@ -1,18 +1,18 @@
 Description: RoboSystems File Storage Service - S3 Buckets and IAM Policies
 #
-# Bucket Structure:
-# - robosystems-shared-raw-{env}      : Raw downloads from external sources (SEC, FRED, BLS)
-# - robosystems-shared-processed-{env}: Processed parquet files for graph ingestion
-# - robosystems-user-{env}            : User uploads, staging tables, exports
-# - robosystems-public-data-{env}     : CloudFront-served public content
-# - robosystems-deployment-{env}      : Lambda packages, userdata scripts
-# - robosystems-logs-{env}            : Dagster compute logs (stdout/stderr from ECS runs)
+# Bucket Structure (with account ID namespace for global uniqueness):
+# - robosystems-{account}-shared-raw-{env}      : Raw downloads from external sources (SEC, FRED, BLS)
+# - robosystems-{account}-shared-processed-{env}: Processed parquet files for graph ingestion
+# - robosystems-{account}-user-{env}            : User uploads, staging tables, exports
+# - robosystems-{account}-public-data-{env}     : CloudFront-served public content
+# - robosystems-{account}-deployment-{env}      : Lambda packages, userdata scripts
+# - robosystems-{account}-logs-{env}            : Dagster compute logs (stdout/stderr from ECS runs)
 
 Parameters:
-  # Namespace (auto-computed: main repo = empty, forks = AWS account ID)
+  # Namespace (AWS account ID for globally unique bucket names)
   Namespace:
     Type: String
-    Description: S3 bucket namespace. Main repo uses empty, forks use AWS account ID (e.g., "123456789012" creates "robosystems-123456789012-*").
+    Description: S3 bucket namespace (AWS account ID). Creates buckets like robosystems-{account}-{purpose}-{env}.
     Default: ""
     AllowedPattern: "^[0-9]{12}$|^$"
     ConstraintDescription: Must be empty or a 12-digit AWS account ID

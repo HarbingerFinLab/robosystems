@@ -152,7 +152,21 @@
       "problemMatcher": []
     },
     {
-      "label": "Bootstrap OIDC",
+      "label": "AWS SSO Login",
+      "type": "shell",
+      "command": "aws",
+      "args": ["sso", "login"],
+      "problemMatcher": []
+    },
+    {
+      "label": "AWS STS Identity",
+      "type": "shell",
+      "command": "aws",
+      "args": ["sts", "get-caller-identity"],
+      "problemMatcher": []
+    },
+    {
+      "label": "RoboSystems Bootstrap OIDC",
       "type": "shell",
       "command": "just",
       "args": ["bootstrap"],
@@ -225,6 +239,13 @@
       "type": "shell",
       "command": "just",
       "args": ["generate-key"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Demo User",
+      "type": "shell",
+      "command": "just",
+      "args": ["demo-user"],
       "problemMatcher": []
     }
   ],

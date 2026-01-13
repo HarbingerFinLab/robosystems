@@ -172,8 +172,8 @@ jobs:
       runner_config: ${{ needs.runner.outputs.runner_config }}
       # AWS Configuration
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-      # Namespace Configuration (auto: main repo = none, forks = account ID)
-      namespace: ${{ github.repository == 'RoboFinSystems/robosystems' && '' || vars.AWS_ACCOUNT_ID }}
+      # Namespace Configuration (always use account ID for globally unique bucket names)
+      namespace: ${{ vars.AWS_ACCOUNT_ID }}
       # Domain Configuration
       # Leave PUBLIC_DOMAIN_NAME_PROD empty for default CloudFront domain (isolated deployment)
       public_domain_name: ${{ vars.PUBLIC_DOMAIN_NAME_PROD || '' }}
