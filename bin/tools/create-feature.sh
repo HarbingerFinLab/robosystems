@@ -3,12 +3,13 @@ set -e
 
 # Create feature branch script - local Git operations
 # Creates a new feature/bugfix/hotfix branch locally and pushes to remote
-# Usage: ./bin/tools/create-feature.sh [type] [name] [base_branch]
+# Usage: ./bin/tools/create-feature.sh [type] [name] [base_branch] [update_deps]
 
 # Default values
 BRANCH_TYPE=${1:-feature}
 BRANCH_NAME=${2:-}
 BASE_BRANCH=${3:-main}
+UPDATE_DEPS=${4:-yes}
 
 # Validate branch type
 if [[ "$BRANCH_TYPE" != "feature" && "$BRANCH_TYPE" != "bugfix" && "$BRANCH_TYPE" != "hotfix" && "$BRANCH_TYPE" != "chore" && "$BRANCH_TYPE" != "refactor" ]]; then
@@ -78,6 +79,15 @@ git push -u origin $FULL_BRANCH
 
 echo ""
 echo "🎉 Successfully created and checked out $FULL_BRANCH"
+
+# Update dependencies if requested (default: yes)
+if [[ "$UPDATE_DEPS" == "yes" ]]; then
+  echo ""
+  echo "📦 Updating dependencies..."
+  just update
+  echo "✅ Dependencies updated"
+fi
+
 echo ""
 echo "📝 Next steps:"
 echo "  1. Make your changes and commit them"

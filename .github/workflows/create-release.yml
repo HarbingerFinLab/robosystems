@@ -196,8 +196,8 @@ jobs:
             # This ensures staging builds first and populates the cache for prod
             gh workflow run staging.yml --ref "$TAG_NAME"
             echo "✅ Staging deployment triggered for tag $TAG_NAME"
-            echo "⏳ Waiting 2 seconds to ensure staging queues first..."
-            sleep 2
+            echo "⏳ Waiting 10 seconds before triggering production..."
+            sleep 10
             gh workflow run prod.yml --ref "$TAG_NAME"
             echo "✅ Production deployment triggered for tag $TAG_NAME"
           fi

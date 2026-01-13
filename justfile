@@ -183,8 +183,8 @@ cf-lint template:
 ## CI/CD ##
 
 # Create a feature branch
-create-feature type="feature" name="" base="main":
-    @bin/tools/create-feature.sh {{type}} {{name}} {{base}}
+create-feature type="feature" name="" base="main" update="yes":
+    @bin/tools/create-feature.sh {{type}} {{name}} {{base}} {{update}}
 
 # Create a pull request
 create-pr target="main" review="true":
