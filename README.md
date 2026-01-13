@@ -274,9 +274,9 @@ pip install robosystems-client
 ## Support
 
 - [Issues](https://github.com/RoboFinSystems/robosystems/issues)
-- [Discussions](https://github.com/RoboFinSystems/robosystems/discussions)
-- [Projects](https://github.com/RoboFinSystems/robosystems/projects)
 - [Wiki](https://github.com/RoboFinSystems/robosystems/wiki)
+- [Projects](https://github.com/orgs/RoboFinSystems/projects)
+- [Discussions](https://github.com/orgs/RoboFinSystems/discussions)
 
 ## License
 
