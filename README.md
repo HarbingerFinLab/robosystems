@@ -1,9 +1,9 @@
 # RoboSystems
 
-RoboSystems is an enterprise-grade financial knowledge graph platform that transforms complex financial data into actionable intelligence through graph-based analytics and AI-powered insights.
+RoboSystems is an enterprise-grade financial knowledge graph platform that transforms complex financial and operational data into actionable intelligence through graph-based analytics and AI-powered insights.
 
 - **Graph-Based Financial Intelligence**: Leverages graph database technology to model complex financial relationships
-- **AI-Native Architecture**: Context graph-based intelligence for LLM-powered financial analysis
+- **AI-Native Architecture**: Context graphs for LLM-powered financial and operational AI driven analytics
 - **Model Context Protocol (MCP)**: Standardized server and [client](https://www.npmjs.com/package/@robosystems/mcp) for LLM integration
 - **Multi-Source Data Integration**: SEC XBRL filings, QuickBooks accounting data, and custom financial datasets
 - **Enterprise-Ready Infrastructure**: Multi-tenant architecture with tiered scaling and production-grade query management
@@ -12,13 +12,14 @@ RoboSystems is an enterprise-grade financial knowledge graph platform that trans
 ## Core Features
 
 - **LadybugDB Graph Database**: Purpose-built embedded graph database with columnar storage optimized for financial analytics
-- **Multi-Tenant Architecture**: Isolated graph databases with tiered scaling (Standard, Professional, Enterprise)
+- **Multi-Tenant Architecture**: Multiple isolated graph databases per customer with tiered scaling and memory allocations
 - **Subgraphs (Workspaces)**: Create isolated environments for development, testing, and team collaboration within a parent graph
 - **AI Agent Interface**: Natural language financial analysis with text-to-Cypher via Model Context Protocol (MCP)
 - **Entity & Generic Graphs**: Curated schemas for RoboLedger/RoboInvestor, plus custom schema support
 - **Shared Repositories**: SEC XBRL filings knowledge graph for context mining and benchmarking
 - **QuickBooks Integration**: Complete accounting synchronization with trial balance creation
 - **DuckDB Staging System**: High-performance data validation and bulk ingestion pipeline
+- **Dagster Orchestration**: Data pipeline orchestration for SEC filings, backups, billing, and scheduled jobs
 - **Credit-Based Billing**: Flexible credits for AI operations based on token usage or storage overage
 
 ## Quick Start
@@ -39,11 +40,11 @@ just start
 
 This initializes the `.env` file and starts the complete RoboSystems stack with:
 
-- LadybugDB graph database (embedded columnar storage)
-- PostgreSQL with automatic migrations
+- Graph API with LadybugDB and DuckDB backends
 - Dagster for data pipeline orchestration
-- Valkey for caching and SSE messaging
-- DuckDB staging for data ingestion
+- PostgreSQL for graph metadata, IAM and Dagster
+- Valkey for caching, SSE messaging, and rate limiting
+- Localstack for S3 and DynamoDB emulation
 
 ### Local Development
 
@@ -57,7 +58,7 @@ just init
 See RoboSystems in action with runnable demos that create graphs, load data, and execute queries with the `robosystems-client`:
 
 ```bash
-just sec-load NVDA 2025     # Loads NVIDIA's SEC XBRL data via Dagster pipeline
+just demo-sec               # Loads NVIDIA's SEC XBRL data via Dagster pipeline
 just demo-accounting        # Creates chart of accounts with 6 months of transactions
 just demo-custom-graph      # Builds custom graph schema with relationship networks
 ```
@@ -128,12 +129,12 @@ RoboSystems is built on a modern, scalable architecture with:
 - Native DuckDB integration for high-performance staging and ingestion
 - Multi-tenant isolation with dedicated databases per entity
 - Subgraph support for development workspaces and team collaboration
-- Tiered infrastructure: Standard (multi-tenant), Professional (dedicated), Enterprise (maximum scale)
+- Tiered infrastructure: Standard (multi-tenant), Large (dedicated r7g.large, 10 subgraphs), XLarge (dedicated r7g.xlarge, 25 subgraphs)
 
 **Data Layer:**
 
-- PostgreSQL for IAM and graph metadata
-- Valkey for caching
+- PostgreSQL for IAM, graph metadata, and Dagster
+- Valkey for caching, SSE messaging, and rate limiting
 - AWS S3 for data lake storage and static assets
 - DynamoDB for instance/graph/volume registry
 
@@ -142,7 +143,7 @@ RoboSystems is built on a modern, scalable architecture with:
 - ECS Fargate for API, Workers, and Dagster (ARM64/Graviton with Spot capacity)
 - EC2 auto-scaling groups for LadybugDB writer clusters
 - RDS PostgreSQL + ElastiCache Valkey
-- CloudFormation-managed infrastructure with GitHub OIDC deployment
+- CloudFormation infrastructure deployed via GitHub Actions (OIDC)
 
 **For detailed architecture documentation, see the [Architecture Overview](https://github.com/RoboFinSystems/robosystems/wiki/Architecture-Overview) in the Wiki.**
 
@@ -167,7 +168,7 @@ RoboSystems is built on a modern, scalable architecture with:
 - **Credit Value Anchor**: 1 credit = 1 GB/day of storage
 - **Flexible Usage**: Use credits for AI operations OR storage overage—your choice
 - **AI Operations**: Token-based billing for Anthropic Claude API calls via AWS Bedrock
-- **Storage Overage**: Credits convert to additional storage beyond tier allocation
+- **Storage Overage**: Additional storage beyond tier allocation billed at 1 credit/GB/day
 - **Sustainable Operations**: Credit-based model enables transparent cost tracking and predictable billing aligned with actual usage
 
 ## Client Libraries
@@ -248,16 +249,16 @@ pip install robosystems-client
 - **[Observability](/robosystems/middleware/otel/README.md)** - OpenTelemetry observability
 - **[Robustness](/robosystems/middleware/robustness/README.md)** - Circuit breakers and retry policies
 
-**Development Resources:**
-
-- **[Examples](/examples/README.md)** - Runnable demos and integration examples
-- **[Tests](/tests/README.md)** - Testing strategy and organization
-- **[Admin Tools](/robosystems/admin/README.md)** - Administrative utilities and scripts
-
 **Infrastructure:**
 
 - **[CloudFormation](/cloudformation/README.md)** - AWS infrastructure templates
 - **[Setup Scripts](/bin/setup/README.md)** - Bootstrap and configuration scripts
+
+**Development Resources:**
+
+- **[Examples](/examples/README.md)** - Runnable demos and integration examples
+- **[Tests](/tests/README.md)** - Testing strategy and organization
+- **[Admin Tools](/robosystems/admin/README.md)** - Administrative utilities and cli
 
 **Security & Compliance:**
 

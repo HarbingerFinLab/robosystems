@@ -81,7 +81,7 @@ Graph API (FastAPI on EC2:8001)
 - DynamoDB-based service discovery
 
 **Routing Targets:**
-- User graphs → Tier-based writers (Standard/Enterprise/Premium)
+- User graphs → Tier-based writers (Standard/Large/XLarge)
 - Shared repositories → Master (writes) or Replica ALB (reads)
 
 ### 3. Graph Middleware (`/robosystems/middleware/graph/`)
@@ -122,10 +122,10 @@ Utilities:
 
 **Tier Specifications:**
 ```
-Standard:   r7g.medium/large, Multi-tenant (10 DBs/instance)
-Enterprise: r7g.large, Single-tenant isolated
-Premium:    r7g.xlarge, Maximum performance
-Shared:     r7g.large, Pooled for repositories (SEC, etc.)
+Standard: r7g.medium/large, Multi-tenant (10 DBs/instance)
+Large:    r7g.large, Single-tenant isolated (10 subgraphs)
+XLarge:   r7g.xlarge, Maximum performance (25 subgraphs)
+Shared:   r7g.xlarge, Pooled for repositories (SEC, etc.)
 ```
 
 ### 5. DynamoDB Registries
