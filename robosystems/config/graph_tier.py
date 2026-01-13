@@ -424,8 +424,8 @@ class GraphTierConfig:
       # Add display name based on tier
       display_names = {
         "ladybug-standard": "LadybugDB Standard",
-        "ladybug-large": "LadybugDB Professional",
-        "ladybug-xlarge": "LadybugDB Enterprise",
+        "ladybug-large": "LadybugDB Large",
+        "ladybug-xlarge": "LadybugDB XLarge",
         "ladybug-shared": "Shared Repository",
         "neo4j-community-large": "Neo4j Community",
         "neo4j-enterprise-xlarge": "Neo4j Enterprise",

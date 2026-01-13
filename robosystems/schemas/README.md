@@ -337,10 +337,10 @@ config_standard = {
     "tier": "standard"
 }
 
-# Enterprise tier - Isolated instances
-config_enterprise = {
+# Large tier - Isolated instances with subgraph support
+config_large = {
     "extensions": ["roboledger", "roboinvestor", "roboepm"],
-    "tier": "enterprise"
+    "tier": "large"
 }
 ```
 
@@ -363,7 +363,7 @@ loader = get_contextual_schema_loader("application", "roboledger")
 
 # Multi-application deployment
 config = {
-    "name": "Enterprise Suite",
+    "name": "XLarge Suite",
     "extensions": ["roboledger", "roboinvestor", "roboscm"]
 }
 ```

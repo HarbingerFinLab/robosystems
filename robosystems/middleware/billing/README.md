@@ -35,9 +35,9 @@ The platform uses a simplified credit model focused exclusively on AI operations
 ### Subscription Tiers (AI Credits)
 
 ```
-Standard:    10,000 credits/month (~100 AI agent calls)
-Enterprise:  50,000 credits/month (~500 AI agent calls)
-Premium:     200,000 credits/month (~2000 AI agent calls)
+Standard: 8,000 credits/month (~200 AI agent calls)
+Large:    32,000 credits/month (~800 AI agent calls)
+XLarge:   100,000 credits/month (~2,600 AI agent calls)
 ```
 
 ## Key Components
@@ -209,11 +209,11 @@ credit_service.consume_ai_tokens(
 ### 4. Storage Overage Handling
 
 ```python
-# Storage overages are billed separately, not through credits
+# Storage overages are billed via credits (1 credit/GB/day)
 # Each tier includes storage:
-# - Standard: 100 GB included, $1.00/GB overage
-# - Enterprise: 500 GB included, $0.50/GB overage  
-# - Premium: 2 TB included, $0.25/GB overage
+# - Standard: 10 GB included
+# - Large:    50 GB included
+# - XLarge:   100 GB included
 
 # Monthly storage billing (handled by billing system, not credits)
 storage_gb = calculate_storage_usage(graph_id)

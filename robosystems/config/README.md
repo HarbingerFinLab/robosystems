@@ -177,7 +177,7 @@ GRAPH_WRITE: 100/min  # 6k/hour possible
 GRAPH_QUERY: 60/min   # 3.6k/hour possible
 AI: 10/min            # 600/hour possible
 
-# Enterprise tier (5x multiplier)
+# XLarge tier (5x multiplier)
 GRAPH_READ: 2500/min  # 150k/hour possible
 GRAPH_WRITE: 500/min  # 30k/hour possible
 ```
