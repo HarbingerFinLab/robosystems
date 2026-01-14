@@ -35,14 +35,18 @@ Parameters:
   # Security & Access Configuration
   DeployVpcEndpoints:
     Type: String
-    Default: minimal
+    Default: gateway
     AllowedValues:
+      - none
+      - gateway
       - minimal
       - full
-      - none
-    Description:
-      "Endpoint deployment strategy: 'minimal' deploys only in one AZ,
-      'full' deploys in all AZs, 'none' disables VPC endpoints"
+    Description: |
+      Endpoint deployment strategy:
+      - 'none': No VPC endpoints (all traffic via NAT)
+      - 'gateway': FREE Gateway endpoints only (S3 + DynamoDB) - RECOMMENDED
+      - 'minimal': Gateway + Interface endpoints in 1 AZ (~$22/mo)
+      - 'full': Gateway + Interface endpoints in 2 AZs (~$45/mo)
 
   # VPC Flow Logs Configuration
   EnableVPCFlowLogs:
@@ -587,10 +591,10 @@ Resources:
       SubnetId: !Ref PrivateSubnet5
       RouteTableId: !Ref PrivateRouteTable5
 
-  # Security Group for VPC Endpoints
+  # Security Group for VPC Endpoints (only needed for Interface endpoints)
   VPCEndpointSecurityGroup:
     Type: AWS::EC2::SecurityGroup
-    Condition: CreateVpcEndpoints
+    Condition: CreateInterfaceEndpoints
     Properties:
       GroupDescription: Security group for VPC endpoints
       VpcId: !Ref VPC
@@ -611,11 +615,16 @@ Resources:
         - Key: CreatedBy
           Value: CloudFormation
 
-  # VPC Endpoints - Cost-optimized by default
-  # S3 Endpoint (Gateway type - no hourly cost)
+  # ===========================================================================
+  # GATEWAY ENDPOINTS (FREE) - S3 and DynamoDB
+  # ===========================================================================
+  # Gateway endpoints have no hourly cost and no data processing charges.
+  # They add routes to your route tables to direct traffic to AWS services.
+
+  # S3 Gateway Endpoint (FREE)
   S3Endpoint:
     Type: AWS::EC2::VPCEndpoint
-    Condition: CreateVpcEndpoints
+    Condition: CreateGatewayEndpoints
     Properties:
       VpcId: !Ref VPC
       ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
@@ -634,6 +643,35 @@ Resources:
               - - !If [Create3rdAZ, !Sub ",${PrivateRouteTable3}", ""]
                 - !If [Create4thAZ, !Sub ",${PrivateRouteTable4}", ""]
                 - !If [Create5thAZ, !Sub ",${PrivateRouteTable5}", ""]
+
+  # DynamoDB Gateway Endpoint (FREE)
+  DynamoDBEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateGatewayEndpoints
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
+      VpcEndpointType: Gateway
+      RouteTableIds: !Split
+        - ","
+        - !Sub
+          - "${BaseRouteTables}${ConditionalRouteTables}"
+          - BaseRouteTables: !Join
+              - ","
+              - - !Ref PrivateRouteTable1
+                - !Ref PrivateRouteTable2
+                - !Ref PublicRouteTable
+            ConditionalRouteTables: !Join
+              - ""
+              - - !If [Create3rdAZ, !Sub ",${PrivateRouteTable3}", ""]
+                - !If [Create4thAZ, !Sub ",${PrivateRouteTable4}", ""]
+                - !If [Create5thAZ, !Sub ",${PrivateRouteTable5}", ""]
+
+  # ===========================================================================
+  # INTERFACE ENDPOINTS (PAID) - Secrets Manager, ECR
+  # ===========================================================================
+  # Interface endpoints cost ~$7.50/month per endpoint per AZ plus data charges.
+  # Only created for 'minimal' or 'full' modes.
 
   # Interface endpoints - deployed only to one AZ by default to save costs
   SecretsManagerEndpoint:
@@ -819,13 +857,15 @@ Conditions:
   CreateVPCFlowLogs: !Equals [!Ref EnableVPCFlowLogs, "true"]
 
   # VPC Endpoint Conditions
-  CreateVpcEndpoints: !Or
-    - !Equals
-      - !Ref DeployVpcEndpoints
-      - minimal
-    - !Equals
-      - !Ref DeployVpcEndpoints
-      - full
+  # Gateway endpoints (S3, DynamoDB) - FREE, created for gateway/minimal/full modes
+  CreateGatewayEndpoints: !Or
+    - !Equals [!Ref DeployVpcEndpoints, gateway]
+    - !Equals [!Ref DeployVpcEndpoints, minimal]
+    - !Equals [!Ref DeployVpcEndpoints, full]
+  # Interface endpoints (Secrets Manager, ECR) - PAID, created for minimal/full modes only
+  CreateInterfaceEndpoints: !Or
+    - !Equals [!Ref DeployVpcEndpoints, minimal]
+    - !Equals [!Ref DeployVpcEndpoints, full]
   CreateMinimalVpcEndpoints: !Equals
     - !Ref DeployVpcEndpoints
     - minimal

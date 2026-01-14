@@ -449,9 +449,9 @@ function setup_full_config() {
 
     # Infrastructure Configuration
     gh variable set MAX_AVAILABILITY_ZONES --body "2"
-    # VPC Endpoint Mode: 'none' (default), 'minimal' (single AZ), 'full' (all AZs)
-    # Interface endpoints cost ~$66/month - only enable if needed for compliance
-    gh variable set VPC_ENDPOINT_MODE --body "none"
+    # VPC Endpoint Mode: 'none', 'gateway' (free S3+DynamoDB), 'minimal' (~$22/mo), 'full' (~$45/mo)
+    # 'gateway' is recommended - free Gateway endpoints for S3 and DynamoDB
+    gh variable set VPC_ENDPOINT_MODE --body "gateway"
 
     # VPC Configuration - Set to non-zero for VPC peering with other 10.x VPCs
     # Default 0 = 10.0.0.0/16, set to 2 = 10.2.0.0/16 to peer with another 10.0.0.0/16
