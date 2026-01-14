@@ -311,17 +311,10 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: secretsmanager.amazonaws.com
 
-  # Secret Rotation Schedule
-  DBPasswordSecretRotationSchedule:
-    Type: AWS::SecretsManager::RotationSchedule
-    DependsOn: PostgresSecretRotationPermission
-    Properties:
-      SecretId: !Ref DBPasswordSecret
-      RotationLambdaARN: !GetAtt PostgresSecretRotationLambda.Arn
-      RotationRules:
-        # Rotate based on PostgresRotationDays parameter
-        ScheduleExpression: !Sub rate(${PostgresRotationDays} days)
-      RotateImmediatelyOnUpdate: false
+  # NOTE: Automatic rotation schedule has been removed.
+  # Rotation is now managed via GitHub Actions workflow (secrets-rotation.yml)
+  # which orchestrates rotation + service refresh atomically.
+  # The rotation Lambda is still available for on-demand invocation.
 
   # CloudWatch Alarms for Rotation Monitoring
   PostgresRotationFailureAlarm:
@@ -1018,14 +1011,10 @@ Outputs:
     Export:
       Name: !Sub ${AWS::StackName}-${Environment}-PostgresRotationLambdaArn
 
-  PostgresRotationScheduleArn:
-    Description: ARN of the PostgreSQL password rotation schedule
-    Value: !Ref DBPasswordSecretRotationSchedule
-    Export:
-      Name: !Sub ${AWS::StackName}-${Environment}-PostgresRotationScheduleArn
+  # NOTE: PostgresRotationScheduleArn output removed - rotation now managed via GitHub Actions
 
   PostgresRotationDaysConfigured:
-    Description: Number of days between automatic password rotations
+    Description: Rotation frequency parameter (actual rotation scheduled via GitHub Actions)
     Value: !Ref PostgresRotationDays
     Export:
       Name: !Sub ${AWS::StackName}-${Environment}-PostgresRotationDays

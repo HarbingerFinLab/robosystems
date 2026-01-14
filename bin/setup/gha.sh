@@ -252,9 +252,6 @@ function setup_full_config() {
     fi
     # To use public-http mode (ALB DNS, no TLS): gh variable set API_ACCESS_MODE_PROD --body "public-http"
 
-    # Admin API access (set to your IP for restricted access)
-    gh variable set ADMIN_ALLOWED_CIDRS --body "0.0.0.0/32"
-
     # API Scaling Configuration
     gh variable set API_MIN_CAPACITY_PROD --body "1"
     gh variable set API_MAX_CAPACITY_PROD --body "10"

@@ -20,13 +20,7 @@ Parameters:
       - "false"
     Description: Enable automatic rotation of API keys
     ConstraintDescription: Must be true or false
-  RotationScheduleDays:
-    Type: Number
-    Default: 90
-    MinValue: 1
-    MaxValue: 365
-    Description: Number of days between automatic API key rotations (when rotation is enabled)
-    ConstraintDescription: Must be between 1 and 365 days
+  # NOTE: RotationScheduleDays parameter removed - rotation now managed via GitHub Actions
 
   # Lambda Configuration
   LambdaImageUri:
@@ -475,19 +469,10 @@ Resources:
         - Key: CreatedBy
           Value: CloudFormation
 
-  # Rotation schedule
-  SecretRotationSchedule:
-    Type: AWS::SecretsManager::RotationSchedule
-    Condition: EnableRotation
-    DependsOn: LambdaInvokePermission
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Retain
-    Properties:
-      SecretId: !Ref GraphApiSecret
-      RotationLambdaARN: !GetAtt SecretRotationLambda.Arn
-      RotationRules:
-        ScheduleExpression: !Sub "rate(${RotationScheduleDays} days)"
-        Duration: 1h
+  # NOTE: Automatic rotation schedule has been removed.
+  # Rotation is now managed via GitHub Actions workflow (secrets-rotation.yml)
+  # which orchestrates rotation + service refresh atomically.
+  # The rotation Lambda is still available for on-demand invocation.
 
   # Permission for Secrets Manager to invoke Lambda
   LambdaInvokePermission:

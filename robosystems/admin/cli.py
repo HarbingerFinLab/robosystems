@@ -20,6 +20,10 @@ Examples:
 
     # Show statistics
     uv run python -m robosystems.admin.cli stats
+
+    # Use internal tunnel (bypasses ALB IP restrictions)
+    # First: ./bin/tools/tunnels.sh prod api-internal
+    # Then:  uv run python -m robosystems.admin.cli --tunnel subscriptions list
 """
 
 import json
@@ -47,6 +51,7 @@ class AdminAPIClient:
     environment: str = "prod",
     api_base_url: str | None = None,
     aws_profile: str = "robosystems",
+    use_tunnel: bool = False,
   ):
     """Initialize the admin API client.
 
@@ -54,13 +59,17 @@ class AdminAPIClient:
         environment: Environment name (dev/staging/prod)
         api_base_url: Base URL for the API (default: auto-detect from environment)
         aws_profile: AWS CLI profile name (default: robosystems)
+        use_tunnel: Use localhost:8000 (requires active SSM tunnel via api-internal)
     """
     self.environment = environment
     self.aws_profile = aws_profile
+    self.use_tunnel = use_tunnel
 
     if api_base_url:
       self.api_base_url = api_base_url
-    elif environment == "dev":
+    elif use_tunnel or environment == "dev":
+      # For tunnel mode or dev, use localhost
+      # Tunnel mode: requires `./bin/tools/tunnels.sh <env> api-internal` running
       self.api_base_url = "http://localhost:8000"
     elif environment == "staging":
       self.api_base_url = "https://api.staging.robosystems.ai"
@@ -80,8 +89,9 @@ class AdminAPIClient:
     """
     admin_key = os.getenv("ADMIN_API_KEY")
     if admin_key:
+      mode = "tunnel" if self.use_tunnel else "direct"
       console.print(
-        f"[green]✓[/green] Connected to {self.environment} environment admin API (using ADMIN_API_KEY from environment)"
+        f"[green]✓[/green] Connected to {self.environment} environment admin API via {mode} (using ADMIN_API_KEY from environment)"
       )
       return admin_key
 
@@ -112,8 +122,9 @@ class AdminAPIClient:
       if not admin_key:
         raise click.ClickException(f"ADMIN_API_KEY not found in secret {secret_id}")
 
+      mode = "tunnel" if self.use_tunnel else "direct"
       console.print(
-        f"[green]✓[/green] Connected to {self.environment} environment admin API (using AWS Secrets Manager)"
+        f"[green]✓[/green] Connected to {self.environment} environment admin API via {mode} (using AWS Secrets Manager)"
       )
       return admin_key
 
@@ -219,8 +230,14 @@ class AdminAPIClient:
   default="robosystems",
   help="AWS CLI profile name (only used for staging/prod)",
 )
+@click.option(
+  "--tunnel",
+  "-t",
+  is_flag=True,
+  help="Use SSM tunnel (localhost:8000). Requires: ./bin/tools/tunnels.sh <env> api-internal",
+)
 @click.pass_context
-def cli(ctx, environment, api_url, aws_profile):
+def cli(ctx, environment, api_url, aws_profile, tunnel):
   """RoboSystems Admin CLI - Remote administration via admin API.
 
   This CLI provides access to subscription management, customer management,
@@ -229,11 +246,17 @@ def cli(ctx, environment, api_url, aws_profile):
   Environment selection:
     - dev: Uses localhost:8000 and ADMIN_API_KEY from .env.local
     - staging/prod: Uses remote URLs and AWS Secrets Manager for auth
+
+  Tunnel mode (--tunnel / -t):
+    Bypasses ALB IP restrictions by using SSM tunnel.
+    First start the tunnel: ./bin/tools/tunnels.sh <env> api-internal
+    Then use: just admin <env> --tunnel <command>
   """
   ctx.obj = AdminAPIClient(
     environment=environment,
     api_base_url=api_url,
     aws_profile=aws_profile,
+    use_tunnel=tunnel,
   )
 
 

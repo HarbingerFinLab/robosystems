@@ -10,62 +10,49 @@ The admin CLI is available through the `just admin` wrapper command:
 just admin dev <command> <args>
 ```
 
-## Security & IP Whitelisting
+## Security & Access Control
 
-**IMPORTANT**: The Admin API is protected by IP whitelisting at the infrastructure level (Application Load Balancer).
+**IMPORTANT**: The Admin API is NOT accessible from the public internet. All admin access requires SSM tunnel.
 
-### Access Control
+### Endpoints
 
-- **Admin API** (`/admin/v1/*`): Restricted to whitelisted IP addresses only
+- **Admin API** (`/admin/v1/*`): Blocked on public ALB, accessible via SSM tunnel only
 - **Regular API** (`/v1/*`): Open to internet (protected by JWT/API keys)
 
-### IP Whitelist Configuration
+### Admin API Access
 
-**Admin API Access** (`ADMIN_ALLOWED_CIDRS`):
-- Comma-separated CIDR blocks for Admin API endpoints
-- Can specify multiple IPs/networks
-
-**Format:**
-```bash
-# Single CIDR
-203.0.113.42/32
-# OR multiple CIDRs
-203.0.113.0/24,198.51.100.0/24,10.0.1.0/24
-```
-
-**Setting the variable:**
-```bash
-gh variable set ADMIN_ALLOWED_CIDRS --body "YOUR.IP.ADDRESS/32"
-# OR for multiple IPs
-gh variable set ADMIN_ALLOWED_CIDRS --body "203.0.113.0/24,198.51.100.0/24"
-```
-
-**Note:** Stored as a variable (not secret) since IP addresses aren't truly secret, and visibility helps with troubleshooting.
-
-**Bastion Access:** Uses SSM Session Manager with IAM authentication - no SSH keys or IP whitelisting required.
+- Admin endpoints return 403 for ALL public internet requests
+- Access requires SSM tunnel through bastion to Service Discovery endpoint
+- IAM controls who can establish SSM sessions (who can be an admin)
+- API key provides authorization for admin operations (what they can do)
 
 ### Security Features
 
-- ✅ **Infrastructure-level blocking**: ALB denies requests before reaching application
-- ✅ **Defense in depth**: IP whitelist + API key authentication
-- ✅ **Fail-secure**: Returns 403 Forbidden for unauthorized IPs
-- ✅ **Audit logging**: All admin operations logged via CloudWatch and audit trail
+- ✅ **Zero public attack surface**: Admin API not reachable from internet
+- ✅ **IAM-based access control**: SSM sessions require IAM permissions
+- ✅ **Defense in depth**: SSM tunnel + API key authentication
+- ✅ **Audit logging**: CloudTrail logs SSM sessions, CloudWatch logs admin operations
 
 ## Environment Targeting
 
 The admin CLI can target three environments:
 
-| Environment | API URL | Authentication | IP Restriction |
-|------------|---------|----------------|----------------|
-| `dev` | http://localhost:8000 | `ADMIN_API_KEY` from `.env.local` | None (localhost) |
-| `staging` | https://api.staging.robosystems.ai | AWS Secrets Manager | Whitelisted IPs only |
-| `prod` | https://api.robosystems.ai | AWS Secrets Manager | Whitelisted IPs only |
+| Environment | API URL | Authentication | Access Method |
+|------------|---------|----------------|---------------|
+| `dev` | http://localhost:8000 | `ADMIN_API_KEY` from `.env.local` | Direct (localhost) |
+| `staging` | http://localhost:8000 | AWS Secrets Manager | SSM tunnel required |
+| `prod` | http://localhost:8000 | AWS Secrets Manager | SSM tunnel required |
 
 **Examples:**
 ```bash
-just admin dev customers list        # Local development
-just admin staging customers list    # Staging environment (requires whitelisted IP)
-just admin prod stats                # Production environment (requires whitelisted IP)
+# Local development (direct access)
+just admin dev customers list
+
+# Staging/Production (requires SSM tunnel first)
+# Terminal 1: ./bin/tools/tunnels.sh prod api-internal
+# Terminal 2:
+just admin prod --tunnel customers list
+just admin staging --tunnel stats
 ```
 
 ## Available Commands
@@ -826,33 +813,19 @@ just admin dev subscriptions list
 
 ### Access Control
 
-- **IP Whitelisting**: Admin API is restricted to whitelisted IP addresses at ALB level
-- **API Key Authentication**: Requires valid admin API key from AWS Secrets Manager
-- **Defense in Depth**: Both IP and API key validation required for staging/production
+- **SSM Tunnel Required**: Admin API blocked on public ALB, requires SSM tunnel to Service Discovery
+- **IAM Authentication**: SSM sessions require IAM permissions (controls who can be an admin)
+- **API Key Authorization**: Admin API key from AWS Secrets Manager (controls what they can do)
+- **Defense in Depth**: SSM tunnel (IAM) + API key authentication for staging/production
 
 ### Best Practices
 
 - Never commit `.env.local` to git
 - Rotate production admin keys regularly via AWS Secrets Manager
-- Update IP whitelist when office/VPN IP changes
 - Audit admin actions via subscription audit logs and CloudWatch
 - Use staging environment for testing administrative operations
 - Test migrations on staging before running on production
-
-### IP Whitelist Management
-
-The Admin API IP whitelist is managed via GitHub variables (not secrets, for visibility):
-
-```bash
-# Update Admin API whitelist (can be comma-separated)
-gh variable set ADMIN_ALLOWED_CIDRS --body "203.0.113.0/24,198.51.100.0/24"
-
-# View current value
-gh variable list | grep ADMIN_ALLOWED_CIDRS
-
-# After updating, redeploy API stack for changes to take effect:
-# gh workflow run staging.yml (or prod.yml)
-```
+- Grant SSM access only to authorized Application Super Admins
 
 ### Remote Operations Security
 
