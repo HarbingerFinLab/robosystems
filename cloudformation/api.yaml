@@ -932,7 +932,7 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       ListenerArn: !Ref ApiHttpsListener
-      Priority: 1
+      Priority: 2
       Conditions:
         - Field: path-pattern
           PathPatternConfig:
