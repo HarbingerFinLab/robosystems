@@ -274,6 +274,7 @@ class PasswordSecurity:
     ]
 
     max_attempts = 10
+    password = ""
     for _ in range(max_attempts):
       password_chars = []
       used_chars = set()
