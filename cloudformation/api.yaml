@@ -47,7 +47,7 @@ Parameters:
   # ECS & Compute Configuration
   DesiredCount:
     Type: Number
-    Default: 2
+    Default: 1
     MinValue: 1
     MaxValue: 100
     Description: Desired number of ECS tasks
