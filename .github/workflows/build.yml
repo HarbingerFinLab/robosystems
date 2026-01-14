@@ -40,10 +40,6 @@ on:
       DOCKERHUB_USERNAME:
       DOCKERHUB_TOKEN:
 
-concurrency:
-  group: robosystems-build
-  cancel-in-progress: false
-
 jobs:
   docker:
     runs-on: ubuntu-latest
