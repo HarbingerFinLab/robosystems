@@ -151,11 +151,6 @@ on:
         required: false
         type: string
         default: ""
-      refresh_ecs_service:
-        description: "Refresh ECS service after deployment"
-        required: false
-        type: string
-        default: "true"
 
       # WAF Configuration (optional)
       waf_enabled:
@@ -371,16 +366,6 @@ jobs:
           if [ -n "$API_ALB_ARN" ]; then
             echo "API ALB ARN: $API_ALB_ARN"
           fi
-
-      - name: Refresh ECS Service
-        if: inputs.refresh_ecs_service != 'false' && steps.deploy-stack.outputs.is_new_stack != 'true'
-        uses: ./.github/actions/refresh-ecs
-        with:
-          stack-name: ${{ inputs.stack_name }}
-          skip-autoscale-refresh: "false"
-          service-type: "api"
-          max-wait-time: "600"
-          service-stability-delay: "30"
 
   # WAF deployment as separate job (only runs when enabled and public)
   waf:

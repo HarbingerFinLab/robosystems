@@ -432,21 +432,6 @@ jobs:
     secrets:
       ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
-  graph-container-refresh:
-    needs: [runner, create-deployment, build, deploy-graph]
-    if: ${{ vars.GRAPH_UPDATE_CONTAINERS_PROD != 'false' }}
-    uses: ./.github/workflows/graph-container-refresh.yml
-    with:
-      environment: ${{ vars.ENVIRONMENT_PROD || 'prod' }}
-      runner_config: ${{ needs.runner.outputs.runner_config }}
-      aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-      aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
-      node_types: writer
-      rolling_update: "true"
-      health_check_timeout: "30"
-    secrets:
-      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
-
   deploy-api:
     needs:
       [
@@ -511,7 +496,6 @@ jobs:
       # Other Configuration
       prometheus_stack_name: ${{ needs.deploy-prometheus.outputs.prometheus_stack_name || '' }}
       aws_sns_alert_email: ${{ vars.AWS_SNS_ALERT_EMAIL }}
-      refresh_ecs_service: ${{ vars.API_ASG_REFRESH_PROD || 'true' }}
     secrets:
       ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
@@ -575,8 +559,37 @@ jobs:
       public_data_bucket_arn: ${{ needs.deploy-s3.outputs.public_data_bucket_arn }}
       logs_bucket_arn: ${{ needs.deploy-s3.outputs.logs_bucket_arn }}
       public_data_cdn_url: ${{ needs.deploy-s3.outputs.public_data_cdn_url }}
-      # Other Configuration
-      refresh_ecs_service: ${{ vars.DAGSTER_REFRESH_ECS_PROD || 'true' }}
+    secrets:
+      ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
+
+  # Unified service refresh - runs all refreshes in parallel after CloudFormation deployments
+  service-refresh:
+    needs:
+      [
+        runner,
+        create-deployment,
+        stack-config,
+        deploy-graph,
+        deploy-api,
+        deploy-dagster,
+      ]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'failure') }}
+    uses: ./.github/workflows/service-refresh.yml
+    with:
+      environment: ${{ vars.ENVIRONMENT_PROD || 'prod' }}
+      runner_config: ${{ needs.runner.outputs.runner_config }}
+      aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+      aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      # Graph refresh (EC2 containers via SSM)
+      graph_refresh_enabled: ${{ vars.GRAPH_UPDATE_CONTAINERS_PROD || 'true' }}
+      graph_node_types: "writer"
+      graph_health_check_timeout: "30"
+      # API refresh (ECS service)
+      api_refresh_enabled: ${{ vars.API_ASG_REFRESH_PROD || 'true' }}
+      api_stack_name: ${{ needs.stack-config.outputs.api_stack }}
+      # Dagster refresh (ECS daemon + webserver)
+      dagster_refresh_enabled: ${{ vars.DAGSTER_REFRESH_ECS_PROD || 'true' }}
+      dagster_stack_name: ${{ needs.stack-config.outputs.dagster_stack }}
     secrets:
       ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
@@ -595,7 +608,7 @@ jobs:
         deploy-bastion,
         deploy-api,
         deploy-dagster,
-        graph-container-refresh,
+        service-refresh,
       ]
     if: |
       always() &&
@@ -611,7 +624,7 @@ jobs:
       needs.deploy-bastion.result == 'success' &&
       needs.deploy-api.result == 'success' &&
       needs.deploy-dagster.result == 'success' &&
-      (needs.graph-container-refresh.result == 'success' || needs.graph-container-refresh.result == 'skipped')
+      (needs.service-refresh.result == 'success' || needs.service-refresh.result == 'skipped')
     runs-on: ${{ fromJSON(needs.runner.outputs.runner_config) }}
     outputs:
       deployment_id: ${{ needs.create-deployment.outputs.deployment_id }}
@@ -646,6 +659,7 @@ jobs:
         deploy-bastion,
         deploy-api,
         deploy-dagster,
+        service-refresh,
       ]
     if: always() && contains(needs.*.result, 'failure')
     runs-on: ${{ fromJSON(needs.runner.outputs.runner_config) }}
