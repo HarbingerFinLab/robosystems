@@ -248,12 +248,9 @@ jobs:
       - name: Post-test cleanup
         if: always()
         run: |
-          # Clean up test containers and free ports for next runs
-          echo "🧹 Post-test cleanup: stopping test services..."
+          # Clean up local Docker Compose containers (not GitHub Actions service containers)
+          echo "🧹 Post-test cleanup..."
           docker ps -q --filter "label=com.docker.compose.project=robosystems-service" | xargs -r docker rm -f || true
-          docker ps -q --filter "name=postgres" | xargs -r docker rm -f || true
-          docker ps -q --filter "name=redis" | xargs -r docker rm -f || true
-          docker ps -q --filter "name=localstack" | xargs -r docker rm -f || true
 
           # Clean up graph test databases
           echo "🧹 Cleaning up graph test databases..."
@@ -262,10 +259,9 @@ jobs:
             echo "✅ Graph test databases cleaned up"
           fi
 
-          # Wait for services to fully stop and ports to be released
-          sleep 3
-
-          echo "✅ Cleanup completed - ports 5432, 6379, 4566 should now be available"
+          # Note: GitHub Actions service containers (postgres, valkey, localstack) are
+          # automatically cleaned up by GitHub Actions - do not remove them manually
+          echo "✅ Cleanup completed"
 
       - name: Clean cache (CI optimization)
         if: always() && !contains(runner.name, 'robosystems')
