@@ -682,26 +682,20 @@ jobs:
             cat >> $GITHUB_STEP_SUMMARY << EOF
           - **Mode**: Public (HTTPS)
           - **URL**: https://${API_DOMAIN}
-          - **Admin API**: Via SSM tunnel (not public)
-            \`\`\`
-            just bastion-tunnel staging api-internal
-            \`\`\`
+          - **Admin CLI**: \`just admin staging --tunnel <command>\` (requires \`just bastion-tunnel staging api-internal\`)
           EOF
           elif [ "$API_ACCESS_MODE" = "public-http" ]; then
             cat >> $GITHUB_STEP_SUMMARY << EOF
           - **Mode**: Public HTTP (no TLS)
           - **URL**: See CloudFormation outputs for ALB DNS
-          - **Admin API**: Via SSM tunnel (not public)
-            \`\`\`
-            just bastion-tunnel staging api-internal
-            \`\`\`
+          - **Admin CLI**: \`just admin staging --tunnel <command>\` (requires \`just bastion-tunnel staging api-internal\`)
           EOF
           else
             cat >> $GITHUB_STEP_SUMMARY << EOF
           - **Mode**: Internal (bastion tunnel required)
           - **Connect**: \`just bastion-tunnel staging all\`
           - **API**: http://localhost:8000
-          - **Admin API**: http://localhost:8000/admin/v1 (via api-internal tunnel)
+          - **Admin CLI**: \`just admin staging --tunnel <command>\`
           EOF
           fi
 
@@ -728,9 +722,6 @@ jobs:
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
 
-          - **Graph API**: http://localhost:8001 (via bastion tunnel)
-          - **MCP Access**: Use \`robosystems\` MCP server for AI agent access
-
           ### All Services
 
           Connect to all services with one command:
@@ -741,7 +732,6 @@ jobs:
           | Service | Local Port |
           |---------|------------|
           | API | http://localhost:8000 |
-          | Graph API | http://localhost:8001 |
           | Dagster UI | http://localhost:3003 |
           | PostgreSQL | localhost:5432 |
           | Valkey | localhost:6379 |
