@@ -63,16 +63,16 @@ on:
     outputs:
       volume_registry_table:
         description: "DynamoDB table name for volume registry"
-        value: ${{ jobs.action.outputs.volume_registry_table }}
+        value: ${{ jobs.deploy.outputs.volume_registry_table }}
       volume_manager_function_arn:
         description: "ARN of the Volume Manager Lambda function"
-        value: ${{ jobs.action.outputs.volume_manager_function_arn }}
+        value: ${{ jobs.deploy.outputs.volume_manager_function_arn }}
       alert_topic_arn:
         description: "SNS topic ARN for volume alerts"
-        value: ${{ jobs.action.outputs.alert_topic_arn }}
+        value: ${{ jobs.deploy.outputs.alert_topic_arn }}
       volume_detachment_topic_arn:
         description: "SNS topic ARN for volume detachment notifications"
-        value: ${{ jobs.action.outputs.volume_detachment_topic_arn }}
+        value: ${{ jobs.deploy.outputs.volume_detachment_topic_arn }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -80,7 +80,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 20
     permissions:

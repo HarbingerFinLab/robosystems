@@ -32,16 +32,16 @@ on:
         value: ${{ inputs.stack_name }}
       prometheus_workspace_arn:
         description: "Amazon Managed Prometheus workspace ARN"
-        value: ${{ jobs.action.outputs.prometheus_workspace_arn }}
+        value: ${{ jobs.deploy.outputs.prometheus_workspace_arn }}
       prometheus_workspace_id:
         description: "Amazon Managed Prometheus workspace ID"
-        value: ${{ jobs.action.outputs.prometheus_workspace_id }}
+        value: ${{ jobs.deploy.outputs.prometheus_workspace_id }}
       prometheus_workspace_endpoint:
         description: "Amazon Managed Prometheus workspace endpoint"
-        value: ${{ jobs.action.outputs.prometheus_workspace_endpoint }}
+        value: ${{ jobs.deploy.outputs.prometheus_workspace_endpoint }}
       prometheus_remote_write_endpoint:
         description: "Prometheus remote write endpoint for ADOT collectors"
-        value: ${{ jobs.action.outputs.prometheus_remote_write_endpoint }}
+        value: ${{ jobs.deploy.outputs.prometheus_remote_write_endpoint }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -49,7 +49,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 20
     permissions:

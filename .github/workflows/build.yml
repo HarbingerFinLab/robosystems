@@ -20,19 +20,19 @@ on:
     outputs:
       image:
         description: "Built image reference"
-        value: ${{ jobs.action.outputs.image }}
+        value: ${{ jobs.docker.outputs.image }}
       lambda_image:
         description: "Lambda container image reference"
         value: ${{ jobs.lambda.outputs.lambda_image }}
       ecr_repository_url:
         description: "ECR repository URL"
-        value: ${{ jobs.action.outputs.ecr_repository_url }}
+        value: ${{ jobs.docker.outputs.ecr_repository_url }}
       version_tag:
         description: "Version tag used for the build"
-        value: ${{ jobs.action.outputs.version_tag }}
+        value: ${{ jobs.docker.outputs.version_tag }}
       is_release:
         description: "Whether this is a release build"
-        value: ${{ jobs.action.outputs.is_release }}
+        value: ${{ jobs.docker.outputs.is_release }}
     secrets:
       ACTIONS_TOKEN:
         description: "GitHub token for checkout (optional - falls back to github.token)"
@@ -40,12 +40,8 @@ on:
       DOCKERHUB_USERNAME:
       DOCKERHUB_TOKEN:
 
-concurrency:
-  group: robosystems-build
-  cancel-in-progress: false
-
 jobs:
-  action:
+  docker:
     runs-on: ubuntu-latest
     permissions:
       id-token: write

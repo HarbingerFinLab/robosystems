@@ -93,13 +93,13 @@ on:
     outputs:
       valkey_url:
         description: "Full Redis URL for Valkey ElastiCache"
-        value: ${{ jobs.action.outputs.valkey_url }}
+        value: ${{ jobs.deploy.outputs.valkey_url }}
       valkey_endpoint:
         description: "Primary endpoint for Valkey ElastiCache"
-        value: ${{ jobs.action.outputs.valkey_endpoint }}
+        value: ${{ jobs.deploy.outputs.valkey_endpoint }}
       valkey_sg_id:
         description: "Security group ID for applications connecting to Valkey"
-        value: ${{ jobs.action.outputs.valkey_sg_id }}
+        value: ${{ jobs.deploy.outputs.valkey_sg_id }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -107,7 +107,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 30  # ElastiCache version upgrades can take 15-20 min
     permissions:

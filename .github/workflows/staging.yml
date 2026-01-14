@@ -6,11 +6,11 @@ permissions:
   id-token: write
 
 concurrency:
-  group: robosystems-deploy-staging
+  group: robosystems-deploy
   cancel-in-progress: false
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 jobs:
   # Guard: Verify staging environment is enabled
@@ -681,3 +681,4 @@ jobs:
           deployment-id: ${{ needs.create-deployment.outputs.deployment_id }}
           environment: staging
           github-token: ${{ secrets.ACTIONS_TOKEN || github.token }}
+

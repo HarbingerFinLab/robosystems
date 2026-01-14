@@ -57,7 +57,7 @@ on:
     outputs:
       bastion_sg_id:
         description: "Security group ID for bastion host"
-        value: ${{ jobs.action.outputs.bastion_sg_id }}
+        value: ${{ jobs.deploy.outputs.bastion_sg_id }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -65,7 +65,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 20
     permissions:

@@ -198,17 +198,18 @@ on:
     outputs:
       api_sg_id:
         description: "API ECS task security group ID (for Dagster access)"
-        value: ${{ jobs.action.outputs.api_sg_id }}
+        value: ${{ jobs.deploy.outputs.api_sg_id }}
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
-    timeout-minutes: 30  # Increased to accommodate both API and WAF deployments
+    timeout-minutes: 25
     permissions:
       id-token: write
       contents: read
     outputs:
       api_sg_id: ${{ steps.get-outputs.outputs.api_sg_id }}
+      api_alb_arn: ${{ steps.get-outputs.outputs.api_alb_arn }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -359,7 +360,17 @@ jobs:
             --query "Stacks[0].Outputs[?OutputKey=='ApiSecurityGroupId'].OutputValue" \
             --output text 2>/dev/null || echo "")
           echo "api_sg_id=$API_SG_ID" >> $GITHUB_OUTPUT
-          echo "✅ API Security Group ID: $API_SG_ID"
+          echo "API Security Group ID: $API_SG_ID"
+
+          # Get API ALB ARN for WAF (only exists when api_access_mode is public or public-http)
+          API_ALB_ARN=$(aws cloudformation describe-stacks \
+            --stack-name ${{ inputs.stack_name }} \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiALBArn'].OutputValue" \
+            --output text 2>/dev/null || echo "")
+          echo "api_alb_arn=$API_ALB_ARN" >> $GITHUB_OUTPUT
+          if [ -n "$API_ALB_ARN" ]; then
+            echo "API ALB ARN: $API_ALB_ARN"
+          fi
 
       - name: Refresh ECS Service
         if: inputs.refresh_ecs_service != 'false' && steps.deploy-stack.outputs.is_new_stack != 'true'
@@ -371,45 +382,49 @@ jobs:
           max-wait-time: "600"
           service-stability-delay: "30"
 
-      - name: Update Deployment Status
-        if: always()
-        run: |
-          # Output deployment status for the main workflow
-          if [ "${{ steps.deploy-stack.outputs.is_new_stack }}" == "true" ]; then
-            echo "API stack creation completed"
-          else
-            echo "API stack update completed"
-          fi
+  # WAF deployment as separate job (only runs when enabled and public)
+  waf:
+    needs: deploy
+    if: inputs.waf_enabled == 'true' && inputs.waf_stack_name != '' && inputs.api_access_mode == 'public'
+    runs-on: ${{ fromJSON(inputs.runner_config) }}
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
 
-      - name: Deploy WAF Protection
-        if: inputs.waf_enabled == 'true' && inputs.waf_stack_name != '' && inputs.api_access_mode == 'public'
-        id: deploy-waf
-        run: |
-          echo "🛡️ Deploying WAF protection for API"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
 
-          # Get API ALB ARN from the API stack
-          API_ALB_ARN=$(aws cloudformation describe-stacks \
-            --stack-name ${{ inputs.stack_name }} \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiALBArn'].OutputValue" \
-            --output text 2>/dev/null || echo "")
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Deploy WAF Stack
+        run: |
+          API_ALB_ARN="${{ needs.deploy.outputs.api_alb_arn }}"
 
           if [ -z "$API_ALB_ARN" ]; then
-            echo "❌ Error: Could not find API ALB ARN from stack ${{ inputs.stack_name }}"
+            echo "Error: Could not find API ALB ARN from deploy job"
             exit 1
           fi
 
-          echo "✅ API ALB ARN retrieved successfully"
+          echo "Deploying WAF protection for ALB"
 
-          # Check if WAF stack exists
-          if aws cloudformation describe-stacks --stack-name ${{ inputs.waf_stack_name }} 2>&1 | grep -q 'Stack with id ${{ inputs.waf_stack_name }} does not exist'; then
+          if aws cloudformation describe-stacks --stack-name ${{ inputs.waf_stack_name }} 2>&1 | grep -q 'Stack with id .* does not exist'; then
             STACK_ACTION="create-stack"
-            echo "🚀 Creating new WAF stack: ${{ inputs.waf_stack_name }}"
+            echo "Creating new WAF stack: ${{ inputs.waf_stack_name }}"
           else
             STACK_ACTION="update-stack"
-            echo "📝 Updating existing WAF stack: ${{ inputs.waf_stack_name }}"
+            echo "Updating existing WAF stack: ${{ inputs.waf_stack_name }}"
           fi
 
-          # Prepare WAF parameters
           WAF_PARAMS="ParameterKey=Environment,ParameterValue=${{ inputs.environment }}"
           WAF_PARAMS="$WAF_PARAMS ParameterKey=ApiAlbArn,ParameterValue='$API_ALB_ARN'"
           WAF_PARAMS="$WAF_PARAMS ParameterKey=RateLimitPerIP,ParameterValue=${{ inputs.waf_rate_limit_per_ip }}"
@@ -417,7 +432,6 @@ jobs:
           WAF_PARAMS="$WAF_PARAMS ParameterKey=EnableAwsManagedRules,ParameterValue=${{ inputs.waf_enable_aws_managed_rules }}"
           WAF_PARAMS="$WAF_PARAMS ParameterKey=AllowedIPs,ParameterValue='${{ inputs.admin_allowed_cidrs }}'"
 
-          # Deploy WAF stack
           if [ "$STACK_ACTION" = "create-stack" ]; then
             aws cloudformation $STACK_ACTION \
               --stack-name ${{ inputs.waf_stack_name }} \
@@ -430,11 +444,10 @@ jobs:
                 Key=Component,Value=WAF \
                 Key=ManagedBy,Value="GitHub Actions"
 
-            # Wait for stack creation to complete
-            echo "⏳ Waiting for WAF stack creation to complete..."
+            echo "Waiting for WAF stack creation..."
             aws cloudformation wait stack-create-complete \
               --stack-name ${{ inputs.waf_stack_name }} || {
-              echo "❌ WAF stack creation failed"
+              echo "WAF stack creation failed"
               aws cloudformation describe-stack-events \
                 --stack-name ${{ inputs.waf_stack_name }} \
                 --query 'StackEvents[?ResourceStatus==`CREATE_FAILED`].[LogicalResourceId, ResourceStatusReason]' \
@@ -442,7 +455,6 @@ jobs:
               exit 1
             }
           else
-            # For updates, check if there are actual changes
             UPDATE_OUTPUT=$(aws cloudformation $STACK_ACTION \
               --stack-name ${{ inputs.waf_stack_name }} \
               --template-body file://cloudformation/waf.yaml \
@@ -456,13 +468,12 @@ jobs:
               2>&1 || true)
 
             if echo "$UPDATE_OUTPUT" | grep -q "No updates are to be performed"; then
-              echo "ℹ️ No changes detected in WAF stack"
+              echo "No changes detected in WAF stack"
             else
-              # Wait for stack update to complete
-              echo "⏳ Waiting for WAF stack update to complete..."
+              echo "Waiting for WAF stack update..."
               aws cloudformation wait stack-update-complete \
                 --stack-name ${{ inputs.waf_stack_name }} || {
-                echo "❌ WAF stack update failed"
+                echo "WAF stack update failed"
                 aws cloudformation describe-stack-events \
                   --stack-name ${{ inputs.waf_stack_name }} \
                   --query 'StackEvents[?ResourceStatus==`UPDATE_FAILED`].[LogicalResourceId, ResourceStatusReason]' \
@@ -472,23 +483,17 @@ jobs:
             fi
           fi
 
-          echo "✅ WAF stack deployed successfully"
+          echo "WAF stack deployed successfully"
 
-          # Get WAF outputs
-          WEB_ACL_ID=$(aws cloudformation describe-stacks \
-            --stack-name ${{ inputs.waf_stack_name }} \
-            --query "Stacks[0].Outputs[?OutputKey=='WebACLId'].OutputValue" \
-            --output text)
+          # Get WAF outputs for summary
           ESTIMATED_COST=$(aws cloudformation describe-stacks \
             --stack-name ${{ inputs.waf_stack_name }} \
             --query "Stacks[0].Outputs[?OutputKey=='EstimatedMonthlyCost'].OutputValue" \
             --output text)
 
-          echo "🛡️ WAF Deployment Summary"
-          echo "========================"
-          echo "Web ACL configured successfully"
-          echo "Protected ALB configured"
+          echo "WAF Deployment Summary"
+          echo "======================"
           echo "Rate Limit: ${{ inputs.waf_rate_limit_per_ip }} requests/5min"
           echo "Geo Blocking: ${{ inputs.waf_enable_geo_blocking }}"
           echo "AWS Managed Rules: ${{ inputs.waf_enable_aws_managed_rules }}"
-          echo "💰 Estimated monthly cost: $ESTIMATED_COST"
+          echo "Estimated monthly cost: $ESTIMATED_COST"

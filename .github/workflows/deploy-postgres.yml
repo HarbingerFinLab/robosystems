@@ -94,10 +94,10 @@ on:
     outputs:
       postgres_secret_arn:
         description: "ARN of the PostgreSQL secret in Secrets Manager"
-        value: ${{ jobs.action.outputs.postgres_secret_arn }}
+        value: ${{ jobs.deploy.outputs.postgres_secret_arn }}
       database_sg_id:
         description: "RDS Security Group ID for database access"
-        value: ${{ jobs.action.outputs.database_sg_id }}
+        value: ${{ jobs.deploy.outputs.database_sg_id }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -105,7 +105,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 30  # RDS major version upgrades can take 20-30 min
     permissions:

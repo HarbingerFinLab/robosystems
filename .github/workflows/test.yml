@@ -17,7 +17,7 @@ on:
         required: false
 
 jobs:
-  action:
+  test:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 10
     env:
@@ -151,6 +151,9 @@ jobs:
       - name: Install uv (GitHub-hosted runners only)
         if: runner.os == 'Linux' && !contains(runner.name, 'robosystems')
         uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Verify Python and uv installation
         run: |
