@@ -10,6 +10,7 @@ on:
 jobs:
   runner:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       runners_available: ${{ steps.select.outputs.runners_available }}
       runner_type: ${{ steps.select.outputs.runner_type }}

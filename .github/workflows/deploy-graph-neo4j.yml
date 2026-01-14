@@ -93,16 +93,16 @@ on:
       # Neo4j Writer Outputs
       security_group_id:
         description: "Security Group ID for Neo4j writers"
-        value: ${{ jobs.action.outputs.security_group_id }}
+        value: ${{ jobs.deploy.outputs.security_group_id }}
       instance_role_arn:
         description: "IAM Role ARN for Neo4j writer instances"
-        value: ${{ jobs.action.outputs.instance_role_arn }}
+        value: ${{ jobs.deploy.outputs.instance_role_arn }}
       writer_asg_name:
         description: "Auto Scaling Group Name for writers"
-        value: ${{ jobs.action.outputs.writer_asg_name }}
+        value: ${{ jobs.deploy.outputs.writer_asg_name }}
       bolt_endpoint:
         description: "Neo4j Bolt protocol endpoint"
-        value: ${{ jobs.action.outputs.bolt_endpoint }}
+        value: ${{ jobs.deploy.outputs.bolt_endpoint }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -110,7 +110,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 30
     permissions:

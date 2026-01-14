@@ -49,61 +49,61 @@ on:
       # Policy ARNs
       graph_writer_s3_policy_arn:
         description: "ARN of the graph writer S3 policy"
-        value: ${{ jobs.action.outputs.graph_writer_s3_policy_arn }}
+        value: ${{ jobs.deploy.outputs.graph_writer_s3_policy_arn }}
       shared_data_writer_policy_arn:
         description: "ARN of the shared data writer S3 policy"
-        value: ${{ jobs.action.outputs.shared_data_writer_policy_arn }}
+        value: ${{ jobs.deploy.outputs.shared_data_writer_policy_arn }}
 
       # Deployment Bucket
       deployment_bucket_name:
         description: "Name of the deployment bucket"
-        value: ${{ jobs.action.outputs.deployment_bucket_name }}
+        value: ${{ jobs.deploy.outputs.deployment_bucket_name }}
       deployment_bucket_arn:
         description: "ARN of the deployment bucket"
-        value: ${{ jobs.action.outputs.deployment_bucket_arn }}
+        value: ${{ jobs.deploy.outputs.deployment_bucket_arn }}
 
       # Shared Raw Bucket
       shared_raw_bucket_name:
         description: "Name of the shared raw data bucket"
-        value: ${{ jobs.action.outputs.shared_raw_bucket_name }}
+        value: ${{ jobs.deploy.outputs.shared_raw_bucket_name }}
       shared_raw_bucket_arn:
         description: "ARN of the shared raw data bucket"
-        value: ${{ jobs.action.outputs.shared_raw_bucket_arn }}
+        value: ${{ jobs.deploy.outputs.shared_raw_bucket_arn }}
 
       # Shared Processed Bucket
       shared_processed_bucket_name:
         description: "Name of the shared processed data bucket"
-        value: ${{ jobs.action.outputs.shared_processed_bucket_name }}
+        value: ${{ jobs.deploy.outputs.shared_processed_bucket_name }}
       shared_processed_bucket_arn:
         description: "ARN of the shared processed data bucket"
-        value: ${{ jobs.action.outputs.shared_processed_bucket_arn }}
+        value: ${{ jobs.deploy.outputs.shared_processed_bucket_arn }}
 
       # User Data Bucket
       user_data_bucket_name:
         description: "Name of the user data bucket"
-        value: ${{ jobs.action.outputs.user_data_bucket_name }}
+        value: ${{ jobs.deploy.outputs.user_data_bucket_name }}
       user_data_bucket_arn:
         description: "ARN of the user data bucket"
-        value: ${{ jobs.action.outputs.user_data_bucket_arn }}
+        value: ${{ jobs.deploy.outputs.user_data_bucket_arn }}
 
       # Public Data Bucket
       public_data_bucket_name:
         description: "Name of the public data bucket"
-        value: ${{ jobs.action.outputs.public_data_bucket_name }}
+        value: ${{ jobs.deploy.outputs.public_data_bucket_name }}
       public_data_bucket_arn:
         description: "ARN of the public data bucket"
-        value: ${{ jobs.action.outputs.public_data_bucket_arn }}
+        value: ${{ jobs.deploy.outputs.public_data_bucket_arn }}
       public_data_cdn_url:
         description: "CloudFront CDN URL for public data"
-        value: ${{ jobs.action.outputs.public_data_cdn_url }}
+        value: ${{ jobs.deploy.outputs.public_data_cdn_url }}
 
       # Logs Bucket
       logs_bucket_name:
         description: "Name of the logs bucket (Dagster compute logs)"
-        value: ${{ jobs.action.outputs.logs_bucket_name }}
+        value: ${{ jobs.deploy.outputs.logs_bucket_name }}
       logs_bucket_arn:
         description: "ARN of the logs bucket"
-        value: ${{ jobs.action.outputs.logs_bucket_arn }}
+        value: ${{ jobs.deploy.outputs.logs_bucket_arn }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -111,7 +111,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 15
     permissions:

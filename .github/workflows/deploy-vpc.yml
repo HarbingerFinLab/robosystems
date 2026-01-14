@@ -91,13 +91,13 @@ on:
     outputs:
       vpc_id:
         description: "VPC ID"
-        value: ${{ jobs.action.outputs.vpc_id }}
+        value: ${{ jobs.deploy.outputs.vpc_id }}
       private_subnet_ids:
         description: "Private Subnet IDs"
-        value: ${{ jobs.action.outputs.private_subnet_ids }}
+        value: ${{ jobs.deploy.outputs.private_subnet_ids }}
       public_subnet_ids:
         description: "Public Subnet IDs"
-        value: ${{ jobs.action.outputs.public_subnet_ids }}
+        value: ${{ jobs.deploy.outputs.public_subnet_ids }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -105,7 +105,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 15
     permissions:
@@ -255,29 +255,35 @@ jobs:
             exit 1
           fi
 
+  # CloudTrail deployment as separate job (only runs when enabled)
+  cloudtrail:
+    needs: deploy
+    if: inputs.cloudtrail_enabled == 'true'
+    runs-on: ${{ fromJSON(inputs.runner_config) }}
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
 
-      - name: Skip CloudTrail Deployment
-        if: inputs.cloudtrail_enabled != 'true'
-        run: |
-          echo "⏭️ Skipping CloudTrail deployment - cloudtrail_enabled is set to '${{ inputs.cloudtrail_enabled }}'"
-          echo "CloudTrail is disabled to save costs (~$5-15/month)"
-          echo "To enable CloudTrail for SOC 2 compliance:"
-          echo "  1. Set GitHub variable: gh variable set CLOUDTRAIL_ENABLED_PROD --body true"
-          echo "  2. Redeploy via GitHub Actions"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
 
       - name: Deploy CloudTrail Stack
         id: deploy-cloudtrail
-        if: inputs.cloudtrail_enabled == 'true'
         run: |
-          # Use CloudTrail stack name passed from parent workflow
           CLOUDTRAIL_STACK_NAME="${{ inputs.cloudtrail_stack_name }}"
           echo "Deploying CloudTrail stack: $CLOUDTRAIL_STACK_NAME"
-
-          # Validate VPC stack exists (prerequisite)
-          if ! aws cloudformation describe-stacks --stack-name ${{ inputs.stack_name }} 2>&1 | grep -q "StackStatus"; then
-            echo "Error: VPC stack ${{ inputs.stack_name }} does not exist or is not in a valid state"
-            exit 1
-          fi
 
           if aws cloudformation describe-stacks --stack-name $CLOUDTRAIL_STACK_NAME 2>&1 | grep -q 'Stack with id .* does not exist'; then
             STACK_ACTION="create-stack"
@@ -287,7 +293,6 @@ jobs:
             echo "Updating existing CloudTrail stack $CLOUDTRAIL_STACK_NAME"
           fi
 
-          # Set up parameters for CloudTrail configuration
           # CloudTrail needs 'prod' or 'staging', but VPC uses 'shared' for production
           if [ "${{ inputs.environment }}" = "shared" ]; then
             CLOUDTRAIL_ENV="prod"
@@ -301,13 +306,11 @@ jobs:
                       ParameterKey=DataEventsEnabled,ParameterValue=${{ inputs.cloudtrail_data_events_enabled }} \
                       ParameterKey=UserDataBucketArn,ParameterValue=${{ inputs.user_data_bucket_arn }}"
 
-          echo "CloudTrail enabled: ${{ inputs.cloudtrail_enabled }}"
           echo "CloudTrail log retention days: ${{ inputs.cloudtrail_log_retention_days }}"
           echo "CloudTrail data events enabled: ${{ inputs.cloudtrail_data_events_enabled }}"
 
           # Deploy or update the CloudTrail stack
           if [ "$STACK_ACTION" = "create-stack" ]; then
-            # Create new stack
             aws cloudformation $STACK_ACTION \
               --stack-name $CLOUDTRAIL_STACK_NAME \
               --template-body file://cloudformation/cloudtrail.yaml \
@@ -323,7 +326,6 @@ jobs:
                   exit 1
                 }
           else
-            # Update existing stack, handling "No updates" error
             UPDATE_OUTPUT=$(aws cloudformation $STACK_ACTION \
               --stack-name $CLOUDTRAIL_STACK_NAME \
               --template-body file://cloudformation/cloudtrail.yaml \
@@ -336,7 +338,6 @@ jobs:
                 Key=Repository,Value=${{ github.repository }} \
                 Key=CreatedBy,Value=GitHubActions 2>&1) || true
 
-            # Check if the error was "No updates are to be performed"
             if echo "$UPDATE_OUTPUT" | grep -q "No updates are to be performed"; then
               echo "CloudTrail stack is already up to date - no changes needed"
             elif echo "$UPDATE_OUTPUT" | grep -q "error"; then
@@ -348,25 +349,8 @@ jobs:
           fi
 
       - name: Monitor CloudTrail Stack Deployment
-        if: inputs.cloudtrail_enabled == 'true' && steps.deploy-cloudtrail.outcome == 'success'
         uses: ./.github/actions/monitor-stack-deployment
         with:
           stack-name: "${{ inputs.cloudtrail_stack_name }}"
           timeout: "900"
           interval: "10"
-
-      - name: Update Deployment Status
-        if: always()
-        run: |
-          # Output deployment status for the main workflow
-          if [ "${{ steps.deploy-stack.outputs.is_new_stack }}" == "true" ]; then
-            echo "VPC stack creation completed"
-          else
-            echo "VPC stack update completed"
-          fi
-
-          if [ "${{ inputs.cloudtrail_enabled }}" == "true" ]; then
-            echo "CloudTrail deployment completed"
-          else
-            echo "CloudTrail is disabled (can be enabled via GitHub variables)"
-          fi

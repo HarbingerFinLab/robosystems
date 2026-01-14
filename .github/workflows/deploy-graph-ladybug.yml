@@ -98,19 +98,19 @@ on:
       # Graph Writer Outputs (LadybugDB Backend)
       security_group_id:
         description: "Security Group ID for graph writers"
-        value: ${{ jobs.action.outputs.security_group_id }}
+        value: ${{ jobs.deploy.outputs.security_group_id }}
       instance_role_arn:
         description: "IAM Role ARN for graph writer instances"
-        value: ${{ jobs.action.outputs.instance_role_arn }}
+        value: ${{ jobs.deploy.outputs.instance_role_arn }}
       shared_writer_instance_id:
         description: "Instance ID of the shared writer (when NodeType=shared_writer)"
-        value: ${{ jobs.action.outputs.shared_writer_instance_id }}
+        value: ${{ jobs.deploy.outputs.shared_writer_instance_id }}
       shared_writer_endpoint:
         description: "HTTP endpoint URL for shared writer (when NodeType=shared_writer)"
-        value: ${{ jobs.action.outputs.shared_writer_endpoint }}
+        value: ${{ jobs.deploy.outputs.shared_writer_endpoint }}
       writer_asg_name:
         description: "Auto Scaling Group Name for writers (when NodeType=writer)"
-        value: ${{ jobs.action.outputs.writer_asg_name }}
+        value: ${{ jobs.deploy.outputs.writer_asg_name }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -118,7 +118,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 30
     permissions:

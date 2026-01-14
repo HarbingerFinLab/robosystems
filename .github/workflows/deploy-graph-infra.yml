@@ -55,22 +55,22 @@ on:
     outputs:
       secret_arn:
         description: "ARN of the Graph API authentication secret"
-        value: ${{ jobs.action.outputs.secret_arn }}
+        value: ${{ jobs.deploy.outputs.secret_arn }}
       instance_registry_table:
         description: "DynamoDB table name for instance registry"
-        value: ${{ jobs.action.outputs.instance_registry_table }}
+        value: ${{ jobs.deploy.outputs.instance_registry_table }}
       graph_registry_table:
         description: "DynamoDB table name for graph registry"
-        value: ${{ jobs.action.outputs.graph_registry_table }}
+        value: ${{ jobs.deploy.outputs.graph_registry_table }}
       volume_registry_table:
         description: "DynamoDB table name for volume registry"
-        value: ${{ jobs.action.outputs.volume_registry_table }}
+        value: ${{ jobs.deploy.outputs.volume_registry_table }}
       stack_name:
         description: "Name of the deployed stack"
-        value: ${{ jobs.action.outputs.stack_name }}
+        value: ${{ jobs.deploy.outputs.stack_name }}
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 30
     permissions:

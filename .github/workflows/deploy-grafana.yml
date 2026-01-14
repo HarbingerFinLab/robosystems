@@ -30,13 +30,13 @@ on:
     outputs:
       grafana_workspace_id:
         description: "Amazon Managed Grafana workspace ID"
-        value: ${{ jobs.action.outputs.grafana_workspace_id }}
+        value: ${{ jobs.deploy.outputs.grafana_workspace_id }}
       grafana_workspace_endpoint:
         description: "Amazon Managed Grafana workspace endpoint"
-        value: ${{ jobs.action.outputs.grafana_workspace_endpoint }}
+        value: ${{ jobs.deploy.outputs.grafana_workspace_endpoint }}
       grafana_service_role_arn:
         description: "Grafana service role ARN"
-        value: ${{ jobs.action.outputs.grafana_service_role_arn }}
+        value: ${{ jobs.deploy.outputs.grafana_service_role_arn }}
 
     secrets:
       ACTIONS_TOKEN:
@@ -44,7 +44,7 @@ on:
         required: false
 
 jobs:
-  action:
+  deploy:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 30
     permissions:

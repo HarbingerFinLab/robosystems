@@ -11,6 +11,12 @@ concurrency:
 
 on:
   workflow_dispatch:
+    inputs:
+      trigger_prod:
+        description: "Trigger production deployment after staging succeeds"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   # Guard: Verify staging environment is enabled
@@ -681,3 +687,36 @@ jobs:
           deployment-id: ${{ needs.create-deployment.outputs.deployment_id }}
           environment: staging
           github-token: ${{ secrets.ACTIONS_TOKEN || github.token }}
+
+  # Trigger production deployment after staging succeeds (when requested)
+  trigger-prod:
+    needs: [deployment-successful]
+    if: inputs.trigger_prod == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          token: ${{ secrets.ACTIONS_TOKEN || github.token }}
+
+      - name: Trigger Production Deployment
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::ACTIONS_TOKEN not set - cannot trigger production deployment"
+            echo ""
+            echo "The default github.token cannot trigger other workflows."
+            echo "To enable auto-deployment to production, set ACTIONS_TOKEN:"
+            echo "  gh secret set ACTIONS_TOKEN"
+            echo ""
+            echo "You can manually deploy to production with:"
+            echo "  gh workflow run prod.yml --ref ${{ github.ref }}"
+            exit 0
+          fi
+
+          echo "Staging deployment succeeded - triggering production deployment..."
+          gh workflow run prod.yml --ref "${{ github.ref }}"
+          echo "Production deployment triggered for ref ${{ github.ref }}"
