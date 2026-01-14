@@ -594,6 +594,8 @@ jobs:
     needs:
       [
         runner,
+        build,
+        stack-config,
         create-deployment,
         deploy-vpc,
         deploy-graph,
@@ -610,6 +612,8 @@ jobs:
     if: |
       always() &&
       needs.runner.result == 'success' &&
+      needs.build.result == 'success' &&
+      needs.stack-config.result == 'success' &&
       needs.create-deployment.result == 'success' &&
       needs.deploy-vpc.result == 'success' &&
       needs.deploy-graph.result == 'success' &&
@@ -632,6 +636,104 @@ jobs:
           repository: ${{ github.repository }}
           ref: ${{ github.ref }}
           token: ${{ secrets.ACTIONS_TOKEN || github.token }}
+
+      - name: Generate Deployment Summary
+        env:
+          API_ACCESS_MODE: ${{ vars.API_ACCESS_MODE_PROD || 'internal' }}
+          API_DOMAIN: ${{ vars.API_DOMAIN_NAME_PROD || '' }}
+          LBUG_LARGE_ENABLED: ${{ vars.LBUG_LARGE_ENABLED_PROD || 'false' }}
+          LBUG_XLARGE_ENABLED: ${{ vars.LBUG_XLARGE_ENABLED_PROD || 'false' }}
+          LBUG_SHARED_ENABLED: ${{ vars.LBUG_SHARED_ENABLED_PROD || 'false' }}
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## Production Deployment Successful
+
+          | Component | Details |
+          |-----------|---------|
+          | Environment | production |
+          | Version | \`${{ needs.build.outputs.version_tag }}\` |
+          | Image | \`${{ needs.build.outputs.image }}\` |
+          | Commit | \`${{ github.sha }}\` |
+          | Ref | \`${{ github.ref_name }}\` |
+          | Triggered by | @${{ github.actor }} |
+
+          ### API Access
+
+          EOF
+
+          if [ "$API_ACCESS_MODE" = "public" ] && [ -n "$API_DOMAIN" ]; then
+            cat >> $GITHUB_STEP_SUMMARY << EOF
+          - **Mode**: Public (HTTPS)
+          - **URL**: https://${API_DOMAIN}
+          - **Admin API**: Via SSM tunnel (not public)
+            \`\`\`
+            just bastion-tunnel prod api-internal
+            \`\`\`
+          EOF
+          elif [ "$API_ACCESS_MODE" = "public-http" ]; then
+            cat >> $GITHUB_STEP_SUMMARY << EOF
+          - **Mode**: Public HTTP (no TLS)
+          - **URL**: See CloudFormation outputs for ALB DNS
+          - **Admin API**: Via SSM tunnel (not public)
+            \`\`\`
+            just bastion-tunnel prod api-internal
+            \`\`\`
+          EOF
+          else
+            cat >> $GITHUB_STEP_SUMMARY << EOF
+          - **Mode**: Internal (bastion tunnel required)
+          - **Connect**: \`just bastion-tunnel prod all\`
+          - **API**: http://localhost:8000
+          - **Admin API**: http://localhost:8000/admin/v1 (via api-internal tunnel)
+          EOF
+          fi
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          ### LadybugDB Graph Clusters
+
+          | Tier | Status |
+          |------|--------|
+          | Standard | Enabled |
+          EOF
+
+          if [ "$LBUG_LARGE_ENABLED" = "true" ]; then
+            echo "| Large | Enabled |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "$LBUG_XLARGE_ENABLED" = "true" ]; then
+            echo "| XLarge | Enabled |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "$LBUG_SHARED_ENABLED" = "true" ]; then
+            echo "| Shared | Enabled |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          - **Graph API**: http://localhost:8001 (via bastion tunnel)
+          - **MCP Access**: Use \`robosystems\` MCP server for AI agent access
+
+          ### All Services
+
+          Connect to all services with one command:
+          \`\`\`
+          just bastion-tunnel prod all
+          \`\`\`
+
+          | Service | Local Port |
+          |---------|------------|
+          | API | http://localhost:8000 |
+          | Graph API | http://localhost:8001 |
+          | Dagster UI | http://localhost:3003 |
+          | PostgreSQL | localhost:5432 |
+          | Valkey | localhost:6379 |
+
+          ### Next Steps
+
+          - [Bootstrap Guide](https://github.com/RoboFinSystems/robosystems/wiki/Bootstrap-Guide) - Initial setup
+          - [Architecture Overview](https://github.com/RoboFinSystems/robosystems/wiki/Architecture-Overview) - System architecture
+          EOF
 
       - name: Update Deployment Status
         uses: chrnorm/deployment-status@v2
