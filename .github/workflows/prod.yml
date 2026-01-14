@@ -148,14 +148,15 @@ jobs:
       # AWS Configuration
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       # VPC Configuration
-      max_availability_zones: ${{ vars.MAX_AVAILABILITY_ZONES || '5' }}
+      endpoint_mode: ${{ vars.VPC_ENDPOINT_MODE || 'none' }}
+      max_availability_zones: ${{ vars.MAX_AVAILABILITY_ZONES || '2' }}
       vpc_second_octet: ${{ vars.VPC_SECOND_OCTET || '0' }}
       # VPC Flow Logs Configuration (VPC-level, not environment-specific)
-      vpc_flow_logs_enabled: ${{ vars.VPC_FLOW_LOGS_ENABLED || 'true' }}
+      vpc_flow_logs_enabled: ${{ vars.VPC_FLOW_LOGS_ENABLED || 'false' }}
       vpc_flow_logs_retention_days: ${{ vars.VPC_FLOW_LOGS_RETENTION_DAYS || '30' }}
       vpc_flow_logs_traffic_type: ${{ vars.VPC_FLOW_LOGS_TRAFFIC_TYPE || 'REJECT' }}
       # CloudTrail Configuration (account-level, not environment-specific)
-      cloudtrail_enabled: ${{ vars.CLOUDTRAIL_ENABLED || 'true' }}
+      cloudtrail_enabled: ${{ vars.CLOUDTRAIL_ENABLED || 'false' }}
       cloudtrail_log_retention_days: ${{ vars.CLOUDTRAIL_LOG_RETENTION_DAYS || '90' }}
       cloudtrail_data_events_enabled: ${{ vars.CLOUDTRAIL_DATA_EVENTS_ENABLED || 'false' }}
     secrets:
@@ -498,7 +499,7 @@ jobs:
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}
       admin_allowed_cidrs: ${{ vars.ADMIN_ALLOWED_CIDRS || '' }}
       # WAF Configuration (environment-specific, skipped for internal-only deployments)
-      waf_enabled: ${{ vars.WAF_ENABLED_PROD || 'true' }}
+      waf_enabled: ${{ vars.WAF_ENABLED_PROD || 'false' }}
       waf_stack_name: ${{ needs.stack-config.outputs.waf_stack }}
       waf_rate_limit_per_ip: ${{ vars.WAF_RATE_LIMIT_PER_IP || '10000' }}
       waf_enable_geo_blocking: ${{ vars.WAF_GEO_BLOCKING_ENABLED || 'false' }}

@@ -323,12 +323,14 @@ function setup_full_config() {
     fi
 
     # VPC Flow Logs Configuration (SOC 2 - VPC-level, not environment-specific)
-    gh variable set VPC_FLOW_LOGS_ENABLED --body "true"
+    # Disabled by default - enable for compliance requirements
+    gh variable set VPC_FLOW_LOGS_ENABLED --body "false"
     gh variable set VPC_FLOW_LOGS_RETENTION_DAYS --body "90"
     gh variable set VPC_FLOW_LOGS_TRAFFIC_TYPE --body "REJECT"
 
     # CloudTrail Configuration (SOC 2 - Account-level, not environment-specific)
-    gh variable set CLOUDTRAIL_ENABLED --body "true"
+    # Disabled by default - S3 bucket cleanup is painful if you need to tear down
+    gh variable set CLOUDTRAIL_ENABLED --body "false"
     gh variable set CLOUDTRAIL_LOG_RETENTION_DAYS --body "90"
     gh variable set CLOUDTRAIL_DATA_EVENTS_ENABLED --body "false"
 
@@ -436,17 +438,20 @@ function setup_full_config() {
         gh variable set OBSERVABILITY_ENABLED_STAGING --body "true"
     fi
 
-    # WAF Configuration (environment-specific)
-    gh variable set WAF_ENABLED_PROD --body "true"
+    # WAF Configuration (environment-specific) - disabled by default to save ~$5+/month
+    gh variable set WAF_ENABLED_PROD --body "false"
     gh variable set WAF_RATE_LIMIT_PER_IP --body "10000"
     gh variable set WAF_GEO_BLOCKING_ENABLED --body "false"
     gh variable set WAF_AWS_MANAGED_RULES_ENABLED --body "true"
     if $setup_staging; then
-        gh variable set WAF_ENABLED_STAGING --body "true"
+        gh variable set WAF_ENABLED_STAGING --body "false"
     fi
 
     # Infrastructure Configuration
-    gh variable set MAX_AVAILABILITY_ZONES --body "5"
+    gh variable set MAX_AVAILABILITY_ZONES --body "2"
+    # VPC Endpoint Mode: 'none' (default), 'minimal' (single AZ), 'full' (all AZs)
+    # Interface endpoints cost ~$66/month - only enable if needed for compliance
+    gh variable set VPC_ENDPOINT_MODE --body "none"
 
     # VPC Configuration - Set to non-zero for VPC peering with other 10.x VPCs
     # Default 0 = 10.0.0.0/16, set to 2 = 10.2.0.0/16 to peer with another 10.0.0.0/16
