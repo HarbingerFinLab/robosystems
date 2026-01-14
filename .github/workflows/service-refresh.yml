@@ -107,6 +107,9 @@ on:
         description: "GitHub token for checkout (optional - falls back to github.token)"
         required: false
 
+# Minimal top-level permissions - jobs define their own
+permissions: {}
+
 jobs:
   # ============================================
   # Graph Container Refresh (EC2 instances via SSM)
@@ -303,8 +306,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    outputs:
-      status: ${{ steps.refresh.outputs.status }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -338,22 +339,12 @@ jobs:
           echo "📦 Using API stack: $STACK_NAME"
 
       - name: Refresh API ECS Service
-        id: refresh
         uses: ./.github/actions/refresh-ecs
         with:
           stack-name: ${{ steps.stack-name.outputs.stack_name }}
           service-type: "api"
           max-wait-time: "180"
           service-stability-delay: "15"
-
-      - name: Set status output
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo "status=failed" >> $GITHUB_OUTPUT
-          fi
 
   # ============================================
   # Dagster Daemon ECS Service Refresh
@@ -365,8 +356,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    outputs:
-      status: ${{ steps.refresh.outputs.status }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -382,7 +371,6 @@ jobs:
           aws-region: ${{ github.event_name == 'workflow_dispatch' && (vars.AWS_REGION || 'us-east-1') || inputs.aws_region }}
 
       - name: Refresh Dagster Daemon Service
-        id: refresh
         uses: ./.github/actions/refresh-ecs
         with:
           cluster-name: robosystems-dagster-${{ inputs.environment }}-cluster
@@ -390,15 +378,6 @@ jobs:
           service-type: daemon
           max-wait-time: "600"
           service-stability-delay: "30"
-
-      - name: Set status output
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo "status=failed" >> $GITHUB_OUTPUT
-          fi
 
   # ============================================
   # Dagster Webserver ECS Service Refresh
@@ -410,8 +389,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    outputs:
-      status: ${{ steps.refresh.outputs.status }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -427,7 +404,6 @@ jobs:
           aws-region: ${{ github.event_name == 'workflow_dispatch' && (vars.AWS_REGION || 'us-east-1') || inputs.aws_region }}
 
       - name: Refresh Dagster Webserver Service
-        id: refresh
         uses: ./.github/actions/refresh-ecs
         with:
           cluster-name: robosystems-dagster-${{ inputs.environment }}-cluster
@@ -435,15 +411,6 @@ jobs:
           service-type: api
           max-wait-time: "180"
           service-stability-delay: "15"
-
-      - name: Set status output
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo "status=failed" >> $GITHUB_OUTPUT
-          fi
 
   # ============================================
   # Summary
