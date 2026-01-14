@@ -17,6 +17,7 @@ POSTGRES_ENDPOINT=""
 VALKEY_ENDPOINT=""
 DAGSTER_ENDPOINT=""
 API_ENDPOINT=""
+API_INTERNAL_ENDPOINT=""  # Service Discovery endpoint (bypasses ALB)
 
 
 # Colors for output
@@ -110,6 +111,7 @@ print_usage() {
     echo "  valkey        - Valkey ElastiCache tunnel (localhost:6379)"
     echo "  dagster       - Dagster webserver tunnel (localhost:3003)"
     echo "  api           - API ALB tunnel (localhost:8000)"
+    echo "  api-internal  - API direct tunnel (localhost:8000, bypasses ALB)"
     echo "  all           - All service tunnels (runs in background)"
     echo ""
     echo -e "${GREEN}======================================================================"
@@ -223,13 +225,29 @@ discover_infrastructure() {
         API_ENDPOINT="NOT_FOUND"
     fi
 
+    # Discover API internal endpoint (Service Discovery - bypasses ALB)
+    echo -e "${YELLOW}Looking for API internal endpoint (Service Discovery)...${NC}"
+
+    API_INTERNAL_ENDPOINT=$(aws cloudformation describe-stacks \
+        --stack-name "$api_stack" \
+        --query 'Stacks[0].Outputs[?OutputKey==`ApiServiceDiscoveryEndpoint`].OutputValue' \
+        --output text \
+        --region "$AWS_REGION" 2>/dev/null || echo "")
+
+    if [[ -z "$API_INTERNAL_ENDPOINT" || "$API_INTERNAL_ENDPOINT" == "None" ]]; then
+        # Fallback to standard Service Discovery naming
+        API_INTERNAL_ENDPOINT="api.${environment}.robosystems.local"
+        echo -e "${YELLOW}Using default API internal endpoint: $API_INTERNAL_ENDPOINT${NC}"
+    fi
+
     # Show discovered endpoints
     echo -e "${GREEN}✓ Infrastructure discovered:${NC}"
     echo -e "  Bastion ID:   ${GREEN}$BASTION_INSTANCE_ID${NC}"
     echo -e "  PostgreSQL:   ${GREEN}$POSTGRES_ENDPOINT${NC}"
     echo -e "  Valkey:       ${GREEN}$VALKEY_ENDPOINT${NC}"
     echo -e "  Dagster:      ${GREEN}$DAGSTER_ENDPOINT${NC}"
-    echo -e "  API:          ${GREEN}$API_ENDPOINT${NC}"
+    echo -e "  API (ALB):    ${GREEN}$API_ENDPOINT${NC}"
+    echo -e "  API (Direct): ${GREEN}$API_INTERNAL_ENDPOINT${NC}"
     echo ""
 }
 
@@ -393,13 +411,41 @@ setup_api_tunnel() {
     fi
 
     echo ""
-    echo -e "${YELLOW}Access API:${NC}"
+    echo -e "${YELLOW}Access API (via ALB):${NC}"
     echo "curl http://localhost:8000/v1/status"
     echo ""
     echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
     echo ""
 
     start_ssm_tunnel "$API_ENDPOINT" "80" "8000" "API"
+}
+
+setup_api_internal_tunnel() {
+    # This tunnel goes directly to ECS tasks via Service Discovery
+    # Bypasses ALB and its IP restrictions - ideal for admin access
+    if [[ -z "$API_INTERNAL_ENDPOINT" ]]; then
+        echo -e "${RED}Error: API internal endpoint not found${NC}"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}======================================================================"
+    echo "API Internal Tunnel (Service Discovery)"
+    echo "======================================================================${NC}"
+    echo ""
+    echo -e "${YELLOW}This tunnel bypasses the ALB and connects directly to ECS tasks.${NC}"
+    echo -e "${YELLOW}Use this for admin operations when ALB IP restrictions apply.${NC}"
+    echo ""
+    echo -e "${YELLOW}Access API:${NC}"
+    echo "curl http://localhost:8000/v1/status"
+    echo ""
+    echo -e "${YELLOW}Admin API (no IP restrictions):${NC}"
+    echo "curl -H 'Authorization: Bearer <KEY>' http://localhost:8000/admin/v1/subscriptions"
+    echo ""
+    echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
+    echo ""
+
+    start_ssm_tunnel "$API_INTERNAL_ENDPOINT" "8000" "8000" "API-Internal"
 }
 
 setup_all_tunnels() {
@@ -651,6 +697,9 @@ main() {
             ;;
         api)
             setup_api_tunnel
+            ;;
+        api-internal)
+            setup_api_internal_tunnel
             ;;
         migrate)
             run_database_migration "$environment"

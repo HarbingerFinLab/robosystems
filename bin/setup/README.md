@@ -391,7 +391,6 @@ just setup-gha
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AWS_SNS_ALERT_EMAIL` | User input | CloudWatch alert email |
-| `ADMIN_ALLOWED_CIDRS` | `0.0.0.0/32` | Admin API access CIDRs |
 | `MAX_AVAILABILITY_ZONES` | `5` | Max AZs to use |
 | `OBSERVABILITY_ENABLED_*` | `true` | Enable observability |
 | `DOCKERHUB_PUBLISHING_ENABLED` | `false` | Publish to Docker Hub |

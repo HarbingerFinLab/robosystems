@@ -482,7 +482,6 @@ jobs:
       # Cache Configuration
       valkey_url: ${{ needs.deploy-valkey.outputs.valkey_url }}
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}
-      admin_allowed_cidrs: ${{ vars.ADMIN_ALLOWED_CIDRS || '' }}
       # WAF Configuration (environment-specific, skipped for internal-only deployments)
       waf_enabled: ${{ vars.WAF_ENABLED_PROD || 'false' }}
       waf_stack_name: ${{ needs.stack-config.outputs.waf_stack }}

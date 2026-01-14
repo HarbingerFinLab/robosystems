@@ -38,12 +38,6 @@ on:
         required: false
         type: string
         default: ""
-      admin_allowed_cidrs:
-        description: "Comma-separated CIDR blocks allowed to access Admin API. Required when domain_name is provided."
-        required: false
-        type: string
-        default: ""
-
       # Container & Application Configuration
       ecr_repository_url:
         description: "Full ECR repository URL (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/robosystems)"
@@ -274,7 +268,6 @@ jobs:
                 ParameterKey=VpcId,ParameterValue=${{ inputs.vpc_id }} \
                 ParameterKey=SubnetIds,ParameterValue=\"${{ inputs.subnet_ids }}\" \
                 ParameterKey=PublicSubnetIds,ParameterValue=\"${{ inputs.public_subnet_ids }}\" \
-                ParameterKey=AdminAllowedCidrBlocks,ParameterValue=\"${{ inputs.admin_allowed_cidrs }}\" \
                 ParameterKey=ECRRepositoryUrl,ParameterValue=${{ inputs.ecr_repository_url }} \
                 ParameterKey=ECRImageTag,ParameterValue=${{ inputs.ecr_image_tag }} \
                 ParameterKey=DesiredCount,ParameterValue=${{ inputs.desired_count }} \
@@ -415,7 +408,6 @@ jobs:
           WAF_PARAMS="$WAF_PARAMS ParameterKey=RateLimitPerIP,ParameterValue=${{ inputs.waf_rate_limit_per_ip }}"
           WAF_PARAMS="$WAF_PARAMS ParameterKey=EnableGeoBlocking,ParameterValue=${{ inputs.waf_enable_geo_blocking }}"
           WAF_PARAMS="$WAF_PARAMS ParameterKey=EnableAwsManagedRules,ParameterValue=${{ inputs.waf_enable_aws_managed_rules }}"
-          WAF_PARAMS="$WAF_PARAMS ParameterKey=AllowedIPs,ParameterValue='${{ inputs.admin_allowed_cidrs }}'"
 
           if [ "$STACK_ACTION" = "create-stack" ]; then
             aws cloudformation $STACK_ACTION \

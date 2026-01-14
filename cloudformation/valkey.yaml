@@ -424,20 +424,10 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: secretsmanager.amazonaws.com
 
-  # Secret Rotation Schedule
-  ValkeyAuthSecretRotationSchedule:
-    Type: AWS::SecretsManager::RotationSchedule
-    Condition: EnableRotation
-    DependsOn: ValkeySecretRotationPermission
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Retain
-    Properties:
-      SecretId: !Ref ValkeyAuthSecret
-      RotationLambdaARN: !GetAtt ValkeySecretRotationLambda.Arn
-      RotationRules:
-        # Rotate based on RotationScheduleDays parameter
-        ScheduleExpression: !Sub rate(${RotationScheduleDays} days)
-      RotateImmediatelyOnUpdate: false
+  # NOTE: Automatic rotation schedule has been removed.
+  # Rotation is now managed via GitHub Actions workflow (secrets-rotation.yml)
+  # which orchestrates rotation + service refresh atomically.
+  # The rotation Lambda is still available for on-demand invocation.
 
   # CloudWatch Alarms for Rotation Monitoring
   ValkeyRotationFailureAlarm:
@@ -674,16 +664,11 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-${Environment}-ValkeyRotationLambdaArn"
 
-  ValkeyRotationScheduleArn:
-    Condition: EnableRotation
-    Description: ARN of the Valkey auth token rotation schedule
-    Value: !Ref ValkeyAuthSecretRotationSchedule
-    Export:
-      Name: !Sub "${AWS::StackName}-${Environment}-ValkeyRotationScheduleArn"
+  # NOTE: ValkeyRotationScheduleArn output removed - rotation now managed via GitHub Actions
 
   ValkeyRotationDaysConfigured:
     Condition: EnableRotation
-    Description: Number of days between automatic auth token rotations
+    Description: Rotation frequency parameter (actual rotation scheduled via GitHub Actions)
     Value: !Ref RotationScheduleDays
     Export:
       Name: !Sub "${AWS::StackName}-${Environment}-ValkeyRotationDays"
