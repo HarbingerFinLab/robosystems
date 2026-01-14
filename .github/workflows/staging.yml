@@ -362,8 +362,6 @@ jobs:
       runner_config: ${{ needs.runner.outputs.runner_config }}
       # AWS Configuration
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-      # Alert Configuration
-      rotation_schedule_days: ${{ vars.GRAPH_API_KEY_ROTATION_DAYS || '90' }}
       # Lambda Configuration (container-based)
       lambda_image_uri: ${{ needs.build.outputs.lambda_image }}
       # Other Configuration

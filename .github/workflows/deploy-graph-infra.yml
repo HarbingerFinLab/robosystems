@@ -32,11 +32,6 @@ on:
         required: false
         type: string
         default: "false"
-      rotation_schedule_days:
-        description: "Number of days between API key rotations (when rotation is enabled)"
-        required: false
-        type: string
-        default: "90"
       lambda_image_uri:
         description: "ECR image URI for Lambda functions (container-based deployment)"
         required: true
@@ -115,7 +110,6 @@ jobs:
           INFRA_STACK_PARAMS="ParameterKey=Environment,ParameterValue=${{ inputs.environment }} \
                 ParameterKey=SNSAlertEmail,ParameterValue=${{ inputs.aws_sns_alert_email }} \
                 ParameterKey=EnableSecretRotation,ParameterValue=${{ inputs.enable_secret_rotation }} \
-                ParameterKey=RotationScheduleDays,ParameterValue=${{ inputs.rotation_schedule_days }} \
                 ParameterKey=LambdaImageUri,ParameterValue=${{ inputs.lambda_image_uri }}"
 
           # Deploy or update the stack
