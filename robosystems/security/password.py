@@ -265,10 +265,6 @@ class PasswordSecurity:
     # All available characters for password generation
     all_chars = string.ascii_letters + string.digits + "!@#$%^&*()"
 
-    # Ensure we have enough unique characters by avoiding duplicates
-    password_chars = []
-    used_chars = set()
-
     # Add required character types first
     required_pools = [
       string.ascii_uppercase,
@@ -277,30 +273,45 @@ class PasswordSecurity:
       "!@#$%^&*()",
     ]
 
-    for pool in required_pools:
-      char = secrets.choice(pool)
-      password_chars.append(char)
-      used_chars.add(char)
+    max_attempts = 10
+    for _ in range(max_attempts):
+      password_chars = []
+      used_chars = set()
 
-    # Fill remaining length, ensuring we meet minimum unique character requirement
-    while len(password_chars) < length:
-      char = secrets.choice(all_chars)
-      password_chars.append(char)
-      used_chars.add(char)
+      for pool in required_pools:
+        char = secrets.choice(pool)
+        password_chars.append(char)
+        used_chars.add(char)
 
-      # If we still need more unique chars and we're running low on unused chars,
-      # prioritize unused characters
-      if len(used_chars) < cls.MIN_UNIQUE_CHARS and len(password_chars) < length:
-        unused_chars = [c for c in all_chars if c not in used_chars]
-        if unused_chars:
-          char = secrets.choice(unused_chars)
-          password_chars.append(char)
-          used_chars.add(char)
+      # Fill remaining length, ensuring we meet minimum unique character requirement
+      while len(password_chars) < length:
+        char = secrets.choice(all_chars)
+        password_chars.append(char)
+        used_chars.add(char)
 
-    # Shuffle the password
-    secrets.SystemRandom().shuffle(password_chars)
+        # If we still need more unique chars and we're running low on unused chars,
+        # prioritize unused characters
+        if len(used_chars) < cls.MIN_UNIQUE_CHARS and len(password_chars) < length:
+          unused_chars = [c for c in all_chars if c not in used_chars]
+          if unused_chars:
+            char = secrets.choice(unused_chars)
+            password_chars.append(char)
+            used_chars.add(char)
 
-    return "".join(password_chars)
+      # Shuffle the password
+      secrets.SystemRandom().shuffle(password_chars)
+      password = "".join(password_chars)
+
+      # Verify no weak patterns (specifically repeated chars like "aaa")
+      has_weak_pattern = any(
+        re.search(pattern, password.lower()) for pattern in cls.WEAK_PATTERNS
+      )
+      if not has_weak_pattern:
+        return password
+
+    # If all attempts failed, return the last generated password
+    # (extremely unlikely with 10 attempts)
+    return password
 
   @classmethod
   def get_password_policy(cls) -> dict[str, Any]:

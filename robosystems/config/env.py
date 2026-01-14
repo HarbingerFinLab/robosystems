@@ -704,7 +704,9 @@ class EnvConfig:
   # Bucket names are passed as env vars from CloudFormation (api.yaml, dagster.yaml)
   # Defaults are for local development only
   SHARED_RAW_BUCKET = get_str_env("SHARED_RAW_BUCKET", "robosystems-shared-raw")
-  SHARED_PROCESSED_BUCKET = get_str_env("SHARED_PROCESSED_BUCKET", "robosystems-shared-processed")
+  SHARED_PROCESSED_BUCKET = get_str_env(
+    "SHARED_PROCESSED_BUCKET", "robosystems-shared-processed"
+  )
   USER_DATA_BUCKET = get_str_env("USER_DATA_BUCKET", "robosystems-user")
   PUBLIC_DATA_BUCKET = get_str_env("PUBLIC_DATA_BUCKET", "robosystems-public-data")
   DEPLOYMENT_BUCKET = get_str_env("DEPLOYMENT_BUCKET", "robosystems-deployment")
