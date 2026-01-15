@@ -18,6 +18,7 @@ VALKEY_ENDPOINT=""
 DAGSTER_ENDPOINT=""
 API_ENDPOINT=""
 API_INTERNAL_ENDPOINT=""  # Service Discovery endpoint (bypasses ALB)
+API_ACCESS_MODE=""        # internal, public-http, or public
 
 
 # Colors for output
@@ -240,6 +241,20 @@ discover_infrastructure() {
         echo -e "${YELLOW}Using default API internal endpoint: $API_INTERNAL_ENDPOINT${NC}"
     fi
 
+    # Discover API access mode (internal, public-http, public)
+    echo -e "${YELLOW}Looking for API access mode...${NC}"
+
+    API_ACCESS_MODE=$(aws cloudformation describe-stacks \
+        --stack-name "$api_stack" \
+        --query 'Stacks[0].Parameters[?ParameterKey==`ApiAccessMode`].ParameterValue' \
+        --output text \
+        --region "$AWS_REGION" 2>/dev/null || echo "")
+
+    if [[ -z "$API_ACCESS_MODE" || "$API_ACCESS_MODE" == "None" ]]; then
+        API_ACCESS_MODE="unknown"
+        echo -e "${YELLOW}Could not determine API access mode${NC}"
+    fi
+
     # Show discovered endpoints
     echo -e "${GREEN}✓ Infrastructure discovered:${NC}"
     echo -e "  Bastion ID:   ${GREEN}$BASTION_INSTANCE_ID${NC}"
@@ -248,6 +263,7 @@ discover_infrastructure() {
     echo -e "  Dagster:      ${GREEN}$DAGSTER_ENDPOINT${NC}"
     echo -e "  API (ALB):    ${GREEN}$API_ENDPOINT${NC}"
     echo -e "  API (Direct): ${GREEN}$API_INTERNAL_ENDPOINT${NC}"
+    echo -e "  API Mode:     ${GREEN}$API_ACCESS_MODE${NC}"
     echo ""
 }
 
@@ -410,6 +426,25 @@ setup_api_tunnel() {
         exit 1
     fi
 
+    # Warn if API is in public mode - ALB tunnel has limitations
+    if [[ "$API_ACCESS_MODE" == "public" || "$API_ACCESS_MODE" == "public-http" ]]; then
+        echo ""
+        echo -e "${YELLOW}⚠️  WARNING: API is in '$API_ACCESS_MODE' mode${NC}"
+        echo -e "${YELLOW}The ALB tunnel has limitations:${NC}"
+        echo -e "${YELLOW}  - Admin endpoints (/admin/v1/*) are blocked by ALB rules${NC}"
+        echo -e "${YELLOW}  - JWT/domain validation may cause issues${NC}"
+        echo ""
+        echo -e "${GREEN}Recommended: Use 'api-internal' instead for full access:${NC}"
+        echo "  ./bin/tools/tunnels.sh $environment api-internal"
+        echo ""
+        echo -e "${BLUE}Continue with ALB tunnel anyway? (y/N): ${NC}"
+        read -t 10 -r continue_choice || true
+        if [[ ! "${continue_choice:-}" =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}Cancelled.${NC}"
+            exit 0
+        fi
+    fi
+
     echo ""
     echo -e "${YELLOW}Access API (via ALB):${NC}"
     echo "curl http://localhost:8000/v1/status"
@@ -474,10 +509,20 @@ setup_all_tunnels() {
         sleep 1
     fi
 
-    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
+    # API tunnel: use ALB for internal mode, Service Discovery for public modes
+    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" && "$API_ACCESS_MODE" == "internal" ]]; then
         start_ssm_tunnel_background "$API_ENDPOINT" "80" "8000" "API"
         ((tunnel_count++))
         sleep 1
+    elif [[ "$API_ACCESS_MODE" == "public" || "$API_ACCESS_MODE" == "public-http" ]]; then
+        # Public mode: use api-internal (Service Discovery) to bypass ALB restrictions
+        # This allows admin CLI access since ALB blocks /admin/v1/* in public mode
+        if [[ -n "$API_INTERNAL_ENDPOINT" ]]; then
+            echo -e "${YELLOW}API is in $API_ACCESS_MODE mode - using api-internal tunnel (bypasses ALB)${NC}"
+            start_ssm_tunnel_background "$API_INTERNAL_ENDPOINT" "8000" "8000" "API-Internal"
+            ((tunnel_count++))
+            sleep 1
+        fi
     fi
 
     if [[ $tunnel_count -eq 0 ]]; then
@@ -502,8 +547,11 @@ setup_all_tunnels() {
         echo "Dagster:    Open http://localhost:3003 in your browser"
     fi
 
-    if [[ -n "$API_ENDPOINT" && "$API_ENDPOINT" != "NOT_FOUND" ]]; then
+    if [[ "$API_ACCESS_MODE" == "internal" ]]; then
         echo "API:        curl http://localhost:8000/v1/status"
+    elif [[ "$API_ACCESS_MODE" == "public" || "$API_ACCESS_MODE" == "public-http" ]]; then
+        echo "API:        curl http://localhost:8000/v1/status (via api-internal)"
+        echo "Admin CLI:  just admin $environment stats"
     fi
 
     echo ""

@@ -95,39 +95,44 @@ update:
     uv lock --upgrade
     uv sync --all-extras --dev
 
+# Forward Stripe webhook events to local API (requires: brew install stripe/stripe-cli/stripe)
+# Run this in a separate terminal when testing subscription flows
+stripe-webhook url="http://localhost:8000":
+    stripe listen --forward-to {{url}}/admin/v1/webhooks/stripe
 
-## Demo Scripts ##
 
-# Run all demos
-demo-all:
-    @just demo-accounting
-    @just demo-custom-graph
-    @just demo-element-mapping
-    @just demo-sec
+## Bootstrap ##
 
-# Create or reuse demo user (uses shared examples/credentials/config.json)
-demo-user *args="":
-    uv run examples/credentials/main.py {{args}}
+# Bootstrap AWS OIDC federation for GitHub Actions
+# Usage: just bootstrap [profile] [region]
+#   profile: AWS SSO profile name (default: robosystems-sso)
+#   region:  AWS region (default: us-east-1)
+bootstrap profile="robosystems-sso" region="us-east-1":
+    @bin/setup/bootstrap.sh "{{profile}}" "{{region}}"
 
-# Setup SEC repository demo - loads data, grants access, updates config
-demo-sec ticker="NVDA" year="2025" skip_queries="false":
-    uv run examples/sec_demo/main.py --ticker {{ticker}} --year {{year}} {{ if skip_queries == "true" { "--skip-queries" } else { "" } }}
+# AWS Secrets Manager setup
+setup-aws:
+    @bin/setup/aws.sh
 
-# Run SEC demo preset queries
-demo-sec-query all="false":
-    uv run examples/sec_demo/query_examples.py {{ if all == "true" { "--all" } else { "" } }}
+# GitHub Repository setup
+setup-gha:
+    @bin/setup/gha.sh
 
-# Run accounting demo end-to-end (flags: new-user,new-graph,skip-queries)
-demo-accounting flags="new-graph" real_s3="false" base_url="http://localhost:8000":
-    uv run examples/accounting_demo/main.py --base-url {{base_url}} {{ if flags != "" { "--flags " + flags } else { "" } }} {{ if real_s3 == "true" { "--real-s3" } else { "" } }}
+# Bedrock local development setup (creates IAM user, updates .env)
+setup-bedrock:
+    @bin/setup/bedrock.sh
 
-# Run custom graph demo end-to-end (flags: new-user,new-graph,skip-queries)
-demo-custom-graph flags="new-graph" real_s3="false" base_url="http://localhost:8000":
-    uv run examples/custom_graph_demo/main.py --base-url {{base_url}} {{ if flags != "" { "--flags " + flags } else { "" } }} {{ if real_s3 == "true" { "--real-s3" } else { "" } }}
+# Generate secure random key for secrets
+generate-key:
+    @echo "Generated secure 32-byte base64 key:"
+    @openssl rand -base64 32
 
-# Run element mapping demo end-to-end (demonstrates CoA → US-GAAP aggregation)
-demo-element-mapping flags="new-graph" real_s3="false" base_url="http://localhost:8000":
-    uv run examples/element_mapping_demo/main.py --base-url {{base_url}} {{ if flags != "" { "--flags " + flags } else { "" } }} {{ if real_s3 == "true" { "--real-s3" } else { "" } }}
+# Generate multiple secure keys for all secrets
+generate-keys:
+    @echo "CONNECTION_CREDENTIALS_KEY=$(openssl rand -base64 32)"
+    @echo "GRAPH_BACKUP_ENCRYPTION_KEY=$(openssl rand -base64 32)"
+    @echo "JWT_SECRET_KEY=$(openssl rand -base64 32)"
+    @echo "ADMIN_API_KEY=$(openssl rand -base64 32)"
 
 
 ## Testing ##
@@ -142,7 +147,10 @@ test-all:
 
 # Run tests (exclude integration and slow tests)
 test module="":
-    uv run pytest {{ if module != "" { "tests/" + module } else { "" } }} --ignore=tests/integration -m "not slow"
+    uv run pytest \
+        {{ if module != "" { "tests/" + module } else { "" } }} \
+        --ignore=tests/integration \
+        -m "not slow"
 
 # Run ALL tests including slow ones
 test-full:
@@ -206,25 +214,13 @@ bastion-tunnel environment service="all":
 ## Admin CLI ##
 
 # Admin CLI for remote administration via admin API
-# Examples: just admin dev stats
-#           just admin dev customers list
-#           just admin dev subscriptions list --status active --tier ladybug-standard
+# For staging/prod: start tunnel first with ./bin/tools/tunnels.sh <env> all
+# Examples: just admin dev stats                    (local dev, no tunnel needed)
+#           just admin prod stats                   (requires tunnel running)
+#           just admin prod subscriptions list
+#           just admin prod credits health
 admin environment="dev" *args="":
     UV_ENV_FILE={{_local_env}} uv run python -m robosystems.admin.cli -e {{environment}} {{args}}
-
-
-## Development Server ##
-
-# Start development server
-api env=_local_env:
-    UV_ENV_FILE={{env}} uv run uvicorn main:app --reload
-
-# Start Graph API server with LadybugDB backend (configurable node type)
-graph-api backend="ladybug" type="writer" port="8001" env=_local_env:
-    UV_ENV_FILE={{env}} GRAPH_BACKEND_TYPE={{backend}} LBUG_NODE_TYPE={{type}} uv run python -m robosystems.graph_api --port {{port}}
-
-stripe-webhook url="http://localhost:8000" env=_local_env:
-    UV_ENV_FILE={{env}} uv run stripe listen --forward-to {{url}}/admin/v1/webhooks/stripe
 
 
 ## Database Operations ##
@@ -255,47 +251,118 @@ migrate-reset env=_local_env:
     UV_ENV_FILE={{env}} uv run alembic upgrade head
 
 
+## Demo Scripts ##
+
+# Run all demos
+demo-all:
+    @just demo-accounting
+    @just demo-custom-graph
+    @just demo-element-mapping
+    @just demo-sec
+
+# Create or reuse demo user (uses shared examples/credentials/config.json)
+demo-user *args="":
+    uv run examples/credentials/main.py {{args}}
+
+# Setup SEC repository demo - loads data, grants access, updates config
+demo-sec ticker="NVDA" year="2025" skip_queries="false":
+    uv run examples/sec_demo/main.py \
+        --ticker {{ticker}} \
+        --year {{year}} \
+        {{ if skip_queries == "true" { "--skip-queries" } else { "" } }}
+
+# Run SEC demo preset queries
+demo-sec-query all="false":
+    uv run examples/sec_demo/query_examples.py {{ if all == "true" { "--all" } else { "" } }}
+
+# Run accounting demo end-to-end (flags: new-user,new-graph,skip-queries)
+demo-accounting flags="new-graph" real_s3="false" base_url="http://localhost:8000":
+    uv run examples/accounting_demo/main.py \
+        --base-url {{base_url}} \
+        {{ if flags != "" { "--flags " + flags } else { "" } }} \
+        {{ if real_s3 == "true" { "--real-s3" } else { "" } }}
+
+# Run custom graph demo end-to-end (flags: new-user,new-graph,skip-queries)
+demo-custom-graph flags="new-graph" real_s3="false" base_url="http://localhost:8000":
+    uv run examples/custom_graph_demo/main.py \
+        --base-url {{base_url}} \
+        {{ if flags != "" { "--flags " + flags } else { "" } }} \
+        {{ if real_s3 == "true" { "--real-s3" } else { "" } }}
+
+# Run element mapping demo end-to-end (demonstrates CoA → US-GAAP aggregation)
+demo-element-mapping flags="new-graph" real_s3="false" base_url="http://localhost:8000":
+    uv run examples/element_mapping_demo/main.py \
+        --base-url {{base_url}} \
+        {{ if flags != "" { "--flags " + flags } else { "" } }} \
+        {{ if real_s3 == "true" { "--real-s3" } else { "" } }}
+
+
 ## Graph API ##
 
 # Graph API - health check
 graph-health url="http://localhost:8001" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_query --url {{url}} --command health
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_query \
+        --url {{url}} \
+        --command health
 
 # Graph API - get database info
 graph-info graph_id url="http://localhost:8001" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_query --url {{url}} --graph-id {{graph_id}} --command info
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_query \
+        --url {{url}} \
+        --graph-id {{graph_id}} \
+        --command info
 
 # Graph API - execute Cypher query (single quotes auto-converted to double quotes for Cypher)
 # Examples:
 #   just graph-query sec "MATCH (e:Entity {ticker: 'AAPL'}) RETURN e.name"
 #   just graph-query sec "MATCH (e:Entity) WHERE e.ticker IN ['AAPL', 'MSFT'] RETURN e.name"
 graph-query graph_id query format="table" url="http://localhost:8001" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_query --url {{url}} --graph-id {{graph_id}} --query "{{query}}" --format {{format}}
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_query \
+        --url {{url}} \
+        --graph-id {{graph_id}} \
+        --query "{{query}}" \
+        --format {{format}}
 
 # Graph API - execute SQL query on staging tables (DuckDB-based)
 tables-query graph_id query format="table" url="http://localhost:8001" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.tables_query --url {{url}} --graph-id {{graph_id}} --query "{{query}}" --format {{format}}
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.tables_query \
+        --url {{url}} \
+        --graph-id {{graph_id}} \
+        --query "{{query}}" \
+        --format {{format}}
 
 # LadybugDB embedded database direct query (bypasses API)
 lbug-query graph_id query format="table" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.lbug_query --db-path ./data/lbug-dbs/{{graph_id}}.lbug --query "{{query}}" --format {{format}}
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.lbug_query \
+        --db-path ./data/lbug-dbs/{{graph_id}}.lbug \
+        --query "{{query}}" \
+        --format {{format}}
 
 # DuckDB staging database direct query (bypasses API)
 duckdb-query graph_id query format="table" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.duckdb_query --db-path ./data/staging/{{graph_id}}.duckdb --query "{{query}}" --format {{format}}
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.duckdb_query \
+        --db-path ./data/staging/{{graph_id}}.duckdb \
+        --query "{{query}}" \
+        --format {{format}}
 
 # Interactive query modes - launch REPL for each database type
 graph-query-i graph_id url="http://localhost:8001" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_query --url {{url}} --graph-id {{graph_id}}
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_query \
+        --url {{url}} \
+        --graph-id {{graph_id}}
 
 tables-query-i graph_id url="http://localhost:8001" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.tables_query --url {{url}} --graph-id {{graph_id}}
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.tables_query \
+        --url {{url}} \
+        --graph-id {{graph_id}}
 
 lbug-query-i graph_id env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.lbug_query --db-path ./data/lbug-dbs/{{graph_id}}.lbug
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.lbug_query \
+        --db-path ./data/lbug-dbs/{{graph_id}}.lbug
 
 duckdb-query-i graph_id env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.duckdb_query --db-path ./data/staging/{{graph_id}}.duckdb
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.duckdb_query \
+        --db-path ./data/staging/{{graph_id}}.duckdb
 
 
 ## SEC Pipeline ##
@@ -307,11 +374,15 @@ duckdb-query-i graph_id env=_local_env:
 
 # Load single ticker end-to-end (download + process + materialize)
 sec-load ticker year="" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline run --tickers {{ticker}} {{ if year != "" { "--year " + year } else { "" } }}
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline run \
+        --tickers {{ticker}} \
+        {{ if year != "" { "--year " + year } else { "" } }}
 
 # Download raw XBRL ZIPs to S3 (top N companies by market cap)
 sec-download count="10" year="" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline download --count {{count}} {{ if year != "" { "--year " + year } else { "" } }}
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline download \
+        --count {{count}} \
+        {{ if year != "" { "--year " + year } else { "" } }}
 
 # Process downloaded filings to parquet (parallel)
 sec-process year="" limit="" concurrency="2" env=_local_env:
@@ -332,45 +403,15 @@ sec-pipeline count="10" year="2025" limit="":
 
 # Reset SEC database and optionally S3 data
 sec-reset clear_s3="" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline reset {{ if clear_s3 != "" { "--clear-s3" } else { "" } }}
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline reset \
+        {{ if clear_s3 != "" { "--clear-s3" } else { "" } }}
 
 # Validate SEC repository integrity
 sec-health verbose="" json="" api_url="http://localhost:8001" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_health sec --api-url {{api_url}} {{ if verbose != "" { "--verbose" } else { "" } }} {{ if json != "" { "--json" } else { "" } }}
-
-
-## Setup ##
-
-# Bootstrap AWS OIDC federation for GitHub Actions
-# Usage: just bootstrap [profile] [region]
-#   profile: AWS SSO profile name (default: robosystems-sso)
-#   region:  AWS region (default: us-east-1)
-bootstrap profile="robosystems-sso" region="us-east-1":
-    @bin/setup/bootstrap.sh "{{profile}}" "{{region}}"
-
-# AWS Secrets Manager setup
-setup-aws:
-    @bin/setup/aws.sh
-
-# GitHub Repository setup
-setup-gha:
-    @bin/setup/gha.sh
-
-# Bedrock local development setup (creates IAM user, updates .env)
-setup-bedrock:
-    @bin/setup/bedrock.sh
-
-# Generate secure random key for secrets
-generate-key:
-    @echo "Generated secure 32-byte base64 key:"
-    @openssl rand -base64 32
-
-# Generate multiple secure keys for all secrets
-generate-keys:
-    @echo "CONNECTION_CREDENTIALS_KEY=$(openssl rand -base64 32)"
-    @echo "GRAPH_BACKUP_ENCRYPTION_KEY=$(openssl rand -base64 32)"
-    @echo "JWT_SECRET_KEY=$(openssl rand -base64 32)"
-    @echo "ADMIN_API_KEY=$(openssl rand -base64 32)"
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.graph_health sec \
+        --api-url {{api_url}} \
+        {{ if verbose != "" { "--verbose" } else { "" } }} \
+        {{ if json != "" { "--json" } else { "" } }}
 
 
 ## Misc ##

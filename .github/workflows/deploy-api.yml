@@ -124,6 +124,10 @@ on:
         description: "Security group ID for applications connecting to Valkey"
         required: true
         type: string
+      bastion_sg_id:
+        description: "Security group ID for bastion host (for SSM tunnel access to admin API)"
+        required: true
+        type: string
 
       # S3 Bucket Configuration (from S3 stack outputs)
       shared_processed_bucket_arn:
@@ -275,6 +279,7 @@ jobs:
                 ParameterKey=Memory,ParameterValue=${{ inputs.memory }} \
                 ParameterKey=ValkeyUrl,ParameterValue=${{ inputs.valkey_url }} \
                 ParameterKey=ValkeyClientSecurityGroupId,ParameterValue=${{ inputs.valkey_sg_id }} \
+                ParameterKey=BastionSecurityGroupId,ParameterValue=${{ inputs.bastion_sg_id }} \
                 ParameterKey=ApiAccessMode,ParameterValue=${{ inputs.api_access_mode }} \
                 ParameterKey=DomainName,ParameterValue=\"${{ inputs.domain_name }}\" \
                 ParameterKey=RootDomainName,ParameterValue=\"${{ inputs.domain_name_root }}\" \

@@ -1,29 +1,38 @@
 """RoboSystems Admin CLI for remote administration via admin API.
 
-This CLI provides remote access to admin operations without requiring bastion host access.
-It fetches the admin API key from AWS Secrets Manager using AWS CLI and provides commands
-for subscription management, customer management, credit management, graph management,
-and user management.
+This CLI provides access to admin operations for subscription management, customer
+management, credit management, graph management, and user management.
+
+For staging/prod, an SSM tunnel must be running (admin endpoints are blocked at the ALB).
+The CLI uses localhost:8000 by default, which works with both local dev and tunnels.
 
 Usage:
-    uv run python -m robosystems.admin.cli [command] [options]
+    # Start tunnel first (in separate terminal)
+    ./bin/tools/tunnels.sh prod all
+
+    # Run admin commands (tunnel is assumed)
+    just admin prod stats
+    just admin prod subscriptions list
+    just admin prod credits health
 
 Examples:
     # List all subscriptions
-    uv run python -m robosystems.admin.cli subscriptions list
+    just admin prod subscriptions list
 
     # Get subscription details
-    uv run python -m robosystems.admin.cli subscriptions get <subscription-id>
+    just admin prod subscriptions get <subscription-id>
 
     # Update org billing settings
-    uv run python -m robosystems.admin.cli orgs update <org-id> --billing-email new@example.com
+    just admin prod orgs update <org-id> --billing-email new@example.com
 
     # Show statistics
-    uv run python -m robosystems.admin.cli stats
+    just admin prod stats
 
-    # Use internal tunnel (bypasses ALB IP restrictions)
-    # First: ./bin/tools/tunnels.sh prod api-internal
-    # Then:  uv run python -m robosystems.admin.cli --tunnel subscriptions list
+    # Local development (Docker, no tunnel needed)
+    just admin dev stats
+
+    # Direct API access (only works if API is in 'internal' mode)
+    just admin prod --direct stats
 """
 
 import json
@@ -51,32 +60,79 @@ class AdminAPIClient:
     environment: str = "prod",
     api_base_url: str | None = None,
     aws_profile: str = "robosystems",
-    use_tunnel: bool = False,
+    use_direct: bool = False,
   ):
     """Initialize the admin API client.
 
     Args:
         environment: Environment name (dev/staging/prod)
-        api_base_url: Base URL for the API (default: auto-detect from environment)
+        api_base_url: Base URL for the API (default: localhost:8000 for tunnel/dev)
         aws_profile: AWS CLI profile name (default: robosystems)
-        use_tunnel: Use localhost:8000 (requires active SSM tunnel via api-internal)
+        use_direct: Use public API URLs directly (only works if API is in internal mode)
     """
     self.environment = environment
     self.aws_profile = aws_profile
-    self.use_tunnel = use_tunnel
+    self.use_direct = use_direct
 
     if api_base_url:
       self.api_base_url = api_base_url
-    elif use_tunnel or environment == "dev":
-      # For tunnel mode or dev, use localhost
-      # Tunnel mode: requires `./bin/tools/tunnels.sh <env> api-internal` running
-      self.api_base_url = "http://localhost:8000"
-    elif environment == "staging":
-      self.api_base_url = "https://api.staging.robosystems.ai"
+    elif use_direct:
+      # Direct mode: use public API URLs (only works if API is in internal mode)
+      if environment == "staging":
+        self.api_base_url = "https://api.staging.robosystems.ai"
+      elif environment == "prod":
+        self.api_base_url = "https://api.robosystems.ai"
+      else:
+        self.api_base_url = "http://localhost:8000"
     else:
-      self.api_base_url = "https://api.robosystems.ai"
+      # Default: use localhost (works with Docker dev or SSM tunnel)
+      self.api_base_url = "http://localhost:8000"
+
+    # Check if direct API access will work (blocked in public mode)
+    if use_direct and environment != "dev":
+      self._check_api_access_mode()
 
     self.admin_key = self._get_admin_key()
+
+  def _check_api_access_mode(self) -> None:
+    """Check if API is in public mode and warn user to use tunnel.
+
+    In public mode, the ALB blocks all /admin/v1/* endpoints with a 403.
+    Users must use --tunnel flag with an api-internal tunnel running.
+    """
+    try:
+      stack_name = f"RoboSystemsAPI{self.environment.capitalize()}"
+      cmd = [
+        "aws",
+        "cloudformation",
+        "describe-stacks",
+        "--stack-name",
+        stack_name,
+        "--query",
+        "Stacks[0].Parameters[?ParameterKey==`ApiAccessMode`].ParameterValue",
+        "--output",
+        "text",
+        "--profile",
+        self.aws_profile,
+        "--region",
+        "us-east-1",
+      ]
+
+      result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+      api_access_mode = result.stdout.strip() if result.returncode == 0 else ""
+
+      if api_access_mode in ("public", "public-http"):
+        raise click.ClickException(
+          f"Direct API access is blocked in '{api_access_mode}' mode.\n\n"
+          f"The ALB blocks all /admin/v1/* endpoints when API is publicly accessible.\n\n"
+          f"To access admin endpoints, use the SSM tunnel:\n"
+          f"  1. Start tunnel:  ./bin/tools/tunnels.sh {self.environment} all\n"
+          f"  2. Run command:   just admin {self.environment} <command>\n\n"
+          f"Example: just admin {self.environment} stats"
+        )
+    except subprocess.SubprocessError:
+      # If we can't check, let the request fail naturally
+      pass
 
   def _get_admin_key(self) -> str:
     """Get the admin API key from environment variable (dev) or AWS Secrets Manager.
@@ -89,9 +145,9 @@ class AdminAPIClient:
     """
     admin_key = os.getenv("ADMIN_API_KEY")
     if admin_key:
-      mode = "tunnel" if self.use_tunnel else "direct"
+      mode = "direct" if self.use_direct else "tunnel"
       console.print(
-        f"[green]✓[/green] Connected to {self.environment} environment admin API via {mode} (using ADMIN_API_KEY from environment)"
+        f"[green]✓[/green] Connected to {self.environment} admin API via {mode} (using ADMIN_API_KEY from environment)"
       )
       return admin_key
 
@@ -122,9 +178,9 @@ class AdminAPIClient:
       if not admin_key:
         raise click.ClickException(f"ADMIN_API_KEY not found in secret {secret_id}")
 
-      mode = "tunnel" if self.use_tunnel else "direct"
+      mode = "direct" if self.use_direct else "tunnel"
       console.print(
-        f"[green]✓[/green] Connected to {self.environment} environment admin API via {mode} (using AWS Secrets Manager)"
+        f"[green]✓[/green] Connected to {self.environment} admin API via {mode} (using AWS Secrets Manager)"
       )
       return admin_key
 
@@ -219,44 +275,43 @@ class AdminAPIClient:
   "-e",
   default="prod",
   type=click.Choice(["dev", "staging", "prod"]),
-  help="Environment to connect to (dev=localhost:8000, staging/prod=remote)",
+  help="Environment to connect to",
 )
 @click.option(
   "--api-url",
-  help="Override API base URL (default: auto-detect from environment)",
+  help="Override API base URL (default: localhost:8000)",
 )
 @click.option(
   "--aws-profile",
   default="robosystems",
-  help="AWS CLI profile name (only used for staging/prod)",
+  help="AWS CLI profile name (for fetching admin key from Secrets Manager)",
 )
 @click.option(
-  "--tunnel",
-  "-t",
+  "--direct",
+  "-d",
   is_flag=True,
-  help="Use SSM tunnel (localhost:8000). Requires: ./bin/tools/tunnels.sh <env> api-internal",
+  help="Use public API URLs directly (only works if API is in 'internal' mode)",
 )
 @click.pass_context
-def cli(ctx, environment, api_url, aws_profile, tunnel):
+def cli(ctx, environment, api_url, aws_profile, direct):
   """RoboSystems Admin CLI - Remote administration via admin API.
 
   This CLI provides access to subscription management, customer management,
   credit management, graph management, and user management.
 
-  Environment selection:
-    - dev: Uses localhost:8000 and ADMIN_API_KEY from .env.local
-    - staging/prod: Uses remote URLs and AWS Secrets Manager for auth
+  By default, connects to localhost:8000 which works with:
+    - Local dev (Docker): just admin dev stats
+    - SSM tunnel: ./bin/tools/tunnels.sh prod all && just admin prod stats
 
-  Tunnel mode (--tunnel / -t):
-    Bypasses ALB IP restrictions by using SSM tunnel.
-    First start the tunnel: ./bin/tools/tunnels.sh <env> api-internal
-    Then use: just admin <env> --tunnel <command>
+  Direct mode (--direct / -d):
+    Connects to public API URLs. Only works if API is in 'internal' mode.
+    In 'public' mode, admin endpoints are blocked at the ALB.
   """
   ctx.obj = AdminAPIClient(
     environment=environment,
     api_base_url=api_url,
     aws_profile=aws_profile,
-    use_tunnel=tunnel,
+    use_direct=direct,
   )
 
 
