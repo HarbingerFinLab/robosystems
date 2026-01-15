@@ -688,7 +688,7 @@ main() {
                 fi
                 shift
                 ;;
-            postgres|valkey|dagster|api|migrate|shell|all)
+            postgres|valkey|dagster|api|api-internal|migrate|shell|all)
                 if [[ -z "$service" ]]; then
                     service="$1"
                 else
