@@ -119,10 +119,10 @@ Templates have cross-stack dependencies that determine deployment order:
 - VPC with configurable CIDR `10.X.0.0/16` (where X = `VpcSecondOctet`)
 - Up to 5 Public subnets (`10.X.10.0/24` through `10.X.14.0/24`)
 - Up to 5 Private subnets (`10.X.1.0/24` through `10.X.5.0/24`)
-- NAT Gateways (one per AZ in full mode, one shared in minimal mode)
+- NAT Gateway (single, shared across all AZs)
 - Internet Gateway
 - Route tables and security groups
-- Optional VPC endpoints (S3, ECR, SSM, CloudWatch, Secrets Manager)
+- VPC endpoints (configurable: S3, DynamoDB always free; ECR, Secrets Manager in minimal/full modes)
 - Optional VPC Flow Logs for SOC 2 compliance
 
 **Parameters**:
@@ -130,7 +130,7 @@ Templates have cross-stack dependencies that determine deployment order:
 |-----------|---------|-------------|
 | `VpcSecondOctet` | `0` | Second octet for VPC CIDR (`10.X.0.0/16`). Change to avoid overlap with other VPCs for peering (0-255) |
 | `MaxAvailabilityZones` | `5` | Maximum AZs to use (2-6, uses fewer if region has limited AZs) |
-| `DeployVpcEndpoints` | `minimal` | VPC endpoint mode: `minimal` (one AZ), `full` (all AZs), or `none` |
+| `DeployVpcEndpoints` | `minimal` | VPC endpoint mode: `gateway` (free S3+DynamoDB), `minimal` (~$22/mo, +ECR in 1 AZ), `full` (~$45/mo, +ECR in 2 AZs) |
 | `EnableVPCFlowLogs` | `false` | Enable VPC Flow Logs for network traffic monitoring |
 | `FlowLogsRetentionDays` | `30` | Days to retain VPC Flow Logs (30 minimum for SOC 2) |
 | `FlowLogsTrafficType` | `REJECT` | Traffic type to capture: `ALL`, `ACCEPT`, or `REJECT` |
