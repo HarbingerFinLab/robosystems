@@ -52,8 +52,8 @@ cleanup_on_exit() {
     echo -e "${GREEN}Done.${NC}"
 }
 
-# Set up trap to cleanup on exit
-trap cleanup_on_exit EXIT INT TERM
+# Set up trap to cleanup on exit (only EXIT - INT/TERM will trigger EXIT anyway)
+trap cleanup_on_exit EXIT
 
 # Validate dependencies
 check_dependencies() {
