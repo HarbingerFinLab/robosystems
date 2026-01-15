@@ -33,6 +33,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install just (command runner)
 uv tool install rust-just
+uv tool update-shell  # Adds ~/.local/bin to PATH (restart terminal after)
 
 # Start all services (includes automatic migrations and seeds)
 just start
