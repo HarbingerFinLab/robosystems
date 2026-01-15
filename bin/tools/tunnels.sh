@@ -412,7 +412,7 @@ setup_dagster_tunnel() {
 
     echo ""
     echo -e "${YELLOW}Access Dagster UI:${NC}"
-    echo "Open http://localhost:3003 in your browser"
+    echo "Open http://127.0.0.1:3003 in your browser"
     echo ""
     echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
     echo ""
@@ -448,6 +448,7 @@ setup_api_tunnel() {
     echo ""
     echo -e "${YELLOW}Access API (via ALB):${NC}"
     echo "curl http://localhost:8000/v1/status"
+    echo "Open http://127.0.0.1:8000/docs in your browser for API docs"
     echo ""
     echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
     echo ""
@@ -474,8 +475,9 @@ setup_api_internal_tunnel() {
     echo -e "${YELLOW}Access API:${NC}"
     echo "curl http://localhost:8000/v1/status"
     echo ""
-    echo -e "${YELLOW}Admin API (no IP restrictions):${NC}"
-    echo "curl -H 'Authorization: Bearer <KEY>' http://localhost:8000/admin/v1/subscriptions"
+    echo -e "${YELLOW}Admin API (requires this tunnel):${NC}"
+    echo "just admin $environment stats"
+    echo "Open http://127.0.0.1:8000/docs in your browser for API docs"
     echo ""
     echo -e "${YELLOW}Press Ctrl+C to stop the tunnel${NC}"
     echo ""
@@ -544,7 +546,7 @@ setup_all_tunnels() {
     fi
 
     if [[ -n "$DAGSTER_ENDPOINT" && "$DAGSTER_ENDPOINT" != "NOT_FOUND" ]]; then
-        echo "Dagster:    Open http://localhost:3003 in your browser"
+        echo "Dagster:    Open http://127.0.0.1:3003 in your browser"
     fi
 
     if [[ "$API_ACCESS_MODE" == "internal" ]]; then

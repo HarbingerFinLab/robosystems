@@ -59,7 +59,7 @@ class AdminAPIClient:
     self,
     environment: str = "prod",
     api_base_url: str | None = None,
-    aws_profile: str = "robosystems",
+    aws_profile: str = "robosystems-sso",
     use_direct: bool = False,
   ):
     """Initialize the admin API client.
@@ -67,7 +67,7 @@ class AdminAPIClient:
     Args:
         environment: Environment name (dev/staging/prod)
         api_base_url: Base URL for the API (default: localhost:8000 for tunnel/dev)
-        aws_profile: AWS CLI profile name (default: robosystems)
+        aws_profile: AWS CLI profile name (default: robosystems-sso)
         use_direct: Use public API URLs directly (only works if API is in internal mode)
     """
     self.environment = environment
@@ -118,7 +118,9 @@ class AdminAPIClient:
         "us-east-1",
       ]
 
-      result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+      # Remove LocalStack endpoint override to use real AWS
+      env = {k: v for k, v in os.environ.items() if k != "AWS_ENDPOINT_URL"}
+      result = subprocess.run(cmd, capture_output=True, text=True, check=False, env=env)
       api_access_mode = result.stdout.strip() if result.returncode == 0 else ""
 
       if api_access_mode in ("public", "public-http"):
@@ -137,20 +139,26 @@ class AdminAPIClient:
   def _get_admin_key(self) -> str:
     """Get the admin API key from environment variable (dev) or AWS Secrets Manager.
 
+    For dev environment: uses ADMIN_API_KEY from environment (.env.local)
+    For staging/prod: always fetches from AWS Secrets Manager (ignores env var)
+
     Returns:
         The admin API key
 
     Raises:
         ClickException: If key retrieval fails
     """
-    admin_key = os.getenv("ADMIN_API_KEY")
-    if admin_key:
-      mode = "direct" if self.use_direct else "tunnel"
-      console.print(
-        f"[green]✓[/green] Connected to {self.environment} admin API via {mode} (using ADMIN_API_KEY from environment)"
-      )
-      return admin_key
+    # For dev, use environment variable if available
+    if self.environment == "dev":
+      admin_key = os.getenv("ADMIN_API_KEY")
+      if admin_key:
+        mode = "direct" if self.use_direct else "tunnel"
+        console.print(
+          f"[green]✓[/green] Connected to {self.environment} admin API via {mode} (using ADMIN_API_KEY from environment)"
+        )
+        return admin_key
 
+    # For staging/prod, always use AWS Secrets Manager
     secret_id = f"robosystems/{self.environment}/admin"
 
     try:
@@ -170,13 +178,21 @@ class AdminAPIClient:
         "text",
       ]
 
-      result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+      # Remove LocalStack endpoint override to use real AWS
+      env = {k: v for k, v in os.environ.items() if k != "AWS_ENDPOINT_URL"}
+      result = subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
 
-      secret_data = json.loads(result.stdout)
-      admin_key = secret_data.get("ADMIN_API_KEY")
+      # Secret can be plain string or JSON - try both formats
+      secret_value = result.stdout.strip()
+      try:
+        secret_data = json.loads(secret_value)
+        admin_key = secret_data.get("ADMIN_API_KEY", secret_value)
+      except json.JSONDecodeError:
+        # Plain string format (CloudFormation GenerateSecretString)
+        admin_key = secret_value
 
       if not admin_key:
-        raise click.ClickException(f"ADMIN_API_KEY not found in secret {secret_id}")
+        raise click.ClickException(f"Empty secret value in {secret_id}")
 
       mode = "direct" if self.use_direct else "tunnel"
       console.print(
@@ -194,10 +210,6 @@ class AdminAPIClient:
         f"  3. Valid AWS credentials\n"
         f"\nAlternatively, for local development:\n"
         f"  Set ADMIN_API_KEY environment variable in your .env file"
-      )
-    except json.JSONDecodeError:
-      raise click.ClickException(
-        f'Invalid JSON in secret {secret_id}. Expected format: {{"ADMIN_API_KEY": "..."}}'
       )
     except Exception as e:
       raise click.ClickException(f"Error fetching admin key: {e!s}")
@@ -283,7 +295,7 @@ class AdminAPIClient:
 )
 @click.option(
   "--aws-profile",
-  default="robosystems",
+  default="robosystems-sso",
   help="AWS CLI profile name (for fetching admin key from Secrets Manager)",
 )
 @click.option(
@@ -1558,7 +1570,7 @@ def sec_load(client, ticker, year):
       f"Use the Dagster UI: ./bin/tools/tunnels.sh {client.environment} dagster"
     )
     console.print(
-      "Then open http://localhost:4003 and trigger the SEC pipeline manually."
+      "Then open http://127.0.0.1:3003 and trigger the SEC pipeline manually."
     )
     return
   console.print(f"[blue]Loading SEC data locally for {ticker}...[/blue]")
@@ -1582,7 +1594,7 @@ def sec_health(client):
     console.print(
       f"Use the Dagster UI: ./bin/tools/tunnels.sh {client.environment} dagster"
     )
-    console.print("Then open http://localhost:4003 to view pipeline status and health.")
+    console.print("Then open http://127.0.0.1:3003 to view pipeline status and health.")
     return
   command = "just sec-health"
   result = subprocess.run(command, shell=True, capture_output=True, text=True)
