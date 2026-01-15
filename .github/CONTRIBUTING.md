@@ -81,15 +81,16 @@ just create-feature refactor improve-error-handling main
 
 We use issue templates to organize work. Choose the right type based on your contribution:
 
-| Type | When to Use |
-|------|-------------|
-| **Bug** | Defects or unexpected behavior |
-| **Task** | Specific, bounded work that fits in one PR |
-| **Feature** | Request a new capability (no design required) |
-| **RFC** | Propose a design for discussion before implementation |
-| **Spec** | Approved implementation plan ready for execution |
+| Type        | When to Use                                           |
+| ----------- | ----------------------------------------------------- |
+| **Bug**     | Defects or unexpected behavior                        |
+| **Task**    | Specific, bounded work that fits in one PR            |
+| **Feature** | Request a new capability (no design required)         |
+| **RFC**     | Propose a design for discussion before implementation |
+| **Spec**    | Approved implementation plan ready for execution      |
 
 **Workflow for larger features:**
+
 1. **Feature** → Capture the need ("I wish I could...")
 2. **RFC** → Propose and discuss the design approach
 3. **Spec** → Document the approved implementation plan
@@ -126,6 +127,7 @@ Look for issues labeled `good first issue` or `help wanted`. These are great sta
 
    # Install just (command runner)
    uv tool install rust-just
+   uv tool update-shell  # Adds ~/.local/bin to PATH (restart terminal after)
    ```
 
 2. **Set up Python environment**:
