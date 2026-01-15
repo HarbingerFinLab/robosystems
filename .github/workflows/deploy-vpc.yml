@@ -34,10 +34,10 @@ on:
 
       # VPC Configuration
       endpoint_mode:
-        description: "VPC endpoint deployment mode: none, gateway (free S3+DynamoDB), minimal (+interface 1 AZ), full (+interface 2 AZs)"
+        description: "VPC endpoint deployment mode: gateway (free S3+DynamoDB), minimal (~$22/mo, +ECR 1 AZ), full (~$45/mo, +ECR 2 AZs)"
         required: false
         type: string
-        default: "gateway"
+        default: "minimal"
       max_availability_zones:
         description: "Maximum number of AZs to use (2-6, will use fewer if region has limited AZs)"
         required: false

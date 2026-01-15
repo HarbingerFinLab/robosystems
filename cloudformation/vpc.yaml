@@ -35,18 +35,16 @@ Parameters:
   # Security & Access Configuration
   DeployVpcEndpoints:
     Type: String
-    Default: gateway
+    Default: minimal
     AllowedValues:
-      - none
       - gateway
       - minimal
       - full
     Description: |
       Endpoint deployment strategy:
-      - 'none': No VPC endpoints (all traffic via NAT)
-      - 'gateway': FREE Gateway endpoints only (S3 + DynamoDB) - RECOMMENDED
-      - 'minimal': Gateway + Interface endpoints in 1 AZ (~$22/mo)
-      - 'full': Gateway + Interface endpoints in 2 AZs (~$45/mo)
+      - 'gateway': FREE Gateway endpoints only (S3 + DynamoDB) - for stable, low-deploy environments
+      - 'minimal': Gateway + Interface endpoints in 1 AZ (~$22/mo) - RECOMMENDED for active development
+      - 'full': Gateway + Interface endpoints in 2 AZs (~$45/mo) - for HA requirements
 
   # VPC Flow Logs Configuration
   EnableVPCFlowLogs:
