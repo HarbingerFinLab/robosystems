@@ -82,6 +82,38 @@ on:
         type: string
         default: "20"
 
+      # Capacity Provider Configuration (Spot vs On-Demand)
+      daemon_fargate_weight:
+        description: "Weight for FARGATE (On-Demand) capacity provider for daemon"
+        required: false
+        type: string
+        default: "20"
+      daemon_fargate_spot_weight:
+        description: "Weight for FARGATE_SPOT capacity provider for daemon"
+        required: false
+        type: string
+        default: "80"
+      webserver_fargate_weight:
+        description: "Weight for FARGATE (On-Demand) capacity provider for webserver"
+        required: false
+        type: string
+        default: "20"
+      webserver_fargate_spot_weight:
+        description: "Weight for FARGATE_SPOT capacity provider for webserver"
+        required: false
+        type: string
+        default: "80"
+      daemon_fargate_base:
+        description: "Minimum daemon tasks guaranteed on FARGATE (On-Demand)"
+        required: false
+        type: string
+        default: "0"
+      webserver_fargate_base:
+        description: "Minimum webserver tasks guaranteed on FARGATE (On-Demand)"
+        required: false
+        type: string
+        default: "0"
+
       # Cache Configuration
       valkey_url:
         description: "Valkey ElastiCache endpoint URL"
@@ -202,6 +234,12 @@ jobs:
                 ParameterKey=RunJobCpu,ParameterValue=${{ inputs.run_job_cpu }} \
                 ParameterKey=RunJobMemory,ParameterValue=${{ inputs.run_job_memory }} \
                 ParameterKey=MaxConcurrentRuns,ParameterValue=${{ inputs.max_concurrent_runs }} \
+                ParameterKey=DaemonFargateWeight,ParameterValue=${{ inputs.daemon_fargate_weight }} \
+                ParameterKey=DaemonFargateSpotWeight,ParameterValue=${{ inputs.daemon_fargate_spot_weight }} \
+                ParameterKey=DaemonFargateBase,ParameterValue=${{ inputs.daemon_fargate_base }} \
+                ParameterKey=WebserverFargateWeight,ParameterValue=${{ inputs.webserver_fargate_weight }} \
+                ParameterKey=WebserverFargateSpotWeight,ParameterValue=${{ inputs.webserver_fargate_spot_weight }} \
+                ParameterKey=WebserverFargateBase,ParameterValue=${{ inputs.webserver_fargate_base }} \
                 ParameterKey=ValkeyUrl,ParameterValue=${{ inputs.valkey_url }} \
                 ParameterKey=ValkeyClientSecurityGroupId,ParameterValue=${{ inputs.valkey_sg_id }} \
                 ParameterKey=DatabaseSecurityGroupId,ParameterValue=${{ inputs.database_sg_id }} \

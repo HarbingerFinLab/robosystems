@@ -58,6 +58,9 @@ schedule_storage:
 # Note: Network configuration (subnets, security groups) is inherited from the
 # ECS cluster configuration. The EcsRunLauncher will use the same network
 # settings as the daemon/webserver services.
+#
+# Default: On-Demand Fargate for reliability (download, materialize jobs)
+# Per-job Spot: sec_process_job uses ecs/run_task_kwargs tag to enable Spot
 run_launcher:
   module: dagster_aws.ecs
   class: EcsRunLauncher
@@ -67,7 +70,8 @@ run_launcher:
       env: DAGSTER_ECS_RUN_TASK_DEFINITION
     # Container name in the task definition
     container_name: dagster-run
-    # Run on Fargate capacity provider (matches CloudFormation: Fargate-only)
+    # Default: On-Demand Fargate for reliability
+    # Jobs can override via ecs/run_task_kwargs tag (see sec_process_job)
     run_task_kwargs:
       cluster:
         env: DAGSTER_ECS_CLUSTER

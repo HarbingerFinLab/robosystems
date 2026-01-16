@@ -466,8 +466,9 @@ jobs:
       desired_count: ${{ vars.API_MIN_CAPACITY_PROD || '1' }}
       cpu: "512"
       memory: "1024"
-      fargate_weight: "1"
-      fargate_spot_weight: "99"
+      fargate_weight: ${{ vars.API_FARGATE_WEIGHT_PROD || '10' }}
+      fargate_spot_weight: ${{ vars.API_FARGATE_SPOT_WEIGHT_PROD || '90' }}
+      fargate_base: ${{ vars.API_FARGATE_BASE_PROD || '0' }}
       # Auto-scaling Configuration
       min_capacity: ${{ vars.API_MIN_CAPACITY_PROD || '1' }}
       max_capacity: ${{ vars.API_MAX_CAPACITY_PROD || '2' }}
@@ -539,6 +540,13 @@ jobs:
       run_job_cpu: ${{ vars.DAGSTER_RUN_JOB_CPU_PROD || '1024' }}
       run_job_memory: ${{ vars.DAGSTER_RUN_JOB_MEMORY_PROD || '4096' }}
       max_concurrent_runs: ${{ vars.DAGSTER_MAX_CONCURRENT_RUNS_PROD || '20' }}
+      # Capacity Provider Configuration (Spot vs On-Demand)
+      daemon_fargate_weight: ${{ vars.DAGSTER_DAEMON_FARGATE_WEIGHT_PROD || '20' }}
+      daemon_fargate_spot_weight: ${{ vars.DAGSTER_DAEMON_FARGATE_SPOT_WEIGHT_PROD || '80' }}
+      webserver_fargate_weight: ${{ vars.DAGSTER_WEBSERVER_FARGATE_WEIGHT_PROD || '20' }}
+      webserver_fargate_spot_weight: ${{ vars.DAGSTER_WEBSERVER_FARGATE_SPOT_WEIGHT_PROD || '80' }}
+      daemon_fargate_base: ${{ vars.DAGSTER_DAEMON_FARGATE_BASE_PROD || '0' }}
+      webserver_fargate_base: ${{ vars.DAGSTER_WEBSERVER_FARGATE_BASE_PROD || '0' }}
       # Cache Configuration
       valkey_url: ${{ needs.deploy-valkey.outputs.valkey_url }}
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}
