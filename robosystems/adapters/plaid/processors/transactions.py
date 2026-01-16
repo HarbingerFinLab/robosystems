@@ -13,7 +13,7 @@ from robosystems.adapters.plaid.processors.uri_utils import (
   plaid_account_qname,
 )
 from robosystems.logger import logger
-from robosystems.utils import generate_deterministic_uuid7
+from robosystems.utils import generate_deterministic_uuid
 
 
 class PlaidTransactionsProcessor:
@@ -198,7 +198,7 @@ class PlaidTransactionsProcessor:
     )
 
     # Generate a unique identifier for the transaction
-    unique_id = generate_deterministic_uuid7(
+    unique_id = generate_deterministic_uuid(
       f"{self.entity_id}_{transaction_id}", namespace="plaid_transaction"
     )
 
@@ -232,7 +232,7 @@ class PlaidTransactionsProcessor:
     logger.info(f"Removing transaction {transaction_id} for entity {self.entity_id}")
 
     # Generate the same unique identifier used when creating
-    unique_id = generate_deterministic_uuid7(
+    unique_id = generate_deterministic_uuid(
       f"{self.entity_id}_{transaction_id}", namespace="plaid_transaction"
     )
 
