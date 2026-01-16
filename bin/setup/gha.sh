@@ -262,6 +262,15 @@ function setup_full_config() {
         gh variable set API_ASG_REFRESH_STAGING --body "true"
     fi
 
+    # API Capacity Provider Configuration (Spot vs On-Demand)
+    # API can handle Spot interruptions via ALB health checks and auto-scaling
+    gh variable set API_FARGATE_WEIGHT_PROD --body "10"
+    gh variable set API_FARGATE_SPOT_WEIGHT_PROD --body "90"
+    if $setup_staging; then
+        gh variable set API_FARGATE_WEIGHT_STAGING --body "10"
+        gh variable set API_FARGATE_SPOT_WEIGHT_STAGING --body "90"
+    fi
+
     # Dagster Daemon Configuration
     gh variable set DAGSTER_DAEMON_CPU_PROD --body "1024"
     gh variable set DAGSTER_DAEMON_MEMORY_PROD --body "2048"
@@ -286,6 +295,27 @@ function setup_full_config() {
         gh variable set DAGSTER_RUN_JOB_CPU_STAGING --body "1024"
         gh variable set DAGSTER_RUN_JOB_MEMORY_STAGING --body "4096"
         gh variable set DAGSTER_MAX_CONCURRENT_RUNS_STAGING --body "20"
+    fi
+
+    # Dagster Capacity Provider Configuration (Spot vs On-Demand)
+    # Daemon: Orchestration - can handle brief interruptions
+    gh variable set DAGSTER_DAEMON_FARGATE_WEIGHT_PROD --body "20"
+    gh variable set DAGSTER_DAEMON_FARGATE_SPOT_WEIGHT_PROD --body "80"
+    # Webserver: UI/bastion tunnel - 80/20 Spot like daemon
+    gh variable set DAGSTER_WEBSERVER_FARGATE_WEIGHT_PROD --body "20"
+    gh variable set DAGSTER_WEBSERVER_FARGATE_SPOT_WEIGHT_PROD --body "80"
+    # Base: Minimum tasks guaranteed on On-Demand (set >0 when using Savings Plans)
+    gh variable set API_FARGATE_BASE_PROD --body "0"
+    gh variable set DAGSTER_DAEMON_FARGATE_BASE_PROD --body "0"
+    gh variable set DAGSTER_WEBSERVER_FARGATE_BASE_PROD --body "0"
+    if $setup_staging; then
+        gh variable set DAGSTER_DAEMON_FARGATE_WEIGHT_STAGING --body "20"
+        gh variable set DAGSTER_DAEMON_FARGATE_SPOT_WEIGHT_STAGING --body "80"
+        gh variable set DAGSTER_WEBSERVER_FARGATE_WEIGHT_STAGING --body "20"
+        gh variable set DAGSTER_WEBSERVER_FARGATE_SPOT_WEIGHT_STAGING --body "80"
+        gh variable set API_FARGATE_BASE_STAGING --body "0"
+        gh variable set DAGSTER_DAEMON_FARGATE_BASE_STAGING --body "0"
+        gh variable set DAGSTER_WEBSERVER_FARGATE_BASE_STAGING --body "0"
     fi
 
     # Dagster Deployment Options

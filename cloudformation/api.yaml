@@ -91,16 +91,22 @@ Parameters:
     Description: Target Memory utilization percentage for auto scaling
   FargateWeight:
     Type: Number
-    Default: 20
+    Default: 10
     MinValue: 0
     MaxValue: 100
     Description: Weight for FARGATE capacity provider (On-Demand instances)
   FargateSpotWeight:
     Type: Number
-    Default: 80
+    Default: 90
     MinValue: 0
     MaxValue: 100
     Description: Weight for FARGATE_SPOT capacity provider (Spot instances)
+  FargateBase:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 10
+    Description: Minimum number of tasks guaranteed to run on FARGATE (On-Demand). Set to 1+ for guaranteed availability during Spot shortages.
 
   # Access Mode Configuration
   ApiAccessMode:
@@ -791,6 +797,7 @@ Resources:
           Weight: !Ref FargateSpotWeight
         - CapacityProvider: FARGATE
           Weight: !Ref FargateWeight
+          Base: !Ref FargateBase
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED

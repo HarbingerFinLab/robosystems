@@ -71,6 +71,48 @@ Parameters:
     MaxValue: 50
     Description: Maximum concurrent Dagster runs (QueuedRunCoordinator)
 
+  # Capacity Provider Configuration (Spot vs On-Demand)
+  # Daemon: Orchestration process - interruption causes brief delay in job scheduling
+  DaemonFargateWeight:
+    Type: Number
+    Default: 20
+    MinValue: 0
+    MaxValue: 100
+    Description: Weight for FARGATE (On-Demand) capacity provider for daemon
+  DaemonFargateSpotWeight:
+    Type: Number
+    Default: 80
+    MinValue: 0
+    MaxValue: 100
+    Description: Weight for FARGATE_SPOT capacity provider for daemon
+  # Webserver: UI and bastion tunnel access - configurable Spot ratio
+  WebserverFargateWeight:
+    Type: Number
+    Default: 20
+    MinValue: 0
+    MaxValue: 100
+    Description: Weight for FARGATE (On-Demand) capacity provider for webserver
+  WebserverFargateSpotWeight:
+    Type: Number
+    Default: 80
+    MinValue: 0
+    MaxValue: 100
+    Description: Weight for FARGATE_SPOT capacity provider for webserver
+
+  # Base (minimum guaranteed On-Demand tasks) - set to 1+ for guaranteed availability
+  DaemonFargateBase:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 5
+    Description: Minimum daemon tasks guaranteed on FARGATE (On-Demand)
+  WebserverFargateBase:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 5
+    Description: Minimum webserver tasks guaranteed on FARGATE (On-Demand)
+
   # Cache Configuration
   ValkeyUrl:
     Type: String
@@ -769,9 +811,10 @@ Resources:
       DesiredCount: 1
       CapacityProviderStrategy:
         - CapacityProvider: FARGATE_SPOT
-          Weight: 80
+          Weight: !Ref DaemonFargateSpotWeight
         - CapacityProvider: FARGATE
-          Weight: 20
+          Weight: !Ref DaemonFargateWeight
+          Base: !Ref DaemonFargateBase
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
@@ -804,9 +847,10 @@ Resources:
       DesiredCount: 1 # Always 1 - no ALB for load distribution
       CapacityProviderStrategy:
         - CapacityProvider: FARGATE_SPOT
-          Weight: 80
+          Weight: !Ref WebserverFargateSpotWeight
         - CapacityProvider: FARGATE
-          Weight: 20
+          Weight: !Ref WebserverFargateWeight
+          Base: !Ref WebserverFargateBase
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
