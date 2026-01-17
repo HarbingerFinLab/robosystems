@@ -20,6 +20,9 @@ jobs:
   test:
     runs-on: ${{ fromJSON(inputs.runner_config) }}
     timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write  # Required for Trivy SARIF upload
     env:
       # Environment setup
       ENVIRONMENT: test
@@ -244,6 +247,30 @@ jobs:
             echo "::error::Type checking timed out after 3 minutes"
             exit 1
           }
+
+      - name: Lint CloudFormation templates
+        timeout-minutes: 1
+        run: |
+          echo "🔍 Linting CloudFormation templates..."
+          uv run cfn-lint
+
+      - name: Scan dependencies for vulnerabilities
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+          scanners: 'vuln'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'dependency-scan'
 
       - name: Post-test cleanup
         if: always()
