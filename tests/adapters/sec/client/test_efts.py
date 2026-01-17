@@ -360,6 +360,111 @@ class TestEFTSClientQueryByYear:
     )
 
 
+class TestEFTSClientQueryByQuarter:
+  """Tests for EFTSClient.query_by_quarter convenience method."""
+
+  @pytest.mark.asyncio
+  async def test_query_by_quarter_q1_date_range(self):
+    """Test that query_by_quarter sets correct Q1 date range."""
+    client = EFTSClient()
+    client.query = AsyncMock(return_value=[])
+
+    await client.query_by_quarter(2024, quarter=1)
+
+    client.query.assert_called_once_with(
+      form_types=["10-K", "10-Q"],
+      start_date="2024-01-01",
+      end_date="2024-03-31",
+      ciks=None,
+    )
+
+  @pytest.mark.asyncio
+  async def test_query_by_quarter_q2_date_range(self):
+    """Test that query_by_quarter sets correct Q2 date range."""
+    client = EFTSClient()
+    client.query = AsyncMock(return_value=[])
+
+    await client.query_by_quarter(2024, quarter=2)
+
+    client.query.assert_called_once_with(
+      form_types=["10-K", "10-Q"],
+      start_date="2024-04-01",
+      end_date="2024-06-30",
+      ciks=None,
+    )
+
+  @pytest.mark.asyncio
+  async def test_query_by_quarter_q3_date_range(self):
+    """Test that query_by_quarter sets correct Q3 date range."""
+    client = EFTSClient()
+    client.query = AsyncMock(return_value=[])
+
+    await client.query_by_quarter(2024, quarter=3)
+
+    client.query.assert_called_once_with(
+      form_types=["10-K", "10-Q"],
+      start_date="2024-07-01",
+      end_date="2024-09-30",
+      ciks=None,
+    )
+
+  @pytest.mark.asyncio
+  async def test_query_by_quarter_q4_date_range(self):
+    """Test that query_by_quarter sets correct Q4 date range."""
+    client = EFTSClient()
+    client.query = AsyncMock(return_value=[])
+
+    await client.query_by_quarter(2024, quarter=4)
+
+    client.query.assert_called_once_with(
+      form_types=["10-K", "10-Q"],
+      start_date="2024-10-01",
+      end_date="2024-12-31",
+      ciks=None,
+    )
+
+  @pytest.mark.asyncio
+  async def test_query_by_quarter_with_ciks(self):
+    """Test query_by_quarter with CIK filter."""
+    client = EFTSClient()
+    client.query = AsyncMock(return_value=[])
+
+    await client.query_by_quarter(2024, quarter=1, ciks=["320193"])
+
+    client.query.assert_called_once_with(
+      form_types=["10-K", "10-Q"],
+      start_date="2024-01-01",
+      end_date="2024-03-31",
+      ciks=["320193"],
+    )
+
+  @pytest.mark.asyncio
+  async def test_query_by_quarter_custom_forms(self):
+    """Test query_by_quarter with custom form types."""
+    client = EFTSClient()
+    client.query = AsyncMock(return_value=[])
+
+    await client.query_by_quarter(2024, quarter=2, form_types=["8-K"])
+
+    client.query.assert_called_once_with(
+      form_types=["8-K"],
+      start_date="2024-04-01",
+      end_date="2024-06-30",
+      ciks=None,
+    )
+
+  @pytest.mark.asyncio
+  async def test_query_by_quarter_invalid_quarter(self):
+    """Test query_by_quarter rejects invalid quarter values."""
+    client = EFTSClient()
+
+    with pytest.raises(ValueError, match="Quarter must be 1-4"):
+      await client.query_by_quarter(2024, quarter=0)
+
+    with pytest.raises(ValueError, match="Quarter must be 1-4"):
+      await client.query_by_quarter(2024, quarter=5)
+
+
 class TestEFTSConstants:
   """Tests for EFTS module constants."""
 

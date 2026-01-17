@@ -2,10 +2,10 @@
 
 Pipeline Architecture (3 phases, run independently):
 
-  Phase 1 - Download (EFTS-based):
+  Phase 1 - Download (EFTS-based, quarterly partitions):
     sec_download_job: sec_raw_filings
     Uses SEC EFTS API to discover and download XBRL ZIPs to S3.
-    O(1) discovery via EFTS query instead of per-company iteration.
+    Quarterly partitions (e.g., 2024-Q1) to stay under EFTS 10k result limit.
 
   Phase 2 - Process (sensor-triggered or manual):
     sec_process_job: sec_process_filing (dynamic partitions)
@@ -16,12 +16,12 @@ Pipeline Architecture (3 phases, run independently):
     Ingests all processed data to LadybugDB graph.
 
 Workflow:
-  just sec-download 2024       # Download all filings for year
+  just sec-download 10 2024    # Download top 10 companies (all 4 quarters)
   just sec-process 2024        # Process in parallel
   just sec-materialize         # Ingest to graph
 
   # Or all-in-one for demos:
-  just sec-load NVDA 2024      # Chains all steps
+  just sec-load NVDA 2024      # Chains all steps for single company
 """
 
 from dagster import (
@@ -39,8 +39,8 @@ from robosystems.dagster.assets import (
   sec_filing_partitions,
   sec_graph_materialized,
   sec_process_filing,
+  sec_quarter_partitions,
   sec_raw_filings,
-  sec_year_partitions,
 )
 
 # ============================================================================
@@ -48,17 +48,18 @@ from robosystems.dagster.assets import (
 # ============================================================================
 
 
-# Phase 1: Download (year-partitioned)
+# Phase 1: Download (quarter-partitioned)
 # Downloads raw XBRL ZIPs to S3 using EFTS discovery.
+# Uses quarterly partitions to stay under EFTS 10k result limit.
 # Use with sec_processing_sensor to trigger parallel processing.
 sec_download_job = define_asset_job(
   name="sec_download",
-  description="Download SEC XBRL filings to S3 via EFTS. Use sensor or just sec-process for parallel processing.",
+  description="Download SEC XBRL filings to S3 via EFTS (quarterly partitions).",
   selection=AssetSelection.assets(
     sec_raw_filings,
   ),
   tags={"pipeline": "sec", "phase": "download"},
-  partitions_def=sec_year_partitions,
+  partitions_def=sec_quarter_partitions,
 )
 
 

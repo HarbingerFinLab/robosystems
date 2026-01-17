@@ -230,12 +230,14 @@ def _get_sec_metadata(
   return sec_filer, sec_report
 
 
-# Year partitions for SEC data (2019-2025)
-SEC_YEARS = [str(y) for y in range(2019, 2026)]
-sec_year_partitions = StaticPartitionsDefinition(SEC_YEARS)
+# Quarter partitions for SEC data (2019-Q1 through 2025-Q4)
+# EFTS has a 10k result limit per query; quarterly partitions typically return 5-7k filings
+SEC_QUARTERS = [f"{year}-Q{q}" for year in range(2019, 2026) for q in range(1, 5)]
+sec_quarter_partitions = StaticPartitionsDefinition(SEC_QUARTERS)
 
 # Dynamic partitions for individual filing processing
 # Partition key format: {year}_{cik}_{accession}
+# Note: S3 storage uses year-based paths regardless of quarterly download partitions
 sec_filing_partitions = DynamicPartitionsDefinition(name="sec_filings")
 
 
@@ -297,38 +299,43 @@ class SECMaterializeConfig(Config):
 
 @asset(
   group_name="sec_pipeline",
-  description="Download SEC XBRL filings for a specific year using EFTS discovery",
+  description="Download SEC XBRL filings for a specific quarter using EFTS discovery",
   compute_kind="download",
-  partitions_def=sec_year_partitions,
+  partitions_def=sec_quarter_partitions,
   metadata={
     "pipeline": "sec_download",
     "stage": "extraction",
   },
   # Limit concurrent SEC downloads to avoid rate limiting
-  # Max 2 partitions (years) download at a time
-  op_tags={"dagster/concurrency_key": "sec_download", "dagster/max_concurrent": "2"},
+  # Max 4 partitions (quarters) download at a time
+  op_tags={"dagster/concurrency_key": "sec_download", "dagster/max_concurrent": "4"},
 )
 def sec_raw_filings(
   context: AssetExecutionContext,
   config: SECDownloadConfig,
   s3: S3Resource,
 ) -> MaterializeResult:
-  """Download SEC XBRL filings for a specific year using EFTS discovery.
+  """Download SEC XBRL filings for a specific quarter using EFTS discovery.
 
   Uses SEC EFTS API to discover all filings matching criteria in a single query,
   then downloads them with async rate-limited parallelism.
 
-  This replaces the per-company iteration approach with O(1) discovery.
+  EFTS has a 10k result limit per query. Quarterly partitions typically return
+  5-7k filings, safely under the limit.
 
-  Concurrency limited to 2 via dagster/concurrency_key to avoid SEC rate limiting.
+  Concurrency limited to 4 via dagster/concurrency_key to avoid SEC rate limiting.
 
   Returns:
       MaterializeResult with download statistics
   """
   import asyncio
 
-  year = int(context.partition_key)
-  context.log.info(f"Downloading SEC filings for year {year} via EFTS")
+  # Parse partition key: "2024-Q1" -> year=2024, quarter=1
+  partition_key = context.partition_key
+  year, quarter_str = partition_key.split("-Q")
+  year = int(year)
+  quarter = int(quarter_str)
+  context.log.info(f"Downloading SEC filings for {year}-Q{quarter} via EFTS")
 
   bucket = env.SHARED_RAW_BUCKET
 
@@ -368,13 +375,14 @@ def sec_raw_filings(
             cik = str(company.get("cik_str", company.get("cik", "")))
             cik_filter.append(cik)
 
-      hits = await efts.query_by_year(
+      hits = await efts.query_by_quarter(
         year=year,
+        quarter=quarter,
         form_types=config.form_types,
         ciks=cik_filter,
       )
 
-    context.log.info(f"EFTS discovered {len(hits)} filings for {year}")
+    context.log.info(f"EFTS discovered {len(hits)} filings for {year}-Q{quarter}")
 
     if not hits:
       return {
@@ -675,17 +683,18 @@ def sec_raw_filings(
 
   if result.get("dry_run"):
     context.log.info(
-      f"[DRY RUN] Discovery complete for year {year}: {result['filings_found']} filings found"
+      f"[DRY RUN] Discovery complete for {year}-Q{quarter}: {result['filings_found']} filings found"
     )
   else:
     context.log.info(
-      f"Download complete for year {year}: "
+      f"Download complete for {year}-Q{quarter}: "
       f"{result['downloaded']} downloaded, {result['skipped']} skipped, {result['failed']} failed"
     )
 
   return MaterializeResult(
     metadata={
       "year": year,
+      "quarter": quarter,
       "filings_found": result["filings_found"],
       "submissions_fetched": result.get("submissions_fetched", 0),
       "filings_downloaded": result["downloaded"],
