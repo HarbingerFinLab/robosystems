@@ -150,9 +150,12 @@ jobs:
           fi
 
           # Build with enhanced caching including dependency layers
+          # SBOM and provenance attestations improve Docker Hub security score
           docker buildx build \
             --platform $PLATFORMS \
             --push \
+            --sbom=true \
+            --provenance=mode=max \
             --cache-from type=registry,ref=$ECR_REGISTRY/$ECR_REPOSITORY:buildcache \
             --cache-from type=registry,ref=$ECR_REGISTRY/$ECR_REPOSITORY:deps-cache \
             --cache-to type=registry,ref=$ECR_REGISTRY/$ECR_REPOSITORY:buildcache,mode=max \
@@ -172,6 +175,42 @@ jobs:
           # Log the tags that were created
           echo "📋 Image tags created:"
           echo "$TAGS" | tr ' ' '\n' | grep -E '^-t' | sed 's/-t /  - /'
+
+  # Scan Docker image for vulnerabilities (runs after main build)
+  scan:
+    needs: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      contents: read
+      security-events: write  # Required for SARIF upload
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          mask-password: "true"
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ needs.docker.outputs.image }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
 
   # Build Lambda container image (runs in parallel with main build)
   lambda:
