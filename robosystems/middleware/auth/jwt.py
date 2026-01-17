@@ -13,6 +13,7 @@ import redis
 from fastapi import HTTPException, status
 
 from ...config import env
+from ...config.constants import JWT_REVOCATION_GRACE_SECONDS
 from ...config.logging import get_logger
 from ...config.valkey_registry import (
   ValkeyDatabase,
@@ -60,7 +61,7 @@ def is_jwt_token_revoked(token: str) -> bool:
   """
   # Grace period for tokens revoked during session refresh
   # This handles race conditions where /me and /refresh are called simultaneously
-  REFRESH_GRACE_PERIOD = timedelta(seconds=5)
+  REFRESH_GRACE_PERIOD = timedelta(seconds=JWT_REVOCATION_GRACE_SECONDS)
 
   try:
     secret_key = JWTConfig.get_jwt_secret()
@@ -93,9 +94,10 @@ def is_jwt_token_revoked(token: str) -> bool:
 
       # Check for grace period on session_refresh revocations
       # This allows in-flight requests to complete during token refresh
-      reason = revocation_data.get(b"reason", b"").decode()
+      # Note: decode_responses=True is used, so keys are strings not bytes
+      reason = revocation_data.get("reason", "")
       if reason == "session_refresh":
-        revoked_at_str = revocation_data.get(b"revoked_at", b"").decode()
+        revoked_at_str = revocation_data.get("revoked_at", "")
         if revoked_at_str:
           revoked_at = datetime.fromisoformat(revoked_at_str)
           if datetime.now(UTC) - revoked_at < REFRESH_GRACE_PERIOD:
