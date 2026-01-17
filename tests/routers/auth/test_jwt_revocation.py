@@ -84,11 +84,12 @@ class TestJWTRevocation:
   def test_token_verification_after_revocation(self, mock_redis):
     """Test that token verification fails after revocation."""
     # Mock Redis client to return revocation data (token is revoked)
+    # Note: decode_responses=True is used, so keys/values are strings not bytes
     mock_redis_instance = MagicMock()
     mock_redis_instance.hgetall.return_value = {
-      b"reason": b"user_logout",
-      b"revoked_at": b"2024-01-01T00:00:00+00:00",
-      b"user_id": b"test-user-123",
+      "reason": "user_logout",
+      "revoked_at": "2024-01-01T00:00:00+00:00",
+      "user_id": "test-user-123",
     }
     mock_redis.return_value = mock_redis_instance
 
