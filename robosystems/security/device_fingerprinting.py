@@ -16,23 +16,16 @@ def extract_device_fingerprint(request: Request) -> dict[str, Any]:
   Returns:
       Dictionary containing device fingerprint components
   """
-  # Get client IP (with proxy support)
-  client_ip = None
-  if request.client:
-    client_ip = request.client.host
-
-  # Check for forwarded IP headers (common with load balancers/proxies)
-  forwarded_for = request.headers.get("x-forwarded-for")
-  if forwarded_for:
-    # Take the first IP in the chain (original client)
-    client_ip = forwarded_for.split(",")[0].strip()
+  # NOTE: We intentionally exclude client_ip from the fingerprint hash.
+  # IPs change frequently due to VPNs, mobile networks, load balancer routing,
+  # and network reconnections - causing false positive logouts.
+  # Browser headers provide sufficient device binding security.
 
   fingerprint = {
     "user_agent": request.headers.get("user-agent", ""),
     "accept_language": request.headers.get("accept-language", ""),
     "accept_encoding": request.headers.get("accept-encoding", ""),
-    "client_ip": client_ip,
-    # Add more headers that are typically consistent per device
+    # Browser client hints are stable per browser/device
     "sec_ch_ua": request.headers.get("sec-ch-ua", ""),
     "sec_ch_ua_platform": request.headers.get("sec-ch-ua-platform", ""),
   }
@@ -85,14 +78,14 @@ def is_fingerprint_suspicious(
   changes = []
   suspicious = False
 
-  # Critical changes that indicate token theft
-  if stored_fingerprint.get("client_ip") != current_fingerprint.get("client_ip"):
-    changes.append("ip_address_changed")
-    suspicious = True
-
+  # User agent changes are highly suspicious - indicates different browser/device
   if stored_fingerprint.get("user_agent") != current_fingerprint.get("user_agent"):
     changes.append("user_agent_changed")
-    # User agent changes are highly suspicious
+    suspicious = True
+
+  # Browser client hints changing is suspicious
+  if stored_fingerprint.get("sec_ch_ua") != current_fingerprint.get("sec_ch_ua"):
+    changes.append("browser_hints_changed")
     suspicious = True
 
   # Less critical changes (could be legitimate)
