@@ -284,6 +284,9 @@ class EFTSClient:
     """
     Convenience method to query filings for a specific year.
 
+    NOTE: Full years often exceed the EFTS 10k result limit.
+    Use query_by_quarter for production pipelines.
+
     Args:
         year: The fiscal year to query
         form_types: List of form types (default: ["10-K", "10-Q"])
@@ -296,6 +299,47 @@ class EFTSClient:
       form_types=form_types or ["10-K", "10-Q"],
       start_date=f"{year}-01-01",
       end_date=f"{year}-12-31",
+      ciks=ciks,
+    )
+
+  async def query_by_quarter(
+    self,
+    year: int,
+    quarter: int,
+    form_types: list[str] | None = None,
+    ciks: list[str] | None = None,
+  ) -> list[EFTSHit]:
+    """
+    Query filings for a specific quarter.
+
+    EFTS has a hard limit of 10,000 results per query. Quarterly partitions
+    typically return 5-7k filings, safely under the limit.
+
+    Args:
+        year: The fiscal year
+        quarter: Quarter (1-4)
+        form_types: List of form types (default: ["10-K", "10-Q"])
+        ciks: Optional list of CIKs to filter by
+
+    Returns:
+        List of EFTSHit objects for the quarter.
+    """
+    if quarter not in (1, 2, 3, 4):
+      raise ValueError(f"Quarter must be 1-4, got {quarter}")
+
+    # Quarter date ranges
+    quarter_dates = {
+      1: ("01-01", "03-31"),
+      2: ("04-01", "06-30"),
+      3: ("07-01", "09-30"),
+      4: ("10-01", "12-31"),
+    }
+    start_mmdd, end_mmdd = quarter_dates[quarter]
+
+    return await self.query(
+      form_types=form_types or ["10-K", "10-Q"],
+      start_date=f"{year}-{start_mmdd}",
+      end_date=f"{year}-{end_mmdd}",
       ciks=ciks,
     )
 

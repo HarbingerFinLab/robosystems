@@ -6,7 +6,8 @@ SEC Pipeline - XBRL Data Processing via Dagster.
 This script manages SEC XBRL data processing through 3 independent phases:
 
   Phase 1 - Download: sec_download job
-    Downloads raw XBRL ZIPs to S3 (year-partitioned).
+    Downloads raw XBRL ZIPs to S3 (quarterly partitions).
+    Years are automatically converted to quarters (e.g., 2024 -> 2024-Q1..Q4).
 
   Phase 2 - Process: sec_process job (parallel)
     Processes each filing to parquet via dynamic partitions.
@@ -16,11 +17,11 @@ This script manages SEC XBRL data processing through 3 independent phases:
 
 Usage:
     # All-in-one (chains all 3 phases):
-    just sec-load NVDA 2024        # Single company
-    just sec-pipeline 5 2024       # Top 5 companies
+    just sec-load NVDA 2024        # Single company, all 4 quarters
+    just sec-pipeline 5 2024       # Top 5 companies, all 4 quarters
 
     # Step-by-step (for production use):
-    just sec-download 10 2024      # Phase 1: Download top 10 companies
+    just sec-download 10 2024      # Phase 1: Download (4 quarterly partitions)
     just sec-process-parallel 2024 # Phase 2: Process in parallel
     just sec-materialize           # Phase 3: Materialize to graph
 
@@ -74,7 +75,29 @@ TOP_COMPANIES_BY_MARKET_CAP = [
 ]
 
 DEFAULT_COMPANY_COUNT = 5
-ALL_YEAR_PARTITIONS = ["2019", "2020", "2021", "2022", "2023", "2024", "2025"]
+ALL_YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+
+
+def year_to_quarters(year: int | str) -> list[str]:
+  """Convert a year to quarterly partition keys.
+
+  Args:
+      year: Year as int or string (e.g., 2024 or "2024")
+
+  Returns:
+      List of quarterly partition keys (e.g., ["2024-Q1", "2024-Q2", "2024-Q3", "2024-Q4"])
+  """
+  y = int(year)
+  return [f"{y}-Q{q}" for q in range(1, 5)]
+
+
+def years_to_quarters(years: list[str]) -> list[str]:
+  """Convert a list of years to quarterly partition keys."""
+  quarters = []
+  for year in years:
+    quarters.extend(year_to_quarters(year))
+  return quarters
+
 
 # Default timeouts in seconds (generous for large batch processing)
 DEFAULT_DOWNLOAD_TIMEOUT = 7200  # 2 hours per year partition
@@ -262,11 +285,15 @@ class SECPipeline:
 
   def run(self) -> dict[str, Any]:
     """Run the full pipeline."""
+    # Convert years to quarterly partitions
+    quarters = years_to_quarters(self.years)
+
     logger.info("=" * 60)
     logger.info("SEC Pipeline")
     logger.info("=" * 60)
     logger.info(f"Companies: {', '.join(self.tickers)}")
     logger.info(f"Years: {', '.join(self.years)}")
+    logger.info(f"Quarters: {len(quarters)} partitions")
     logger.info(f"Skip download: {self.skip_download}")
     logger.info(f"Skip processing: {self.skip_processing}")
     logger.info("=" * 60)
@@ -283,17 +310,17 @@ class SECPipeline:
     else:
       logger.info("\n[SETUP] Skipping database reset (additive mode)")
 
-    # Phase 1: Download each year partition
-    for year in self.years:
+    # Phase 1: Download each quarterly partition
+    for quarter in quarters:
       logger.info(f"\n{'=' * 60}")
-      logger.info(f"YEAR: {year}")
+      logger.info(f"QUARTER: {quarter}")
       logger.info(f"{'=' * 60}")
 
       if not self.skip_download:
-        logger.info(f"\n[DOWNLOAD] Downloading filings for {year}...")
+        logger.info(f"\n[DOWNLOAD] Downloading filings for {quarter}...")
         config_path = self._create_job_config(
           tickers=self.tickers,
-          year=year,
+          year=None,  # Not used for quarterly partitions
           skip_existing=True,
           job_type="download_only",
         )
@@ -301,7 +328,7 @@ class SECPipeline:
         result = self.run_stage(
           job_name="sec_download",
           config_path=config_path,
-          year=year,
+          year=quarter,  # Pass quarter as partition key
           timeout=self.download_timeout,
         )
         all_results.append(result)
@@ -661,13 +688,13 @@ def cmd_run(args):
   else:
     tickers = get_top_companies(args.count, use_sec_api=args.from_sec)
 
-  # Determine years
+  # Determine years (will be converted to quarterly partitions by SECPipeline)
   if args.year:
     years = [args.year]
   elif args.years:
     years = args.years
   else:
-    years = ALL_YEAR_PARTITIONS
+    years = [str(y) for y in ALL_YEARS]
 
   pipeline = SECPipeline(
     tickers=tickers,
@@ -718,19 +745,22 @@ def cmd_download(args):
   else:
     tickers = get_top_companies(args.count, use_sec_api=args.from_sec)
 
-  # Determine years
+  # Determine years and convert to quarterly partitions
   if args.year:
     years = [args.year]
   elif args.years:
     years = args.years
   else:
-    years = ALL_YEAR_PARTITIONS
+    years = [str(y) for y in ALL_YEARS]
+
+  quarters = years_to_quarters(years)
 
   logger.info("=" * 60)
   logger.info("SEC Download Only (Phase 1)")
   logger.info("=" * 60)
   logger.info(f"Companies: {', '.join(tickers)}")
   logger.info(f"Years: {', '.join(years)}")
+  logger.info(f"Quarters: {len(quarters)} partitions")
   logger.info("=" * 60)
   logger.info("After download, enable sec_processing_sensor in Dagster UI")
   logger.info("for parallel processing, then run 'just sec-materialize'")
@@ -742,11 +772,11 @@ def cmd_download(args):
   # Create a minimal pipeline for running the download job
   pipeline = SECPipeline(tickers=tickers, years=years, verbose=args.verbose)
 
-  for year in years:
-    logger.info(f"\n[DOWNLOAD] Year {year}...")
+  for quarter in quarters:
+    logger.info(f"\n[DOWNLOAD] Quarter {quarter}...")
     config_path = pipeline._create_job_config(
       tickers=tickers,
-      year=year,
+      year=None,  # Not used for quarterly partitions
       skip_existing=True,
       job_type="download_only",
     )
@@ -754,7 +784,7 @@ def cmd_download(args):
     result = pipeline.run_stage(
       job_name="sec_download",
       config_path=config_path,
-      year=year,
+      year=quarter,  # Pass quarter as partition key
       timeout=args.timeout,
     )
     all_results.append(result)
@@ -772,7 +802,7 @@ def cmd_download(args):
   logger.info(f"\n{'=' * 60}")
   logger.info("DOWNLOAD SUMMARY")
   logger.info(f"{'=' * 60}")
-  logger.info(f"Total years: {len(all_results)}")
+  logger.info(f"Total quarters: {len(all_results)}")
   logger.info(f"Successful: {successful}")
   logger.info(f"Failed: {failed}")
   logger.info(f"Duration: {overall_duration:.1f}s ({overall_duration / 60:.1f} min)")
@@ -782,12 +812,13 @@ def cmd_download(args):
       json.dumps(
         {
           "status": "success" if failed == 0 else "partial_failure",
-          "total_years": len(all_results),
+          "total_quarters": len(all_results),
           "successful": successful,
           "failed": failed,
           "duration_seconds": overall_duration,
           "companies": tickers,
           "years": years,
+          "quarters": quarters,
         },
         indent=2,
       )

@@ -35,9 +35,9 @@ from robosystems.dagster.assets.sec import (
   sec_filing_partitions,
   sec_graph_materialized,
   sec_process_filing,
+  # Partitions (quarterly to stay under EFTS 10k limit)
+  sec_quarter_partitions,
   sec_raw_filings,
-  # Partitions
-  sec_year_partitions,
 )
 from robosystems.dagster.assets.staged_files import staged_files_source
 
@@ -59,8 +59,8 @@ __all__ = [
   "sec_filing_partitions",
   "sec_graph_materialized",
   "sec_process_filing",
+  "sec_quarter_partitions",
   "sec_raw_filings",
-  "sec_year_partitions",
   "staged_files_source",
   "subgraphs_source",
 ]
