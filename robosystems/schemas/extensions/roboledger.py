@@ -6,7 +6,6 @@ Complete accounting system with both transaction and reporting capabilities.
 This unified schema includes:
 - 📊 Financial Reporting (XBRL, SEC filings, financial statements)
 - 📒 General Ledger (transactions, journal entries, accounts)
-- 💼 Business Processes (workflows, disclosures, compliance)
 
 CONTEXT-AWARE USAGE:
 -------------------
@@ -298,18 +297,6 @@ TRANSACTION_NODES = [
       Property(name="description", type="STRING"),
       Property(name="debit_amount", type="DOUBLE"),
       Property(name="credit_amount", type="DOUBLE"),
-      Property(name="updated_at", type="STRING"),
-    ],
-  ),
-  Node(
-    name="Process",
-    description="Business processes and workflows",
-    properties=[
-      Property(name="identifier", type="STRING", is_primary_key=True),
-      Property(name="name", type="STRING"),
-      Property(name="process_type", type="STRING"),
-      Property(name="description", type="STRING"),
-      Property(name="status", type="STRING"),
       Property(name="updated_at", type="STRING"),
     ],
   ),

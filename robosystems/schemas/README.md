@@ -99,9 +99,9 @@ The base schema (`base.py`) provides foundational nodes and relationships that a
 
 #### Transaction Section (General Ledger)
 
-- **Nodes**: Transaction, LineItem, Process
+- **Nodes**: Transaction, LineItem
 - **Use Cases**: Entity accounting, journal entries, trial balances
-- **Key Features**: Transaction tracking, line item details, process workflows
+- **Key Features**: Transaction tracking, line item details
 - **Note**: Chart of accounts is represented via Structure/Association/Element pattern (from Reporting Section)
 
 #### Context-Aware Loading

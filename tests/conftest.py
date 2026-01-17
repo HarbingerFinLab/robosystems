@@ -665,17 +665,6 @@ def lbug_repository_with_schema(temp_lbug_db):
     )
     """,
     """
-    CREATE NODE TABLE Process(
-        identifier STRING,
-        name STRING,
-        type STRING,
-        status STRING,
-        created_at TIMESTAMP,
-        updated_at TIMESTAMP,
-        PRIMARY KEY (identifier)
-    )
-    """,
-    """
     CREATE NODE TABLE Security(
         identifier STRING,
         ticker STRING,
@@ -727,7 +716,6 @@ def lbug_repository_with_schema(temp_lbug_db):
     "CREATE REL TABLE HAS_USER(FROM Entity TO User)",
     "CREATE REL TABLE HAS_CONNECTION(FROM Entity TO Connection)",
     "CREATE REL TABLE HAS_TRANSACTION(FROM Entity TO Transaction)",
-    "CREATE REL TABLE HAS_PROCESS(FROM Entity TO Process)",
     "CREATE REL TABLE HAS_SECURITY(FROM Entity TO Security)",
     "CREATE REL TABLE HAS_ELEMENT(FROM Fact TO Element)",
     "CREATE REL TABLE HAS_UNIT(FROM Fact TO Unit)",
