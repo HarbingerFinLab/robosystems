@@ -100,7 +100,7 @@ def years_to_quarters(years: list[str]) -> list[str]:
 
 
 # Default timeouts in seconds (generous for large batch processing)
-DEFAULT_DOWNLOAD_TIMEOUT = 7200  # 2 hours per year partition
+DEFAULT_DOWNLOAD_TIMEOUT = 7200  # 2 hours per quarter partition
 DEFAULT_MATERIALIZE_TIMEOUT = 14400  # 4 hours for full materialization
 
 
