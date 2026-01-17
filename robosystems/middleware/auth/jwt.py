@@ -58,6 +58,10 @@ def is_jwt_token_revoked(token: str) -> bool:
   Returns:
     True if token is revoked, False otherwise
   """
+  # Grace period for tokens revoked during session refresh
+  # This handles race conditions where /me and /refresh are called simultaneously
+  REFRESH_GRACE_PERIOD = timedelta(seconds=5)
+
   try:
     secret_key = JWTConfig.get_jwt_secret()
     # Decode without verification to get JTI
@@ -80,7 +84,28 @@ def is_jwt_token_revoked(token: str) -> bool:
     try:
       redis_client = get_redis_client()
       revocation_key = f"revoked_jwt:{jti}"
-      return bool(redis_client.exists(revocation_key))
+
+      # Get revocation data to check reason and timing
+      revocation_data = redis_client.hgetall(revocation_key)
+
+      if not revocation_data:
+        return False  # Not revoked
+
+      # Check for grace period on session_refresh revocations
+      # This allows in-flight requests to complete during token refresh
+      reason = revocation_data.get(b"reason", b"").decode()
+      if reason == "session_refresh":
+        revoked_at_str = revocation_data.get(b"revoked_at", b"").decode()
+        if revoked_at_str:
+          revoked_at = datetime.fromisoformat(revoked_at_str)
+          if datetime.now(UTC) - revoked_at < REFRESH_GRACE_PERIOD:
+            logger.debug(
+              f"Token {jti[:8]}... in refresh grace period, allowing request"
+            )
+            return False
+
+      return True  # Revoked (or grace period expired)
+
     except redis.ConnectionError as conn_err:
       # Log connection errors explicitly
       logger.error(f"Redis connection error during token revocation check: {conn_err}")
