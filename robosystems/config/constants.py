@@ -123,6 +123,9 @@ JWT_REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 # Authentication Security Constants
 TOKEN_GRACE_PERIOD_MINUTES = 5  # Grace period for expired token refresh
+JWT_REVOCATION_GRACE_SECONDS = (
+  5  # Grace period for in-flight requests during token refresh
+)
 JWT_DEVICE_FINGERPRINT_ENABLED = True  # Enable device fingerprinting for token binding
 
 # Rate Limiting Defaults

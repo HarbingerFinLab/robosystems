@@ -200,12 +200,13 @@ class TestJWTRevocation:
 
     # Mock Redis client to return revocation data with session_refresh reason
     # and a recent revocation time (within grace period)
+    # Note: decode_responses=True is used, so keys/values are strings not bytes
     mock_redis_instance = MagicMock()
     recent_revocation = datetime.now(UTC).isoformat()
     mock_redis_instance.hgetall.return_value = {
-      b"reason": b"session_refresh",
-      b"revoked_at": recent_revocation.encode(),
-      b"user_id": b"test-user-123",
+      "reason": "session_refresh",
+      "revoked_at": recent_revocation,
+      "user_id": "test-user-123",
     }
     mock_redis.return_value = mock_redis_instance
 
@@ -226,12 +227,13 @@ class TestJWTRevocation:
 
     # Mock Redis client to return revocation data with session_refresh reason
     # but with an old revocation time (beyond grace period)
+    # Note: decode_responses=True is used, so keys/values are strings not bytes
     mock_redis_instance = MagicMock()
     old_revocation = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
     mock_redis_instance.hgetall.return_value = {
-      b"reason": b"session_refresh",
-      b"revoked_at": old_revocation.encode(),
-      b"user_id": b"test-user-123",
+      "reason": "session_refresh",
+      "revoked_at": old_revocation,
+      "user_id": "test-user-123",
     }
     mock_redis.return_value = mock_redis_instance
 
@@ -252,12 +254,13 @@ class TestJWTRevocation:
 
     # Mock Redis client to return revocation data with user_logout reason
     # even with a very recent revocation time
+    # Note: decode_responses=True is used, so keys/values are strings not bytes
     mock_redis_instance = MagicMock()
     recent_revocation = datetime.now(UTC).isoformat()
     mock_redis_instance.hgetall.return_value = {
-      b"reason": b"user_logout",
-      b"revoked_at": recent_revocation.encode(),
-      b"user_id": b"test-user-123",
+      "reason": "user_logout",
+      "revoked_at": recent_revocation,
+      "user_id": "test-user-123",
     }
     mock_redis.return_value = mock_redis_instance
 
