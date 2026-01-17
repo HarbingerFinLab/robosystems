@@ -16,12 +16,12 @@ Pipeline Architecture (3 phases, run independently):
     Ingests all processed data to LadybugDB graph.
 
 Workflow:
-  just sec-download 2024-Q1    # Download filings for a quarter
+  just sec-download 10 2024    # Download top 10 companies (all 4 quarters)
   just sec-process 2024        # Process in parallel
   just sec-materialize         # Ingest to graph
 
   # Or all-in-one for demos:
-  just sec-load NVDA 2024      # Chains all steps
+  just sec-load NVDA 2024      # Chains all steps for single company
 """
 
 from dagster import (
