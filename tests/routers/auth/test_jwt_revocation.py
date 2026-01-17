@@ -43,9 +43,9 @@ class TestJWTRevocation:
   @patch("robosystems.middleware.auth.jwt.get_redis_client")
   def test_token_verification_before_revocation(self, mock_redis):
     """Test that token verification works before revocation."""
-    # Mock Redis client to return no revocation
+    # Mock Redis client to return no revocation (empty dict from hgetall)
     mock_redis_instance = MagicMock()
-    mock_redis_instance.exists.return_value = False
+    mock_redis_instance.hgetall.return_value = {}
     mock_redis.return_value = mock_redis_instance
 
     # Create and verify token (no device fingerprint needed for this test)
@@ -59,7 +59,7 @@ class TestJWTRevocation:
     """Test complete token revocation flow."""
     # Mock Redis client
     mock_redis_instance = MagicMock()
-    mock_redis_instance.exists.return_value = False  # Initially not revoked
+    mock_redis_instance.hgetall.return_value = {}  # Initially not revoked
     mock_pipeline = MagicMock()
     mock_redis_instance.pipeline.return_value = mock_pipeline
     mock_redis.return_value = mock_redis_instance
@@ -83,9 +83,13 @@ class TestJWTRevocation:
   @patch("robosystems.middleware.auth.jwt.get_redis_client")
   def test_token_verification_after_revocation(self, mock_redis):
     """Test that token verification fails after revocation."""
-    # Mock Redis client to return revocation exists
+    # Mock Redis client to return revocation data (token is revoked)
     mock_redis_instance = MagicMock()
-    mock_redis_instance.exists.return_value = True  # Token is revoked
+    mock_redis_instance.hgetall.return_value = {
+      b"reason": b"user_logout",
+      b"revoked_at": b"2024-01-01T00:00:00+00:00",
+      b"user_id": b"test-user-123",
+    }
     mock_redis.return_value = mock_redis_instance
 
     # Create token (no device fingerprint needed for this test)
@@ -122,7 +126,7 @@ class TestJWTRevocation:
     """Test that Redis errors are handled with fail-closed behavior."""
     # Mock Redis client to raise exception
     mock_redis_instance = MagicMock()
-    mock_redis_instance.exists.side_effect = Exception("Redis connection failed")
+    mock_redis_instance.hgetall.side_effect = Exception("Redis connection failed")
     mock_redis.return_value = mock_redis_instance
 
     # Create token (no device fingerprint needed for this test)
@@ -143,7 +147,9 @@ class TestJWTRevocation:
 
     # Mock Redis client to raise ConnectionError
     mock_redis_instance = MagicMock()
-    mock_redis_instance.exists.side_effect = redis.ConnectionError("Connection refused")
+    mock_redis_instance.hgetall.side_effect = redis.ConnectionError(
+      "Connection refused"
+    )
     mock_redis.return_value = mock_redis_instance
 
     # Create token
@@ -186,3 +192,81 @@ class TestJWTRevocation:
 
     # Redis operations should not be called for expired tokens
     mock_redis_instance.pipeline.assert_not_called()
+
+  @patch("robosystems.middleware.auth.jwt.get_redis_client")
+  def test_session_refresh_grace_period(self, mock_redis):
+    """Test that tokens revoked for session_refresh have a grace period."""
+    from datetime import datetime
+
+    # Mock Redis client to return revocation data with session_refresh reason
+    # and a recent revocation time (within grace period)
+    mock_redis_instance = MagicMock()
+    recent_revocation = datetime.now(UTC).isoformat()
+    mock_redis_instance.hgetall.return_value = {
+      b"reason": b"session_refresh",
+      b"revoked_at": recent_revocation.encode(),
+      b"user_id": b"test-user-123",
+    }
+    mock_redis.return_value = mock_redis_instance
+
+    # Create token
+    token = create_jwt_token("test-user-123")
+
+    # Token should NOT be considered revoked (within grace period)
+    assert not is_jwt_token_revoked(token)
+
+    # Token verification should succeed
+    user_id = verify_jwt_token(token)
+    assert user_id == "test-user-123"
+
+  @patch("robosystems.middleware.auth.jwt.get_redis_client")
+  def test_session_refresh_grace_period_expired(self, mock_redis):
+    """Test that tokens revoked for session_refresh are rejected after grace period."""
+    from datetime import datetime, timedelta
+
+    # Mock Redis client to return revocation data with session_refresh reason
+    # but with an old revocation time (beyond grace period)
+    mock_redis_instance = MagicMock()
+    old_revocation = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
+    mock_redis_instance.hgetall.return_value = {
+      b"reason": b"session_refresh",
+      b"revoked_at": old_revocation.encode(),
+      b"user_id": b"test-user-123",
+    }
+    mock_redis.return_value = mock_redis_instance
+
+    # Create token
+    token = create_jwt_token("test-user-123")
+
+    # Token SHOULD be considered revoked (grace period expired)
+    assert is_jwt_token_revoked(token)
+
+    # Token verification should fail
+    user_id = verify_jwt_token(token)
+    assert user_id is None
+
+  @patch("robosystems.middleware.auth.jwt.get_redis_client")
+  def test_user_logout_no_grace_period(self, mock_redis):
+    """Test that tokens revoked for user_logout have no grace period."""
+    from datetime import datetime
+
+    # Mock Redis client to return revocation data with user_logout reason
+    # even with a very recent revocation time
+    mock_redis_instance = MagicMock()
+    recent_revocation = datetime.now(UTC).isoformat()
+    mock_redis_instance.hgetall.return_value = {
+      b"reason": b"user_logout",
+      b"revoked_at": recent_revocation.encode(),
+      b"user_id": b"test-user-123",
+    }
+    mock_redis.return_value = mock_redis_instance
+
+    # Create token
+    token = create_jwt_token("test-user-123")
+
+    # Token SHOULD be considered revoked immediately (no grace period for logout)
+    assert is_jwt_token_revoked(token)
+
+    # Token verification should fail
+    user_id = verify_jwt_token(token)
+    assert user_id is None
