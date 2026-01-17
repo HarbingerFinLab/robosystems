@@ -527,7 +527,6 @@ class GraphMCPClient:
       # RoboLedger extension nodes - Transaction section (entity graphs only)
       "Transaction": "Financial transactions from accounting systems",
       "LineItem": "Individual accounting entries with debits/credits",
-      "Process": "Business processes and workflows",
     }
     return descriptions.get(node_name, f"{node_name} entities in the graph")
 
