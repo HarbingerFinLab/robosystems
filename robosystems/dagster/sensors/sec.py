@@ -80,7 +80,8 @@ SEC_PARALLEL_SENSOR_STATUS = (
 )
 
 # Configuration
-# Batch size per tick - can be higher now that we use Dagster DB instead of S3 listing
+# Batch size per tick - balances efficiency with memory usage and DB transaction size.
+# Can be high since we use Dagster DB for materialization tracking (O(1) lookups).
 MAX_FILES_PER_TICK = 500
 
 # Start year for SEC data loading (XBRL filings began 2009)
@@ -115,6 +116,7 @@ def _list_raw_files_for_year(
   year_prefix = f"{get_raw_key(DataSourceType.SEC)}/year={year}/"
 
   paginate_kwargs = {"Bucket": bucket, "Prefix": year_prefix}
+  # Only resume pagination if cursor is from the same year; otherwise start fresh
   if start_after and start_after.startswith(year_prefix):
     paginate_kwargs["StartAfter"] = start_after
 
