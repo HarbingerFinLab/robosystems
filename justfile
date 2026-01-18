@@ -144,6 +144,7 @@ test-all:
     @just lint
     @just format
     @just typecheck
+    @just cf-lint-all
 
 # Run tests (exclude integration and slow tests)
 test module="":
@@ -169,6 +170,7 @@ test-code:
     @just lint
     @just format
     @just typecheck
+    @just cf-lint-all
 
 # Run linting
 lint fix="":
@@ -186,6 +188,11 @@ typecheck module="":
 cf-lint template:
     @uv run cfn-lint -t cloudformation/{{template}}.yaml
     @uv run aws cloudformation validate-template --template-body file://cloudformation/{{template}}.yaml > /dev/null
+
+# Lint all CloudFormation templates
+cf-lint-all:
+    @echo "Linting all CloudFormation templates..."
+    @uv run cfn-lint -t cloudformation/*.yaml
 
 
 ## CI/CD ##
