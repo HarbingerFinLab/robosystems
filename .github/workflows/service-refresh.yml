@@ -46,9 +46,10 @@ on:
         type: string
         default: '["ubuntu-latest"]'
       aws_account_id:
-        description: "AWS Account ID"
-        required: true
+        description: "AWS Account ID (optional - fetched at runtime if not provided)"
+        required: false
         type: string
+        default: ""
       aws_region:
         description: "AWS region"
         required: false
@@ -105,7 +106,7 @@ jobs:
   # Graph Container Refresh (EC2 instances via SSM)
   # ============================================
   collect-graph-instances:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.graph_refresh_enabled) || (github.event_name != 'workflow_dispatch' && inputs.graph_refresh_enabled == 'true') }}
+    if: ${{ inputs.graph_refresh_enabled == true || inputs.graph_refresh_enabled == 'true' }}
     runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || fromJSON(inputs.runner_config) }}
     permissions:
       id-token: write
@@ -270,10 +271,14 @@ jobs:
 
       - name: Get AWS Account ID
         id: aws-account
-        if: github.event_name == 'workflow_dispatch'
         run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          echo "account_id=${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+          # Use provided account ID or fetch from STS
+          if [ -n "${{ inputs.aws_account_id }}" ]; then
+            echo "account_id=${{ inputs.aws_account_id }}" >> $GITHUB_OUTPUT
+          else
+            ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+            echo "account_id=${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Update Graph Container
         uses: ./.github/actions/refresh-graph-containers
@@ -283,14 +288,14 @@ jobs:
           node-type: ${{ matrix.node_type }}
           backend: ${{ matrix.backend }}
           aws-region: ${{ github.event_name == 'workflow_dispatch' && (vars.AWS_REGION || 'us-east-1') || inputs.aws_region }}
-          aws-account-id: ${{ github.event_name == 'workflow_dispatch' && steps.aws-account.outputs.account_id || inputs.aws_account_id }}
+          aws-account-id: ${{ steps.aws-account.outputs.account_id }}
           health-check-timeout: ${{ inputs.graph_health_check_timeout || '30' }}
 
   # ============================================
   # API ECS Service Refresh
   # ============================================
   refresh-api:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.api_refresh_enabled) || (github.event_name != 'workflow_dispatch' && inputs.api_refresh_enabled == 'true') }}
+    if: ${{ inputs.api_refresh_enabled == true || inputs.api_refresh_enabled == 'true' }}
     runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || fromJSON(inputs.runner_config) }}
     timeout-minutes: 10
     permissions:
@@ -340,7 +345,7 @@ jobs:
   # Dagster Daemon ECS Service Refresh
   # ============================================
   refresh-dagster-daemon:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.dagster_refresh_enabled) || (github.event_name != 'workflow_dispatch' && inputs.dagster_refresh_enabled == 'true') }}
+    if: ${{ inputs.dagster_refresh_enabled == true || inputs.dagster_refresh_enabled == 'true' }}
     runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || fromJSON(inputs.runner_config) }}
     timeout-minutes: 15
     permissions:
@@ -373,7 +378,7 @@ jobs:
   # Dagster Webserver ECS Service Refresh
   # ============================================
   refresh-dagster-webserver:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.dagster_refresh_enabled) || (github.event_name != 'workflow_dispatch' && inputs.dagster_refresh_enabled == 'true') }}
+    if: ${{ inputs.dagster_refresh_enabled == true || inputs.dagster_refresh_enabled == 'true' }}
     runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || fromJSON(inputs.runner_config) }}
     timeout-minutes: 10
     permissions:
