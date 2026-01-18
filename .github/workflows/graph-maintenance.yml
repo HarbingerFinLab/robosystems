@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - update-ami
+          - docker-cleanup
       environment:
         description: "Environment"
         required: true
@@ -27,12 +28,13 @@ on:
         type: string
         default: ""
 
-  # Monthly schedule - controlled by GRAPH_AMI_AUTO_UPDATE variable (default: disabled, opt-in required)
+  # Monthly schedule for AMI updates - controlled by GRAPH_AMI_AUTO_UPDATE variable
   # Staging runs first (1st of month), Prod follows next day (2nd of month)
-  # Only updates the AMI variable - deploy happens with next release
   schedule:
-    - cron: "0 7 1 * *" # Staging: 1st of every month at 7am UTC (2am EST)
-    - cron: "0 7 2 * *" # Prod: 2nd of every month at 7am UTC (2am EST)
+    - cron: "0 7 1 * *" # AMI: Staging 1st of month at 7am UTC
+    - cron: "0 7 2 * *" # AMI: Prod 2nd of month at 7am UTC
+    # Weekly Docker cleanup - every Sunday at 6am UTC (before typical work hours)
+    - cron: "0 6 * * 0" # Docker: Both envs every Sunday
 
 permissions:
   id-token: write
@@ -45,7 +47,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # For scheduled runs, check if auto-update is enabled
+  # For scheduled runs, determine task type and check if enabled
   schedule-gate:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
@@ -53,16 +55,27 @@ jobs:
     outputs:
       should_run: ${{ steps.check.outputs.should_run }}
       environment: ${{ steps.check.outputs.environment }}
+      task: ${{ steps.check.outputs.task }}
     steps:
       - name: Check if scheduled runs are enabled
         id: check
         run: |
-          # Default: OFF - must explicitly opt-in with GRAPH_AMI_AUTO_UPDATE=true
+          CRON="${{ github.event.schedule }}"
+
+          # Docker cleanup: Sunday at 6am UTC - always enabled, runs for both envs
+          if [[ "$CRON" == "0 6 * * 0" ]]; then
+            echo "task=docker-cleanup" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "environment=both" >> $GITHUB_OUTPUT
+            echo "Weekly Docker cleanup triggered"
+            exit 0
+          fi
+
+          # AMI update: 1st/2nd of month - requires GRAPH_AMI_AUTO_UPDATE=true
+          echo "task=update-ami" >> $GITHUB_OUTPUT
           SETTING="${{ vars.GRAPH_AMI_AUTO_UPDATE }}"
           if [ "$SETTING" == "true" ]; then
-            # Determine environment based on which cron triggered
             # 1st of month = staging, 2nd of month = prod
-            CRON="${{ github.event.schedule }}"
             if [[ "$CRON" == "0 7 1 "* ]]; then
               ENV="staging"
             else
@@ -87,8 +100,8 @@ jobs:
     # always() needed because schedule-gate is skipped for workflow_dispatch
     if: |
       always() &&
-      (github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'schedule' && needs.schedule-gate.outputs.should_run == 'true'))
+      ((github.event_name == 'workflow_dispatch' && inputs.task == 'update-ami') ||
+      (github.event_name == 'schedule' && needs.schedule-gate.outputs.should_run == 'true' && needs.schedule-gate.outputs.task == 'update-ami'))
     needs: [schedule-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -264,15 +277,175 @@ jobs:
           gh run watch ${{ steps.trigger.outputs.run_id }} --exit-status
 
   # =============================================================================
+  # Task: docker-cleanup
+  # Removes unused Docker images, containers, and volumes to free disk space.
+  # Runs weekly on schedule, or can be triggered manually.
+  # =============================================================================
+  docker-cleanup:
+    if: |
+      always() &&
+      ((github.event_name == 'workflow_dispatch' && inputs.task == 'docker-cleanup') ||
+      (github.event_name == 'schedule' && needs.schedule-gate.outputs.should_run == 'true' && needs.schedule-gate.outputs.task == 'docker-cleanup'))
+    needs: [schedule-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      instances_cleaned: ${{ steps.cleanup.outputs.instances_cleaned }}
+      space_freed: ${{ steps.cleanup.outputs.space_freed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Discover Graph Instances
+        id: instances
+        run: |
+          # For manual runs, use selected environment; for scheduled, do both
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENVS="${{ inputs.environment }}"
+          else
+            ENVS="staging prod"
+          fi
+
+          INSTANCE_IDS=""
+          for ENV in $ENVS; do
+            echo "🔍 Discovering instances for $ENV..."
+
+            # Find LadybugDB writer instances by tag
+            WRITERS=$(aws ec2 describe-instances \
+              --filters \
+                "Name=tag:Environment,Values=$ENV" \
+                "Name=tag:LadybugRole,Values=writer" \
+                "Name=instance-state-name,Values=running" \
+              --query "Reservations[].Instances[].InstanceId" \
+              --output text 2>/dev/null || echo "")
+
+            # Find shared-writer instances
+            SHARED_WRITERS=$(aws ec2 describe-instances \
+              --filters \
+                "Name=tag:Environment,Values=$ENV" \
+                "Name=tag:LadybugRole,Values=shared-writer" \
+                "Name=instance-state-name,Values=running" \
+              --query "Reservations[].Instances[].InstanceId" \
+              --output text 2>/dev/null || echo "")
+
+            for ID in $WRITERS $SHARED_WRITERS; do
+              if [ -n "$ID" ]; then
+                INSTANCE_IDS="$INSTANCE_IDS $ID"
+                echo "  Found: $ID"
+              fi
+            done
+          done
+
+          INSTANCE_IDS=$(echo $INSTANCE_IDS | xargs)
+          echo "instance_ids=$INSTANCE_IDS" >> $GITHUB_OUTPUT
+          echo "📋 Total instances to clean: $(echo $INSTANCE_IDS | wc -w | xargs)"
+
+      - name: Run Docker Cleanup
+        id: cleanup
+        run: |
+          INSTANCE_IDS="${{ steps.instances.outputs.instance_ids }}"
+          if [ -z "$INSTANCE_IDS" ]; then
+            echo "::warning::No instances to clean"
+            echo "instances_cleaned=0" >> $GITHUB_OUTPUT
+            echo "space_freed=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CLEANED=0
+          TOTAL_FREED=""
+
+          for INSTANCE_ID in $INSTANCE_IDS; do
+            echo "🧹 Cleaning Docker on $INSTANCE_ID..."
+
+            # Send cleanup command
+            COMMAND_ID=$(aws ssm send-command \
+              --instance-ids "$INSTANCE_ID" \
+              --document-name "AWS-RunShellScript" \
+              --parameters commands="docker system prune -af --volumes 2>&1 && df -h / | tail -1" \
+              --query 'Command.CommandId' \
+              --output text)
+
+            echo "  Command ID: $COMMAND_ID"
+
+            # Wait for completion
+            if aws ssm wait command-executed \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" 2>/dev/null; then
+
+              OUTPUT=$(aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$INSTANCE_ID" \
+                --query 'StandardOutputContent' \
+                --output text 2>/dev/null || echo "")
+
+              echo "  ✅ Cleanup completed"
+              # Extract disk usage line
+              DISK_LINE=$(echo "$OUTPUT" | grep -E '^/dev/' | tail -1 || echo "")
+              if [ -n "$DISK_LINE" ]; then
+                echo "  Disk: $DISK_LINE"
+                TOTAL_FREED="$TOTAL_FREED\n$INSTANCE_ID: $DISK_LINE"
+              fi
+              CLEANED=$((CLEANED + 1))
+            else
+              echo "  ⚠️ Cleanup timed out or failed"
+              ERROR=$(aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$INSTANCE_ID" \
+                --query 'StandardErrorContent' \
+                --output text 2>/dev/null || echo "Unknown error")
+              echo "  Error: $ERROR"
+            fi
+          done
+
+          echo "instances_cleaned=$CLEANED" >> $GITHUB_OUTPUT
+          echo "space_freed<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$TOTAL_FREED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  # =============================================================================
   # Summary (runs for all tasks)
   # =============================================================================
   summary:
-    needs: [ami-get-latest, ami-update-variable, ami-trigger-deploy]
+    needs: [ami-get-latest, ami-update-variable, ami-trigger-deploy, docker-cleanup]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Generate Docker Cleanup Summary
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.task == 'docker-cleanup') ||
+          (github.event_name == 'schedule' && needs.docker-cleanup.result != 'skipped')
+        run: |
+          echo "## Graph Maintenance Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Task: Docker Cleanup 🧹" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Instances Cleaned | ${{ needs.docker-cleanup.outputs.instances_cleaned || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Result | ${{ needs.docker-cleanup.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ needs.docker-cleanup.outputs.space_freed }}" ]; then
+            echo "### Disk Status After Cleanup" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "${{ needs.docker-cleanup.outputs.space_freed }}" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "Triggered by: **${{ github.actor }}** at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+
       - name: Generate AMI Update Summary
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.task == 'update-ami') ||
+          (github.event_name == 'schedule' && needs.ami-get-latest.result != 'skipped')
         run: |
           echo "## Graph Maintenance Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
