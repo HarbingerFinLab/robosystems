@@ -595,7 +595,6 @@ jobs:
       api_stack_name: ${{ needs.stack-config.outputs.api_stack }}
       # Dagster refresh (ECS daemon + webserver)
       dagster_refresh_enabled: ${{ vars.DAGSTER_REFRESH_ECS_PROD || 'true' }}
-      dagster_stack_name: ${{ needs.stack-config.outputs.dagster_stack }}
     secrets:
       ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN || github.token }}
 

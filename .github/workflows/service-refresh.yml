@@ -83,11 +83,6 @@ on:
         required: false
         type: string
         default: "true"
-      dagster_stack_name:
-        description: "Dagster CloudFormation stack name"
-        required: false
-        type: string
-        default: ""
     secrets:
       ACTIONS_TOKEN:
         description: "GitHub token for checkout (optional - falls back to github.token)"
