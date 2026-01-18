@@ -11,10 +11,6 @@ on:
         required: true
         type: string
         description: Runner configuration JSON
-      aws_account_id:
-        required: true
-        type: string
-        description: AWS account ID
       aws_region:
         required: true
         type: string

@@ -45,11 +45,6 @@ on:
         required: false
         type: string
         default: '["ubuntu-latest"]'
-      aws_account_id:
-        description: "AWS Account ID (optional - fetched at runtime if not provided)"
-        required: false
-        type: string
-        default: ""
       aws_region:
         description: "AWS region"
         required: false
@@ -272,13 +267,9 @@ jobs:
       - name: Get AWS Account ID
         id: aws-account
         run: |
-          # Use provided account ID or fetch from STS
-          if [ -n "${{ inputs.aws_account_id }}" ]; then
-            echo "account_id=${{ inputs.aws_account_id }}" >> $GITHUB_OUTPUT
-          else
-            ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-            echo "account_id=${ACCOUNT_ID}" >> $GITHUB_OUTPUT
-          fi
+          # Fetch from STS - validates OIDC connection is working
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "account_id=${ACCOUNT_ID}" >> $GITHUB_OUTPUT
 
       - name: Update Graph Container
         uses: ./.github/actions/refresh-graph-containers

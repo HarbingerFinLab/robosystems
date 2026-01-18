@@ -416,7 +416,6 @@ jobs:
       # GHA Runner Configuration
       runner_config: ${{ needs.runner.outputs.runner_config }}
       # AWS Configuration
-      aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       vpc_id: ${{ needs.deploy-vpc.outputs.vpc_id }}
       subnet_ids: ${{ needs.deploy-vpc.outputs.private_subnet_ids }}
@@ -603,7 +602,6 @@ jobs:
     with:
       environment: ${{ vars.ENVIRONMENT_STAGING || 'staging' }}
       runner_config: ${{ needs.runner.outputs.runner_config }}
-      aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
       aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       # Graph refresh (EC2 containers via SSM)
       graph_refresh_enabled: ${{ vars.GRAPH_UPDATE_CONTAINERS_STAGING || 'true' }}
