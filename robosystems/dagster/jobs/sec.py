@@ -24,12 +24,16 @@ Workflow:
   just sec-load NVDA 2024      # Chains all steps for single company
 """
 
+from datetime import UTC, datetime
+
 from dagster import (
   AssetSelection,
   DefaultScheduleStatus,
   RunConfig,
+  RunRequest,
   ScheduleDefinition,
   define_asset_job,
+  schedule,
 )
 
 from robosystems.config import env
@@ -129,21 +133,63 @@ SEC_MATERIALIZE_SCHEDULE_STATUS = (
 )
 
 
-sec_daily_download_schedule = ScheduleDefinition(
-  name="sec_daily_download",
-  description="Daily SEC download at 6 AM UTC via EFTS. Sensor triggers parallel processing.",
+def _get_quarters_to_scan() -> list[str]:
+  """Get quarters to scan for daily download.
+
+  Always scans current quarter. Also scans previous quarter during the first
+  few days of a new quarter to catch late-indexed filings (filings submitted
+  on the last day of a quarter may not appear in EFTS until the next day).
+
+  Returns:
+      List of partition keys like ["2025-Q1"] or ["2025-Q1", "2024-Q4"]
+  """
+  now = datetime.now(UTC)
+  current_quarter = (now.month - 1) // 3 + 1
+  current_year = now.year
+
+  quarters = [f"{current_year}-Q{current_quarter}"]
+
+  # Quarter start months: Q1=Jan, Q2=Apr, Q3=Jul, Q4=Oct
+  quarter_start_month = (current_quarter - 1) * 3 + 1
+
+  # Scan previous quarter for first 3 days of new quarter
+  # This catches filings submitted late on quarter-end that get indexed next day
+  if now.month == quarter_start_month and now.day <= 3:
+    if current_quarter == 1:
+      quarters.append(f"{current_year - 1}-Q4")
+    else:
+      quarters.append(f"{current_year}-Q{current_quarter - 1}")
+
+  return quarters
+
+
+@schedule(
   job=sec_download_job,
   cron_schedule="0 6 * * *",
   default_status=SEC_DOWNLOAD_SCHEDULE_STATUS,
-  run_config=RunConfig(
-    ops={
-      "sec_raw_filings": SECDownloadConfig(
-        skip_existing=True,
-        form_types=["10-K", "10-Q"],
-      ),
-    }
-  ),
 )
+def sec_daily_download_schedule(context):
+  """Daily SEC download at 6 AM UTC via EFTS.
+
+  Scans current quarter + previous quarter to catch late filings
+  at quarter boundaries. Sensor triggers parallel processing.
+  """
+  quarters = _get_quarters_to_scan()
+  context.log.info(f"Scheduling SEC download for quarters: {quarters}")
+
+  for partition_key in quarters:
+    yield RunRequest(
+      run_key=f"sec-download-{partition_key}-{context.scheduled_execution_time.strftime('%Y%m%d')}",
+      partition_key=partition_key,
+      run_config=RunConfig(
+        ops={
+          "sec_raw_filings": SECDownloadConfig(
+            skip_existing=True,
+            form_types=["10-K", "10-Q"],
+          ),
+        }
+      ),
+    )
 
 
 sec_nightly_materialize_schedule = ScheduleDefinition(
