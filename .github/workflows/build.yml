@@ -202,7 +202,9 @@ jobs:
           mask-password: "true"
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@master
+        env:
+          TRIVY_PLATFORM: linux/arm64
         with:
           image-ref: ${{ needs.docker.outputs.image }}
           format: 'sarif'
@@ -320,7 +322,9 @@ jobs:
           mask-password: "true"
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@master
+        env:
+          TRIVY_PLATFORM: linux/arm64
         with:
           image-ref: ${{ needs.lambda.outputs.lambda_image }}
           format: 'sarif'
