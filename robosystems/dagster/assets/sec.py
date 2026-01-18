@@ -26,7 +26,7 @@ Architecture Notes:
 - Graph materialization always rebuilds from all processed data
 """
 
-from datetime import UTC
+from datetime import UTC, datetime
 
 from dagster import (
   AssetExecutionContext,
@@ -230,9 +230,18 @@ def _get_sec_metadata(
   return sec_filer, sec_report
 
 
-# Quarter partitions for SEC data (2019-Q1 through 2025-Q4)
+# Start year for SEC data loading (XBRL filings began 2009)
+SEC_START_YEAR = 2009
+
+# Quarter partitions for SEC data (SEC_START_YEAR-Q1 through current year Q4)
 # EFTS has a 10k result limit per query; quarterly partitions typically return 5-7k filings
-SEC_QUARTERS = [f"{year}-Q{q}" for year in range(2019, 2026) for q in range(1, 5)]
+# Dynamically includes current year so no manual updates needed on Jan 1
+_current_year = datetime.now(UTC).year
+SEC_QUARTERS = [
+  f"{year}-Q{q}"
+  for year in range(SEC_START_YEAR, _current_year + 1)
+  for q in range(1, 5)
+]
 sec_quarter_partitions = StaticPartitionsDefinition(SEC_QUARTERS)
 
 # Dynamic partitions for individual filing processing
@@ -390,6 +399,7 @@ def sec_raw_filings(
         "submissions_fetched": 0,
         "downloaded": 0,
         "skipped": 0,
+        "no_xbrl": 0,
         "failed": 0,
         "dry_run": config.dry_run,
       }
@@ -569,6 +579,7 @@ def sec_raw_filings(
         "submissions_fetched": submissions_fetched,
         "downloaded": 0,
         "skipped": 0,
+        "no_xbrl": 0,
         "failed": 0,
         "dry_run": True,
       }
@@ -581,11 +592,13 @@ def sec_raw_filings(
     semaphore = asyncio.Semaphore(config.download_concurrency)
 
     downloaded = 0
-    skipped = 0
+    skipped = 0  # Already exists in S3
+    no_xbrl = 0  # Filing exists but no XBRL ZIP available
+    no_xbrl_filings: list[str] = []  # Track which filings lack XBRL
     failed = 0
 
     async def download_filing(hit: EFTSHit) -> bool:
-      nonlocal downloaded, skipped, failed
+      nonlocal downloaded, skipped, no_xbrl, failed
 
       # Construct S3 key
       s3_key = get_raw_key(
@@ -616,7 +629,8 @@ def sec_raw_filings(
               async with session.get(url) as response:
                 if response.status == 404:
                   # No XBRL ZIP for this filing
-                  skipped += 1
+                  no_xbrl += 1
+                  no_xbrl_filings.append(f"{hit.cik}/{hit.accession_number}")
                   return True
 
                 if response.status == 429:
@@ -666,14 +680,23 @@ def sec_raw_filings(
         context.log.info(
           f"Progress: {completed}/{len(hits)} "
           f"({stats.requests_per_second} req/s, {stats.mb_per_second} MB/s) "
-          f"[{downloaded} new, {skipped} skipped, {failed} failed]"
+          f"[{downloaded} new, {skipped} cached, {no_xbrl} no XBRL, {failed} failed]"
         )
+
+    # Log filings without XBRL (limit to first 20 to avoid log spam)
+    if no_xbrl_filings:
+      sample = no_xbrl_filings[:20]
+      context.log.info(
+        f"Filings without XBRL ZIP ({no_xbrl} total): {sample}"
+        + (f" ... and {no_xbrl - 20} more" if no_xbrl > 20 else "")
+      )
 
     return {
       "filings_found": len(hits),
       "submissions_fetched": submissions_fetched,
       "downloaded": downloaded,
       "skipped": skipped,
+      "no_xbrl": no_xbrl,
       "failed": failed,
       "dry_run": False,
     }
@@ -688,7 +711,8 @@ def sec_raw_filings(
   else:
     context.log.info(
       f"Download complete for {year}-Q{quarter}: "
-      f"{result['downloaded']} downloaded, {result['skipped']} skipped, {result['failed']} failed"
+      f"{result['downloaded']} downloaded, {result['skipped']} cached, "
+      f"{result.get('no_xbrl', 0)} no XBRL, {result['failed']} failed"
     )
 
   return MaterializeResult(
@@ -698,7 +722,8 @@ def sec_raw_filings(
       "filings_found": result["filings_found"],
       "submissions_fetched": result.get("submissions_fetched", 0),
       "filings_downloaded": result["downloaded"],
-      "filings_skipped": result["skipped"],
+      "filings_cached": result["skipped"],
+      "filings_no_xbrl": result.get("no_xbrl", 0),
       "errors": result["failed"],
       "dry_run": result.get("dry_run", False),
     }
