@@ -191,7 +191,6 @@ cf-lint template:
 
 # Lint all CloudFormation templates
 cf-lint-all:
-    @echo "Linting all CloudFormation templates..."
     @uv run cfn-lint -t cloudformation/*.yaml
 
 
