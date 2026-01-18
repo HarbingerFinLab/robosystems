@@ -367,7 +367,7 @@ jobs:
             COMMAND_ID=$(aws ssm send-command \
               --instance-ids "$INSTANCE_ID" \
               --document-name "AWS-RunShellScript" \
-              --parameters commands="docker system prune -af --volumes 2>&1 && df -h / | tail -1" \
+              --parameters commands="docker system prune -af 2>&1 && df -h / | tail -1" \
               --query 'Command.CommandId' \
               --output text)
 
