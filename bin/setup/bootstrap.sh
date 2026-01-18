@@ -108,6 +108,8 @@ setup_direnv() {
 
             # Check if region is set, update if missing
             if ! grep -q "^export AWS_REGION=" "$target_file" 2>/dev/null; then
+                # Ensure file ends with newline before appending
+                [[ -s "$target_file" && $(tail -c1 "$target_file") != $'\n' ]] && echo "" >> "$target_file"
                 echo "export AWS_REGION=${expected_region}" >> "$target_file"
                 print_info "Added AWS_REGION to existing .envrc"
                 ENVRC_NEEDS_ACTIVATION=true
