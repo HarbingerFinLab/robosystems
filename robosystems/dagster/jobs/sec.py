@@ -71,11 +71,11 @@ sec_download_job = define_asset_job(
 # NOTE: This job only includes sec_process_filing. Discovery is done by
 # the sec_processing_sensor which registers partitions and triggers runs.
 #
-# Uses Fargate Spot (90/10 fallback) for cost optimization:
+# Uses Fargate Spot (100% Spot, On-Demand fallback only if unavailable):
 # - Short-running jobs (1-5 min) minimize interruption risk
 # - Retry policy on asset handles Spot interruptions
 # - Sensor re-triggers failed partitions automatically
-# - ~60% cost savings at scale (10,000+ filings)
+# - ~70% cost savings at scale (10,000+ filings)
 sec_process_job = define_asset_job(
   name="sec_process",
   description="Process SEC filings to parquet. One partition per filing.",
@@ -87,12 +87,12 @@ sec_process_job = define_asset_job(
     "phase": "process",
     # Low priority (-1) so other jobs run first when queue is full
     "dagster/priority": "-1",
-    # ECS Spot capacity provider override (default is On-Demand)
-    # 90% Spot / 10% On-Demand fallback for cost optimization
+    # ECS Spot capacity provider override
+    # 99% Spot with 1% On-Demand fallback for guaranteed availability
     "ecs/run_task_kwargs": {
       "capacityProviderStrategy": [
-        {"capacityProvider": "FARGATE_SPOT", "weight": 90},
-        {"capacityProvider": "FARGATE", "weight": 10},
+        {"capacityProvider": "FARGATE_SPOT", "weight": 99, "base": 0},
+        {"capacityProvider": "FARGATE", "weight": 1, "base": 0},
       ],
     },
   },

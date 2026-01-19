@@ -520,9 +520,14 @@ class GraphClient(BaseGraphClient):
 
             # Check for stale connection (no heartbeat for 2 minutes)
             if current_time - last_heartbeat > 120:
-              logger.warning(
-                "No heartbeat received for 2 minutes, connection may be stale"
+              logger.error(
+                f"No heartbeat received for 2 minutes, connection stale for task {task_id}"
               )
+              return {
+                "status": "failed",
+                "task_id": task_id,
+                "error": "SSE connection stale - no heartbeat for 2 minutes",
+              }
 
       # If we exit the loop without a completion event
       return {

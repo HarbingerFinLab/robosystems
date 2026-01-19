@@ -164,12 +164,12 @@ class XBRLDuckDBGraphProcessor:
 
       # Step 3: Create DuckDB staging tables via Graph API
       logger.info("Step 3: Creating DuckDB staging tables via Graph API...")
-      await self._create_duckdb_tables(tables_info, client)
+      successful_tables = await self._create_duckdb_tables(tables_info, client)
 
-      # Step 4: Trigger ingestion
+      # Step 4: Trigger ingestion (only for successfully created tables)
       logger.info("Step 4: Triggering graph ingestion...")
       ingestion_results = await self._trigger_ingestion(
-        list(tables_info.keys()), client, rebuild=False
+        successful_tables, client, rebuild=False
       )
 
       duration = time.time() - start_time
@@ -297,7 +297,7 @@ class XBRLDuckDBGraphProcessor:
     self,
     tables_info: dict[str, list[str]],
     graph_client,
-  ) -> None:
+  ) -> list[str]:
     """
     Create DuckDB staging tables for each discovered table via Graph API.
 
@@ -305,10 +305,22 @@ class XBRLDuckDBGraphProcessor:
     of S3 files without HTTP timeout issues. Tables are created sequentially
     to avoid overwhelming the instance.
 
+    Continues processing remaining tables on failure to maximize debugging info
+    at scale. Failed tables are logged and reported at the end.
+
     Args:
         tables_info: Dictionary mapping table names to S3 keys
         graph_client: Graph API client instance
+
+    Returns:
+        List of successfully created table names
+
+    Raises:
+        RuntimeError: If any tables failed to create (after attempting all)
     """
+    successful_tables: list[str] = []
+    failed_tables: list[tuple[str, str]] = []
+
     for table_name, s3_keys in tables_info.items():
       logger.info(f"Creating DuckDB table: {table_name} ({len(s3_keys)} files)")
 
@@ -329,7 +341,8 @@ class XBRLDuckDBGraphProcessor:
         if response.get("status") == "failed":
           error = response.get("error", "Unknown error")
           logger.error(f"Failed to create DuckDB table {table_name}: {error}")
-          raise RuntimeError(f"Table creation failed: {error}")
+          failed_tables.append((table_name, error))
+          continue
 
         # Extract result from SSE response
         result = response.get("result", {})
@@ -339,10 +352,29 @@ class XBRLDuckDBGraphProcessor:
           f"Created DuckDB table {table_name} in {duration:.1f}s "
           f"(from {len(s3_keys)} files)"
         )
+        successful_tables.append(table_name)
 
       except Exception as e:
         logger.error(f"Failed to create DuckDB table {table_name}: {e}")
-        raise
+        failed_tables.append((table_name, str(e)))
+        continue
+
+    # Report summary
+    if failed_tables:
+      logger.warning(
+        f"DuckDB table creation: {len(successful_tables)} succeeded, "
+        f"{len(failed_tables)} failed"
+      )
+      for table_name, error in failed_tables:
+        logger.error(f"  Failed: {table_name} - {error}")
+
+      # Raise after attempting all tables so we can see partial results
+      raise RuntimeError(
+        f"Failed to create {len(failed_tables)} DuckDB tables: "
+        f"{[t[0] for t in failed_tables]}"
+      )
+
+    return successful_tables
 
   async def _trigger_ingestion(
     self,

@@ -12,6 +12,7 @@ The table creation follows the same pattern as copy/backup/restore endpoints:
 3. Client monitors via SSE until complete
 """
 
+import asyncio
 import json
 import time
 import uuid
@@ -136,10 +137,16 @@ staging_task_manager = StagingTaskManager()
 async def perform_table_creation(
   task_id: str,
   request: TableCreateRequest,
+  timeout_seconds: int = 1800,  # 30 minutes default
 ) -> None:
   """
   Perform the actual table creation in the background.
   Updates task status in Redis for SSE monitoring.
+
+  Args:
+      task_id: Unique task identifier for SSE tracking
+      request: Table creation request with graph_id, table_name, s3_pattern
+      timeout_seconds: Maximum time allowed for table creation (default 30 min)
   """
   try:
     # Update task status to running
@@ -153,9 +160,19 @@ async def perform_table_creation(
       f"[Task {task_id}] Starting table creation: {request.table_name} for graph {request.graph_id}"
     )
 
-    # Perform the actual table creation (this can take minutes for large file sets)
+    # Perform the actual table creation with timeout
+    # Run sync function in thread pool and wrap with timeout
     start_time = time.time()
-    result = table_manager.create_table(request)
+    try:
+      result = await asyncio.wait_for(
+        asyncio.to_thread(table_manager.create_table, request),
+        timeout=timeout_seconds,
+      )
+    except TimeoutError:
+      raise TimeoutError(
+        f"Table creation timed out after {timeout_seconds}s "
+        f"({timeout_seconds // 60} minutes)"
+      )
     duration = time.time() - start_time
 
     # Update task as completed
