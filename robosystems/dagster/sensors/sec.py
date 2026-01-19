@@ -201,10 +201,14 @@ def sec_processing_sensor(context: SensorEvaluationContext):
         next_year = years[year_idx + 1]
         context.log.info(f"Completed year {current_scan_year}, moving to {next_year}")
         context.update_cursor(json.dumps({"year": next_year, "last_key": None}))
-        yield SkipReason(f"Completed year {current_scan_year}, continuing with {next_year}")
+        yield SkipReason(
+          f"Completed year {current_scan_year}, continuing with {next_year}"
+        )
       else:
         # Completed all years - reset to start fresh
-        context.log.info(f"Completed full scan of years {years[0]} to {years[-1]}, restarting")
+        context.log.info(
+          f"Completed full scan of years {years[0]} to {years[-1]}, restarting"
+        )
         context.update_cursor(json.dumps({"year": None, "last_key": None}))
         yield SkipReason("Completed full scan, restarting from newest year")
       return

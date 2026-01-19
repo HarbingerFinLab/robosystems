@@ -9,8 +9,7 @@ Pipeline stages (run independently via separate jobs):
    - sec_process_filing - Process single filing to parquet (dynamic partitions)
 
 3. MATERIALIZE (sec_materialize job):
-   - sec_duckdb_staging - Discover processed parquet files
-   - sec_graph_materialized - Materialize to LadybugDB graph
+   - sec_graph_materialized - Stage to DuckDB and materialize to LadybugDB graph
 
 The pipeline leverages existing adapters:
 - robosystems.adapters.sec.client.EFTSClient - EFTS discovery API
@@ -33,7 +32,6 @@ from dagster import (
   Config,
   DynamicPartitionsDefinition,
   MaterializeResult,
-  MetadataValue,
   RetryPolicy,
   StaticPartitionsDefinition,
   asset,
@@ -285,12 +283,6 @@ class SECSingleFilingConfig(Config):
 
   # No config needed - partition key contains all info
   pass
-
-
-class SECDuckDBConfig(Config):
-  """Configuration for DuckDB staging - discovers all processed files."""
-
-  pass  # No config needed - always discovers all years
 
 
 class SECMaterializeConfig(Config):
@@ -909,85 +901,20 @@ def sec_process_filing(
 
 
 # ============================================================================
-# Staging & Materialization Assets
+# Graph Materialization Asset
 # ============================================================================
 
 
 @asset(
   group_name="sec_pipeline",
-  description="Stage processed parquet files and create DuckDB tables",
+  description="Materialize SEC data from S3 to LadybugDB graph via DuckDB staging",
   compute_kind="load",
   # No deps - triggered manually via sec_materialize job after processing completes
   metadata={
     "pipeline": "sec",
-    "stage": "staging",
-  },
-  # NOT partitioned - runs once to discover all processed parquet files
-)
-def sec_duckdb_staging(
-  context: AssetExecutionContext,
-  config: SECDuckDBConfig,
-) -> MaterializeResult:
-  """Stage processed parquet files and create DuckDB tables.
-
-  Discovers all processed parquet files across years and creates
-  DuckDB virtual tables pointing to S3 data.
-
-  Note: This is a synchronous wrapper around the async processor.
-
-  Returns:
-      MaterializeResult with staging statistics
-  """
-  import asyncio
-
-  from robosystems.adapters.sec import XBRLDuckDBGraphProcessor
-
-  context.log.info("Creating DuckDB staging tables from processed files")
-
-  # Use the existing processor's discovery and staging logic
-  # source_prefix matches the DataSourceType.SEC prefix in shared_data.py
-  processor = XBRLDuckDBGraphProcessor(graph_id="sec", source_prefix="sec")
-
-  async def run_staging():
-    # Discover all processed files (no year filter - ingest everything)
-    context.log.info("Discovering processed parquet files...")
-    tables_info = await processor._discover_processed_files(year=None)
-    return tables_info
-
-  # Run async code in sync context
-  tables_info = asyncio.run(run_staging())
-
-  if not tables_info:
-    context.log.warning("No processed files found")
-    return MaterializeResult(
-      metadata={
-        "status": "no_data",
-        "reason": "No processed files found",
-      }
-    )
-
-  total_files = sum(len(files) for files in tables_info.values())
-  context.log.info(f"Found {len(tables_info)} tables with {total_files} files")
-
-  return MaterializeResult(
-    metadata={
-      "tables_discovered": len(tables_info),
-      "total_files": total_files,
-      "table_names": MetadataValue.json(list(tables_info.keys())),
-    }
-  )
-
-
-@asset(
-  group_name="sec_pipeline",
-  description="Materialize staged data to LadybugDB graph",
-  compute_kind="load",
-  deps=[sec_duckdb_staging],
-  metadata={
-    "pipeline": "sec",
     "stage": "materialization",
   },
-  # NOT partitioned - runs once after staging complete
+  # NOT partitioned - runs once to process all data
   # Single-threaded graph ingestion (LadybugDB constraint)
 )
 def sec_graph_materialized(

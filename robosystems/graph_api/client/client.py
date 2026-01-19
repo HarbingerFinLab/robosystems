@@ -1114,33 +1114,65 @@ class GraphClient(BaseGraphClient):
     table_name: str,
     s3_pattern: str | list[str],
     file_id_map: dict[str, str] | None = None,
+    timeout: int = 1800,  # 30 minutes default for large file sets
   ) -> dict[str, Any]:
     """
-    Create a DuckDB staging table (external view over S3).
+    Create a DuckDB staging table from S3 files with SSE monitoring.
+
+    This method starts a background table creation task and monitors it via SSE
+    until completion. This allows creating tables from thousands of S3 files
+    without HTTP timeout issues.
 
     Args:
         graph_id: Graph database identifier
         table_name: Name for the table
         s3_pattern: S3 glob pattern (string) or list of S3 file paths
         file_id_map: Optional map of s3_key -> file_id for provenance tracking
+        timeout: Maximum time to wait for completion (seconds), default 30 min
 
     Returns:
-        Table creation response with status and metadata
+        Dict with creation results:
+        - status: "completed" or "failed"
+        - result: Table creation details (if successful)
+        - duration_seconds: Total time taken
+        - error: Error message (if failed)
     """
-    json_data = {
-      "graph_id": graph_id,
-      "table_name": table_name,
-      "s3_pattern": s3_pattern,
-    }
-    if file_id_map is not None:
-      json_data["file_id_map"] = file_id_map
+    try:
+      # Step 1: Start the background table creation task
+      file_count = len(s3_pattern) if isinstance(s3_pattern, list) else 1
+      logger.info(
+        f"Starting table creation for {table_name} ({file_count} {'files' if file_count > 1 else 'pattern'})"
+      )
 
-    response = await self._request(
-      "POST",
-      f"/databases/{graph_id}/tables",
-      json_data=json_data,
-    )
-    return response.json()
+      json_data: dict[str, Any] = {
+        "graph_id": graph_id,
+        "table_name": table_name,
+        "s3_pattern": s3_pattern,
+      }
+      if file_id_map is not None:
+        json_data["file_id_map"] = file_id_map
+
+      start_response = await self._request(
+        "POST",
+        f"/databases/{graph_id}/tables",
+        json_data=json_data,
+        timeout=30.0,  # Short timeout for starting the task
+      )
+
+      start_data = start_response.json()
+      task_id = start_data["task_id"]
+      sse_path = start_data["sse_url"]
+
+      logger.info(f"Started staging task {task_id}, monitoring via SSE...")
+
+      # Step 2: Monitor via SSE
+      return await self._monitor_task_sse(
+        sse_path=sse_path, task_id=task_id, task_type="staging", timeout=timeout
+      )
+
+    except Exception as e:
+      logger.error(f"Failed to start/monitor table creation: {e}")
+      return {"status": "failed", "error": str(e)}
 
   async def list_tables(self, graph_id: str) -> list[dict[str, Any]]:
     """

@@ -1,7 +1,7 @@
 """Dagster assets for data pipelines.
 
 Assets represent data artifacts that are produced and consumed:
-- SEC pipeline assets (extraction, processing, staging, materialization)
+- SEC pipeline assets (extraction, processing, materialization)
 - QuickBooks pipeline assets (sync, transform, materialize)
 - Plaid pipeline assets (sync, transform, materialize)
 - Staged files (observable source for direct API staging)
@@ -26,13 +26,11 @@ from robosystems.dagster.assets.quickbooks import (
 from robosystems.dagster.assets.sec import (
   # Config classes
   SECDownloadConfig,
-  SECDuckDBConfig,
   SECMaterializeConfig,
   SECSingleFilingConfig,
-  # Assets - staging and materialization
-  sec_duckdb_staging,
   # Assets - dynamic partition processing
   sec_filing_partitions,
+  # Assets - materialization
   sec_graph_materialized,
   sec_process_filing,
   # Partitions (quarterly to stay under EFTS 10k limit)
@@ -43,7 +41,6 @@ from robosystems.dagster.assets.staged_files import staged_files_source
 
 __all__ = [
   "SECDownloadConfig",
-  "SECDuckDBConfig",
   "SECMaterializeConfig",
   "SECSingleFilingConfig",
   "graph_provisioning_source",
@@ -55,7 +52,6 @@ __all__ = [
   "qb_graph_data",
   "qb_transactions",
   "repository_provisioning_source",
-  "sec_duckdb_staging",
   "sec_filing_partitions",
   "sec_graph_materialized",
   "sec_process_filing",

@@ -27,6 +27,7 @@ class TaskType(Enum):
   RESTORE = "restore"
   EXPORT = "export"
   MIGRATION = "migration"
+  STAGING = "staging"  # DuckDB table creation from S3
 
 
 class BackgroundIngestRequest(BaseModel):

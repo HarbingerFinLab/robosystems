@@ -301,8 +301,9 @@ class XBRLDuckDBGraphProcessor:
     """
     Create DuckDB staging tables for each discovered table via Graph API.
 
-    Passes the actual list of S3 file paths instead of wildcards to avoid
-    DuckDB prepared parameter issues.
+    Uses SSE monitoring to handle long-running table creation from thousands
+    of S3 files without HTTP timeout issues. Tables are created sequentially
+    to avoid overwhelming the instance.
 
     Args:
         tables_info: Dictionary mapping table names to S3 keys
@@ -316,17 +317,27 @@ class XBRLDuckDBGraphProcessor:
 
       try:
         # Use graph client to call Graph API's table creation endpoint
-        # Pass the list of files instead of a wildcard pattern
+        # Client uses SSE monitoring for long-running table creation
         response = await graph_client.create_table(
           graph_id=self.graph_id,
           table_name=table_name,
           s3_pattern=s3_files,  # Actually a list of files, not a pattern
+          timeout=1800,  # 30 minutes for large file sets
         )
 
+        # Handle SSE-based response format
+        if response.get("status") == "failed":
+          error = response.get("error", "Unknown error")
+          logger.error(f"Failed to create DuckDB table {table_name}: {error}")
+          raise RuntimeError(f"Table creation failed: {error}")
+
+        # Extract result from SSE response
+        result = response.get("result", {})
+        duration = response.get("duration_seconds", result.get("duration_seconds", 0))
+
         logger.info(
-          f"✓ Created DuckDB table {table_name}: "
-          f"{response.get('row_count', 0)} rows, {response.get('column_count', 0)} columns "
-          f"from {len(s3_keys)} files"
+          f"Created DuckDB table {table_name} in {duration:.1f}s "
+          f"(from {len(s3_keys)} files)"
         )
 
       except Exception as e:
