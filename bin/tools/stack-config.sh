@@ -19,9 +19,9 @@ COMPONENT=$2
 VARIANT=${3:-}
 OUTPUT=${4:-}
 
-# Map environment names
+# Map environment names (stacks.yml uses 'prod' and 'staging' keys)
 if [[ "$ENVIRONMENT" == "prod" ]] || [[ "$ENVIRONMENT" == "production" ]]; then
-  ENV_KEY="production"
+  ENV_KEY="prod"
 elif [[ "$ENVIRONMENT" == "staging" ]]; then
   ENV_KEY="staging"
 else

@@ -421,6 +421,7 @@ jobs:
       subnet_ids: ${{ needs.deploy-vpc.outputs.private_subnet_ids }}
       public_subnet_ids: ${{ needs.deploy-vpc.outputs.public_subnet_ids }}
       valkey_sg_id: ${{ needs.deploy-valkey.outputs.valkey_sg_id }}
+      valkey_url: ${{ needs.deploy-valkey.outputs.valkey_url }}
       ami_id: ${{ vars.GRAPH_AMI_ID_STAGING }}
       # Container Configuration
       ecr_image_tag: staging

@@ -39,6 +39,9 @@ Parameters:
   ValkeyClientSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
     Description: Security Group ID for Valkey/Redis client access (REQUIRED)
+  ValkeyUrl:
+    Type: String
+    Description: Valkey/Redis URL for cache connections (e.g., redis://endpoint:6379)
 
   # Instance Configuration
   AmiId:
@@ -514,6 +517,7 @@ Resources:
 
             # Export required environment variables for the setup script
             export ENVIRONMENT="${Environment}"
+            export VALKEY_URL="${ValkeyUrl}"
             export DEPLOYMENT_BUCKET="$DEPLOYMENT_BUCKET"
             # Export SHARED_REPOSITORIES for shared repository deployments
             [ "${WriterTier}" = "ladybug-shared" ] && [ -n "${SharedRepositories}" ] && export SHARED_REPOSITORIES="${SharedRepositories}"

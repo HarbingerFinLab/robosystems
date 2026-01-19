@@ -31,6 +31,10 @@ on:
         required: true
         type: string
         description: Security Group ID for Valkey/Redis client access
+      valkey_url:
+        required: true
+        type: string
+        description: Valkey ElastiCache endpoint URL (e.g., redis://endpoint:6379)
       # Container Configuration
       ecr_image_tag:
         required: true
@@ -394,6 +398,7 @@ jobs:
       ami_id: ${{ needs.resolve-ami.outputs.ami_id }}
       # Valkey Configuration
       valkey_sg_id: ${{ inputs.valkey_sg_id }}
+      valkey_url: ${{ inputs.valkey_url }}
       # Other Configuration
       ecr_image_tag: ${{ inputs.ecr_image_tag }}
       volume_detachment_topic_arn: ${{ inputs.volume_detachment_topic_arn }}
@@ -425,6 +430,7 @@ jobs:
       vpc_id: ${{ inputs.vpc_id }}
       subnet_ids: ${{ inputs.subnet_ids }}
       valkey_sg_id: ${{ inputs.valkey_sg_id }}
+      valkey_url: ${{ inputs.valkey_url }}
       # Auto Scaling Configuration
       min_instances: "${{ matrix.min_instances }}"
       max_instances: "${{ matrix.max_instances }}"
