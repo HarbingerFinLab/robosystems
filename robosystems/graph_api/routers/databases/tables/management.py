@@ -1,12 +1,34 @@
-from fastapi import APIRouter, Body, HTTPException, Path
+"""
+DuckDB table management endpoints with SSE support for long-running operations.
+
+This module provides:
+- Background table creation from S3 with SSE monitoring
+- Table listing, deletion, and file data management
+- Heartbeat events to prevent connection timeouts
+
+The table creation follows the same pattern as copy/backup/restore endpoints:
+1. Client POSTs to create table
+2. Server returns task_id + sse_url immediately
+3. Client monitors via SSE until complete
+"""
+
+import json
+import time
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+import redis.asyncio as redis_async
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Path
 from fastapi import status as http_status
 
+from robosystems.config.valkey_registry import ValkeyDatabase
 from robosystems.graph_api.core.duckdb.manager import (
   DuckDBTableManager,
   TableCreateRequest,
-  TableCreateResponse,
   TableInfo,
 )
+from robosystems.graph_api.models.tasks import TaskStatus
 from robosystems.logger import logger
 
 router = APIRouter(prefix="/databases/{graph_id}/tables")
@@ -14,25 +36,213 @@ router = APIRouter(prefix="/databases/{graph_id}/tables")
 table_manager = DuckDBTableManager()
 
 
-@router.post("", response_model=TableCreateResponse)
+class StagingTaskManager:
+  """Manages background staging tasks (S3 -> DuckDB table creation) and their status."""
+
+  def __init__(self):
+    self.tasks: dict[str, dict[str, Any]] = {}
+    self._redis_client = None
+
+  async def get_redis(self) -> redis_async.Redis:
+    """Get async Redis client for task storage."""
+    if not self._redis_client:
+      from robosystems.config.valkey_registry import create_async_redis_client
+
+      self._redis_client = create_async_redis_client(
+        ValkeyDatabase.LBUG_CACHE, decode_responses=True
+      )
+    return self._redis_client
+
+  async def create_task(
+    self,
+    graph_id: str,
+    table_name: str,
+    s3_pattern: str | list[str],
+    file_count: int = 0,
+  ) -> str:
+    """Create a new staging task."""
+    task_id = f"staging_{graph_id}_{table_name}_{uuid.uuid4().hex[:8]}"
+
+    task_data = {
+      "task_id": task_id,
+      "graph_id": graph_id,
+      "table_name": table_name,
+      "s3_pattern": s3_pattern
+      if isinstance(s3_pattern, str)
+      else f"{len(s3_pattern)} files",
+      "file_count": file_count,
+      "status": TaskStatus.PENDING,
+      "created_at": datetime.now(UTC).isoformat(),
+      "started_at": None,
+      "completed_at": None,
+      "progress_percent": 0,
+      "records_processed": 0,
+      "estimated_records": 0,
+      "last_heartbeat": time.time(),
+      "error": None,
+      "result": None,
+      "metadata": {
+        "table_name": table_name,
+        "graph_id": graph_id,
+      },
+    }
+
+    # Store in Redis with 24-hour TTL
+    redis_client = await self.get_redis()
+    await redis_client.setex(
+      f"lbug:task:{task_id}",
+      86400,  # 24 hours
+      json.dumps(task_data),
+    )
+
+    return task_id
+
+  async def update_task(self, task_id: str, **updates) -> None:
+    """Update task status."""
+    redis_client = await self.get_redis()
+
+    # Get existing task
+    task_json = await redis_client.get(f"lbug:task:{task_id}")
+    if not task_json:
+      raise ValueError(f"Task {task_id} not found")
+
+    task_data = json.loads(task_json)
+
+    # Update fields
+    task_data.update(updates)
+    task_data["last_heartbeat"] = time.time()
+
+    # Store back in Redis
+    await redis_client.setex(
+      f"lbug:task:{task_id}",
+      86400,  # 24 hours
+      json.dumps(task_data),
+    )
+
+  async def get_task(self, task_id: str) -> dict[str, Any] | None:
+    """Get task status."""
+    redis_client = await self.get_redis()
+    task_json = await redis_client.get(f"lbug:task:{task_id}")
+
+    if task_json:
+      return json.loads(task_json)
+    return None
+
+
+# Global staging task manager
+staging_task_manager = StagingTaskManager()
+
+
+async def perform_table_creation(
+  task_id: str,
+  request: TableCreateRequest,
+) -> None:
+  """
+  Perform the actual table creation in the background.
+  Updates task status in Redis for SSE monitoring.
+  """
+  try:
+    # Update task status to running
+    await staging_task_manager.update_task(
+      task_id,
+      status=TaskStatus.RUNNING,
+      started_at=datetime.now(UTC).isoformat(),
+    )
+
+    logger.info(
+      f"[Task {task_id}] Starting table creation: {request.table_name} for graph {request.graph_id}"
+    )
+
+    # Perform the actual table creation (this can take minutes for large file sets)
+    start_time = time.time()
+    result = table_manager.create_table(request)
+    duration = time.time() - start_time
+
+    # Update task as completed
+    await staging_task_manager.update_task(
+      task_id,
+      status=TaskStatus.COMPLETED,
+      completed_at=datetime.now(UTC).isoformat(),
+      progress_percent=100,
+      result={
+        "status": result.status,
+        "table_name": result.table_name,
+        "execution_time_ms": result.execution_time_ms,
+        "duration_seconds": duration,
+      },
+    )
+
+    logger.info(
+      f"[Task {task_id}] Completed: table {request.table_name} created in {duration:.2f}s"
+    )
+
+  except Exception as e:
+    logger.error(f"[Task {task_id}] Failed: {e}")
+
+    # Update task as failed
+    await staging_task_manager.update_task(
+      task_id,
+      status=TaskStatus.FAILED,
+      completed_at=datetime.now(UTC).isoformat(),
+      error=str(e),
+    )
+
+
+@router.post("")
 async def create_table(
+  background_tasks: BackgroundTasks,
   graph_id: str = Path(..., description="Graph database identifier"),
   request: TableCreateRequest = Body(...),
-) -> TableCreateResponse:
-  logger.info(
-    f"Creating table {request.table_name} for graph {graph_id} from {request.s3_pattern}"
-  )
+) -> dict[str, Any]:
+  """
+  Create a DuckDB staging table from S3 files with SSE monitoring.
 
+  This endpoint:
+  1. Creates a background task for table creation
+  2. Returns a task_id immediately
+  3. Client monitors progress via SSE endpoint
+
+  For small file sets, the task completes quickly.
+  For large file sets (thousands of files), it may take minutes.
+
+  Returns:
+      Dict with task_id and SSE monitoring URL
+  """
   request.graph_id = graph_id
 
-  try:
-    return table_manager.create_table(request)
-  except Exception as e:
-    logger.error(f"Failed to create table {request.table_name}: {e}")
-    raise HTTPException(
-      status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail=f"Failed to create table: {e!s}",
-    )
+  # Calculate file count for logging
+  file_count = len(request.s3_pattern) if isinstance(request.s3_pattern, list) else 1
+
+  logger.info(
+    f"Starting background table creation: {request.table_name} for graph {graph_id} "
+    f"({file_count} {'files' if file_count > 1 else 'pattern'})"
+  )
+
+  # Create task
+  task_id = await staging_task_manager.create_task(
+    graph_id=graph_id,
+    table_name=request.table_name,
+    s3_pattern=request.s3_pattern,
+    file_count=file_count,
+  )
+
+  # Add background task
+  background_tasks.add_task(
+    perform_table_creation,
+    task_id=task_id,
+    request=request,
+  )
+
+  logger.info(
+    f"Started background staging task {task_id} for table {request.table_name}"
+  )
+
+  return {
+    "task_id": task_id,
+    "status": "started",
+    "sse_url": f"/tasks/{task_id}/monitor",
+    "message": f"Background table creation started for {request.table_name}",
+  }
 
 
 @router.get("", response_model=list[TableInfo])

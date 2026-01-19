@@ -169,6 +169,12 @@ def _get_progress_message(task_type: TaskType, task: dict[str, Any]) -> str:
   elif task_type == TaskType.RESTORE:
     database = task.get("metadata", {}).get("database", "database")
     return f"Restoring {database}..."
+  elif task_type == TaskType.STAGING:
+    table_name = task.get("metadata", {}).get("table_name", "table")
+    file_count = task.get("file_count", 0)
+    if file_count > 0:
+      return f"Staging {table_name} from {file_count} files..."
+    return f"Staging {table_name}..."
   else:
     return f"Processing {task_type.value} task..."
 
@@ -195,6 +201,12 @@ def _get_completion_message(task_type: TaskType, task: dict[str, Any]) -> str:
   elif task_type == TaskType.RESTORE:
     database = metadata.get("database", "database")
     return f"Successfully restored {database}"
+  elif task_type == TaskType.STAGING:
+    table_name = metadata.get("table_name", "table")
+    duration = result.get("duration_seconds", 0)
+    if duration > 0:
+      return f"Successfully staged {table_name} in {duration:.1f}s"
+    return f"Successfully staged {table_name}"
   else:
     return f"Successfully completed {task_type.value} task"
 
@@ -212,6 +224,9 @@ def _get_failure_message(task_type: TaskType, task: dict[str, Any]) -> str:
   elif task_type == TaskType.RESTORE:
     database = metadata.get("database", "database")
     return f"Failed to restore {database}"
+  elif task_type == TaskType.STAGING:
+    table_name = metadata.get("table_name", "table")
+    return f"Failed to stage {table_name}"
   else:
     return f"Failed to complete {task_type.value} task"
 

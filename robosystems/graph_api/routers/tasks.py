@@ -22,6 +22,9 @@ from robosystems.graph_api.core.task_sse import TaskType, generate_task_sse_even
 from robosystems.graph_api.routers.databases.copy import (
   task_manager as ingestion_task_manager,
 )
+from robosystems.graph_api.routers.databases.tables.management import (
+  staging_task_manager,
+)
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -38,6 +41,7 @@ class UnifiedTaskManager:
       "backup": backup_task_manager,
       "restore": restore_task_manager,
       "copy": ingestion_task_manager,  # Copy uses ingestion manager
+      "staging": staging_task_manager,  # DuckDB table creation from S3
     }
 
   async def get_redis(self) -> redis_async.Redis:
@@ -120,6 +124,8 @@ class UnifiedTaskManager:
       return TaskType.BACKUP
     elif task_id.startswith("restore"):
       return TaskType.RESTORE
+    elif task_id.startswith("staging"):
+      return TaskType.STAGING
     else:
       # Default to ingestion for unknown types
       return TaskType.INGESTION

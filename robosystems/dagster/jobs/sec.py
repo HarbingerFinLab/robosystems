@@ -12,8 +12,9 @@ Pipeline Architecture (3 phases, run independently):
     Parallel processing - one partition per filing.
 
   Phase 3 - Materialize:
-    sec_materialize_job: sec_duckdb_staging → sec_graph_materialized
-    Ingests all processed data to LadybugDB graph.
+    sec_materialize_job: sec_graph_materialized
+    Discovers processed files, stages to DuckDB, ingests to LadybugDB graph.
+    Uses SSE for progress monitoring on long-running operations.
 
 Workflow:
   just sec-download 10 2024    # Download top 10 companies (all 4 quarters)
@@ -39,7 +40,6 @@ from dagster import (
 from robosystems.config import env
 from robosystems.dagster.assets import (
   SECDownloadConfig,
-  sec_duckdb_staging,
   sec_filing_partitions,
   sec_graph_materialized,
   sec_process_filing,
@@ -103,11 +103,8 @@ sec_process_job = define_asset_job(
 # Phase 3: Materialize (unpartitioned)
 sec_materialize_job = define_asset_job(
   name="sec_materialize",
-  description="Materialize SEC graph from processed parquet files.",
-  selection=AssetSelection.assets(
-    sec_duckdb_staging,
-    sec_graph_materialized,
-  ),
+  description="Materialize SEC graph from processed parquet files via DuckDB staging.",
+  selection=AssetSelection.assets(sec_graph_materialized),
   tags={"pipeline": "sec", "phase": "materialize"},
 )
 

@@ -98,8 +98,7 @@ class TestListRawFilesForYear:
     mock_paginator.paginate.return_value = [
       {
         "Contents": [
-          {"Key": f"sec/year=2024/320193/0000320193-24-{i:06d}.zip"}
-          for i in range(600)
+          {"Key": f"sec/year=2024/320193/0000320193-24-{i:06d}.zip"} for i in range(600)
         ]
       }
     ]
@@ -342,4 +341,6 @@ class TestSecProcessingSensor:
 
     # Should return SkipReason about completing full scan
     assert len(result) == 1
-    assert "Completed full scan" in str(result[0]) or "restarting" in str(result[0]).lower()
+    assert (
+      "Completed full scan" in str(result[0]) or "restarting" in str(result[0]).lower()
+    )
