@@ -188,7 +188,6 @@ class SECPipeline:
       # Always rebuilds graph from scratch - incremental not yet supported
       config = {
         "ops": {
-          "sec_duckdb_staging": {"config": {}},
           "sec_graph_materialized": {
             "config": {"graph_id": "sec", "ignore_errors": True}
           },

@@ -31,8 +31,7 @@ from robosystems.dagster.assets import (
   qb_graph_data,
   qb_transactions,
   repository_provisioning_source,
-  # SEC pipeline - staging and materialization
-  sec_duckdb_staging,
+  # SEC pipeline - materialization
   sec_graph_materialized,
   # SEC pipeline - dynamic partition processing
   sec_process_filing,
@@ -209,8 +208,7 @@ all_assets = [
   sec_raw_filings,
   # SEC pipeline - dynamic partition processing (sensor handles discovery)
   sec_process_filing,
-  # SEC pipeline - staging and materialization
-  sec_duckdb_staging,
+  # SEC pipeline - materialization (includes DuckDB staging internally)
   sec_graph_materialized,
   # QuickBooks pipeline assets
   qb_accounts,

@@ -401,7 +401,7 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                # Explicitly allow only these three frontend repos (hardcoded for security)
+                # Explicitly allow only these frontend repos (hardcoded for security)
                 # If a repo isn't used, it simply won't assume this role
                 token.actions.githubusercontent.com:sub:
                   # robosystems-app
@@ -657,6 +657,55 @@ Resources:
                   - cloudwatch:TagResource
                   - cloudwatch:UntagResource
                   - cloudwatch:ListTagsForResource
+                Resource: "*"
+
+              # App Runner - for serverless container deployments
+              - Sid: AppRunner
+                Effect: Allow
+                Action:
+                  - apprunner:CreateService
+                  - apprunner:DeleteService
+                  - apprunner:UpdateService
+                  - apprunner:DescribeService
+                  - apprunner:ListServices
+                  - apprunner:ListOperations
+                  - apprunner:CreateAutoScalingConfiguration
+                  - apprunner:DeleteAutoScalingConfiguration
+                  - apprunner:DescribeAutoScalingConfiguration
+                  - apprunner:ListAutoScalingConfigurations
+                  - apprunner:TagResource
+                  - apprunner:UntagResource
+                  - apprunner:ListTagsForResource
+                Resource: "*"
+
+              # Lambda - for CloudFront edge functions
+              - Sid: Lambda
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:DeleteFunction
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:PublishVersion
+                  - lambda:CreateAlias
+                  - lambda:UpdateAlias
+                  - lambda:DeleteAlias
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:InvokeFunction
+                  - lambda:TagResource
+                  - lambda:UntagResource
+                  - lambda:ListTags
+                  - lambda:EnableReplication
+                Resource:
+                  - !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*-WwwRedirect*
+                  - !Sub arn:aws:lambda:*:${AWS::AccountId}:function:*-www-redirect*
+              - Sid: LambdaGlobal
+                Effect: Allow
+                Action:
+                  - lambda:ListFunctions
                 Resource: "*"
       Tags:
         - Key: Name
