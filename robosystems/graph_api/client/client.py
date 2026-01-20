@@ -504,7 +504,11 @@ class GraphClient(BaseGraphClient):
 
             elif sse_event.event == "failed":
               error = data.get("error", "Unknown error")
-              logger.error(f"❌ Ingestion failed for {table_name}: {error}")
+              # "No files found" is expected for optional tables - don't log as error
+              if "No files found" in error:
+                logger.info(f"No files found for {table_name} (optional table)")
+              else:
+                logger.error(f"❌ Ingestion failed for {table_name}: {error}")
 
               return {"status": "failed", "task_id": task_id, "error": error}
 

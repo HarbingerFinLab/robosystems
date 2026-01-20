@@ -185,12 +185,14 @@ async def perform_table_creation(
         "status": result.status,
         "table_name": result.table_name,
         "execution_time_ms": result.execution_time_ms,
+        "row_count": result.row_count,
         "duration_seconds": duration,
       },
     )
 
     logger.info(
-      f"[Task {task_id}] Completed: table {request.table_name} created in {duration:.2f}s"
+      f"[Task {task_id}] Completed: table {request.table_name} created "
+      f"({result.row_count:,} rows) in {duration:.2f}s"
     )
 
   except Exception as e:
@@ -255,12 +257,14 @@ async def perform_table_insert(
         "status": result.status,
         "table_name": result.table_name,
         "execution_time_ms": result.execution_time_ms,
+        "row_count": result.row_count,
         "duration_seconds": duration,
       },
     )
 
     logger.info(
-      f"[Task {task_id}] Completed: inserted into {request.table_name} in {duration:.2f}s"
+      f"[Task {task_id}] Completed: inserted into {request.table_name} "
+      f"({result.row_count:,} rows total) in {duration:.2f}s"
     )
 
   except Exception as e:

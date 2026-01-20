@@ -318,11 +318,15 @@ class DuckDBTableManager:
             # Use parameter binding for pattern (prevents SQL injection)
             conn.execute(sql, [request.s3_pattern])
 
+        # Count rows in the created table
+        count_result = conn.execute(f"SELECT COUNT(*) FROM {quoted_table}").fetchone()
+        row_count = count_result[0] if count_result else 0
+
         execution_time_ms = (time.time() - start_time) * 1000
 
         logger.info(
           f"Created external table {request.table_name} for graph {request.graph_id} "
-          f"in {execution_time_ms:.2f}ms ({file_count} {'files' if is_list else ''})"
+          f"in {execution_time_ms:.2f}ms ({file_count} {'files' if is_list else ''}, {row_count:,} rows)"
         )
 
         return TableCreateResponse(
@@ -330,6 +334,7 @@ class DuckDBTableManager:
           graph_id=request.graph_id,
           table_name=request.table_name,
           execution_time_ms=execution_time_ms,
+          row_count=row_count,
         )
 
     except Exception as e:
@@ -413,11 +418,15 @@ class DuckDBTableManager:
           """
           conn.execute(sql, [request.s3_pattern])
 
+        # Count rows in the table after insert
+        count_result = conn.execute(f"SELECT COUNT(*) FROM {quoted_table}").fetchone()
+        row_count = count_result[0] if count_result else 0
+
         execution_time_ms = (time.time() - start_time) * 1000
 
         logger.info(
           f"Inserted into table {request.table_name} for graph {request.graph_id} "
-          f"in {execution_time_ms:.2f}ms ({file_count} {'files' if is_list else ''})"
+          f"in {execution_time_ms:.2f}ms ({file_count} {'files' if is_list else ''}, {row_count:,} rows total)"
         )
 
         return TableCreateResponse(
@@ -425,6 +434,7 @@ class DuckDBTableManager:
           graph_id=request.graph_id,
           table_name=request.table_name,
           execution_time_ms=execution_time_ms,
+          row_count=row_count,
         )
 
     except Exception as e:

@@ -989,7 +989,7 @@ def sec_duckdb_staged(
 
   context.log.info(f"Staging SEC data to DuckDB for graph: {config.graph_id}")
 
-  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id, source_prefix="sec")
+  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id)
 
   async def run_staging():
     # Ensure the SEC repository metadata exists in PostgreSQL
@@ -1086,7 +1086,7 @@ def sec_duckdb_incremental_staged(
     f"filing_date filter: {config.filing_date or 'none'}"
   )
 
-  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id, source_prefix="sec")
+  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id)
 
   async def run_incremental_staging():
     result = await processor.stage_to_duckdb(
@@ -1168,7 +1168,7 @@ def sec_graph_materialized(
 
   context.log.info(f"Materializing graph from DuckDB staging: {config.graph_id}")
 
-  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id, source_prefix="sec")
+  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id)
 
   async def run_materialization():
     result = await processor.materialize_from_duckdb()

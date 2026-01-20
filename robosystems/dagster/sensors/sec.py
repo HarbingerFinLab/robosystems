@@ -315,9 +315,15 @@ def _list_s3_filed_dates(s3_client, bucket: str, prefix: str) -> list[str]:
       for prefix_info in page["CommonPrefixes"]:
         prefix_path = prefix_info["Prefix"]
         if "filed=" in prefix_path:
-          # Extract date from "sec/processed/filed=2026-01-15/"
-          filed_part = prefix_path.split("filed=")[1].rstrip("/")
-          filed_dates.append(filed_part)
+          try:
+            # Extract date from "sec/processed/filed=2026-01-15/"
+            filed_part = prefix_path.split("filed=")[1].rstrip("/")
+            # Validate date format (YYYY-MM-DD)
+            datetime.strptime(filed_part, "%Y-%m-%d")
+            filed_dates.append(filed_part)
+          except (IndexError, ValueError):
+            # Skip malformed partitions
+            continue
 
   filed_dates.sort()
   return filed_dates

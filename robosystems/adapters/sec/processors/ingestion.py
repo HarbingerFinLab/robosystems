@@ -701,6 +701,7 @@ class XBRLDuckDBGraphProcessor:
     successful_tables: list[str] = []
     table_infos: dict[str, TableInfo] = {}
     failed_tables: list[tuple[str, str]] = []
+    skipped_tables: list[str] = []
 
     # Build filed= pattern for glob
     # - filing_date: exact date (filed=2025-01-15)
@@ -735,6 +736,18 @@ class XBRLDuckDBGraphProcessor:
         # Handle SSE-based response format
         if response.get("status") == "failed":
           error = response.get("error", "Unknown error")
+          # "No files found" is expected for optional tables (e.g., ENTITY_EVOLVED_FROM)
+          if "No files found" in error:
+            logger.info(f"Skipped {table_name}: no files found (optional table)")
+            skipped_tables.append(table_name)
+            successful_tables.append(table_name)
+            table_infos[table_name] = TableInfo(
+              name=table_name,
+              row_count=0,
+              file_count=0,
+              staged_at=datetime.now(UTC).isoformat(),
+            )
+            continue
           logger.error(f"Failed to create DuckDB table {table_name}: {error}")
           failed_tables.append((table_name, error))
           continue
@@ -744,10 +757,7 @@ class XBRLDuckDBGraphProcessor:
         duration = response.get("duration_seconds", result.get("duration_seconds", 0))
         row_count = result.get("row_count", 0)
 
-        logger.info(
-          f"Created DuckDB table {table_name} in {duration:.1f}s "
-          f"(glob pattern, {row_count} rows)"
-        )
+        logger.info(f"Staged {table_name}: {row_count:,} rows in {duration:.1f}s")
 
         successful_tables.append(table_name)
         table_infos[table_name] = TableInfo(
@@ -758,11 +768,29 @@ class XBRLDuckDBGraphProcessor:
         )
 
       except Exception as e:
+        error_str = str(e)
+        # Also handle "No files found" from exceptions
+        if "No files found" in error_str:
+          logger.info(f"Skipped {table_name}: no files found (optional table)")
+          skipped_tables.append(table_name)
+          successful_tables.append(table_name)
+          table_infos[table_name] = TableInfo(
+            name=table_name,
+            row_count=0,
+            file_count=0,
+            staged_at=datetime.now(UTC).isoformat(),
+          )
+          continue
         logger.error(f"Failed to create DuckDB table {table_name}: {e}")
-        failed_tables.append((table_name, str(e)))
+        failed_tables.append((table_name, error_str))
         continue
 
     # Report summary
+    if skipped_tables:
+      logger.info(
+        f"Skipped {len(skipped_tables)} tables with no files: {skipped_tables}"
+      )
+
     if failed_tables:
       logger.warning(
         f"DuckDB table creation: {len(successful_tables)} succeeded, "
@@ -807,6 +835,7 @@ class XBRLDuckDBGraphProcessor:
     successful_tables: list[str] = []
     table_infos: dict[str, TableInfo] = {}
     failed_tables: list[tuple[str, str]] = []
+    skipped_tables: list[str] = []
 
     # Build filed= pattern for glob
     if filing_date:
@@ -837,6 +866,18 @@ class XBRLDuckDBGraphProcessor:
         # Handle SSE-based response format
         if response.get("status") == "failed":
           error = response.get("error", "Unknown error")
+          # "No files found" is expected for optional tables
+          if "No files found" in error:
+            logger.info(f"Skipped {table_name}: no files found (optional table)")
+            skipped_tables.append(table_name)
+            successful_tables.append(table_name)
+            table_infos[table_name] = TableInfo(
+              name=table_name,
+              row_count=0,
+              file_count=0,
+              staged_at=datetime.now(UTC).isoformat(),
+            )
+            continue
           logger.error(f"Failed to insert into DuckDB table {table_name}: {error}")
           failed_tables.append((table_name, error))
           continue
@@ -844,25 +885,44 @@ class XBRLDuckDBGraphProcessor:
         # Extract result from SSE response
         result = response.get("result", {})
         duration = response.get("duration_seconds", result.get("duration_seconds", 0))
+        row_count = result.get("row_count", 0)
 
         logger.info(
-          f"Inserted into DuckDB table {table_name} in {duration:.1f}s (incremental)"
+          f"Appended to {table_name}: {row_count:,} rows total in {duration:.1f}s"
         )
 
         successful_tables.append(table_name)
         table_infos[table_name] = TableInfo(
           name=table_name,
-          row_count=0,  # Don't track row count for incremental
+          row_count=row_count,
           file_count=0,  # Unknown with glob pattern
           staged_at=datetime.now(UTC).isoformat(),
         )
 
       except Exception as e:
+        error_str = str(e)
+        # Also handle "No files found" from exceptions
+        if "No files found" in error_str:
+          logger.info(f"Skipped {table_name}: no files found (optional table)")
+          skipped_tables.append(table_name)
+          successful_tables.append(table_name)
+          table_infos[table_name] = TableInfo(
+            name=table_name,
+            row_count=0,
+            file_count=0,
+            staged_at=datetime.now(UTC).isoformat(),
+          )
+          continue
         logger.error(f"Failed to insert into DuckDB table {table_name}: {e}")
-        failed_tables.append((table_name, str(e)))
+        failed_tables.append((table_name, error_str))
         continue
 
     # Report summary
+    if skipped_tables:
+      logger.info(
+        f"Skipped {len(skipped_tables)} tables with no files: {skipped_tables}"
+      )
+
     if failed_tables:
       logger.warning(
         f"DuckDB table insert: {len(successful_tables)} succeeded, "
