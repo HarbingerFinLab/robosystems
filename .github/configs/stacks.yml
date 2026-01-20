@@ -11,7 +11,7 @@
 #   - RoboSystemsWorkerDefaultStaging
 #   - RoboSystemsGraphLadybugStandardProd
 
-production:
+prod:
   # Core Infrastructure (Shared VPC)
   vpc:
     stack_name: RoboSystemsVPC # Shared between prod and staging
