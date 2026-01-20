@@ -346,7 +346,7 @@ production:
 
       # Health check configuration
       health_check:
-        path: /status
+        path: /health
         interval: 30
         timeout: 10
         healthy_threshold: 2
@@ -629,7 +629,7 @@ staging:
 
       # Health check configuration
       health_check:
-        path: /status
+        path: /health
         interval: 30
         timeout: 10
         healthy_threshold: 2
