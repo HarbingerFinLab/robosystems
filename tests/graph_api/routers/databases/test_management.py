@@ -245,7 +245,9 @@ class TestDatabaseManagementRouter:
     data = response.json()
     assert data["status"] == "success"
     assert "kg1a2b3c4d5" in data["message"]
-    mock_service.db_manager.delete_database.assert_called_once_with("kg1a2b3c4d5")
+    mock_service.db_manager.delete_database.assert_called_once_with(
+      "kg1a2b3c4d5", preserve_duckdb=False
+    )
 
   def test_delete_database_on_readonly_node(self, client):
     """Test that database deletion fails on read-only nodes."""

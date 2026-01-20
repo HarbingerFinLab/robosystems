@@ -398,8 +398,9 @@ class XBRLDuckDBGraphProcessor:
 
     db = SessionFactory()
     try:
-      await client.delete_database(self.graph_id)
-      logger.info(f"Deleted LadybugDB database: {self.graph_id}")
+      # Preserve DuckDB staging so we can retry materialization without re-staging
+      await client.delete_database(self.graph_id, preserve_duckdb=True)
+      logger.info(f"Deleted LadybugDB database: {self.graph_id} (DuckDB staging preserved)")
 
       schema = GraphSchema.get_active_schema(self.graph_id, db)
       if not schema:
