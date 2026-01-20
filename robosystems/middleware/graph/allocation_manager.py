@@ -1,5 +1,5 @@
 """
-LadybugDB Allocation Manager V2 - DynamoDB-based
+LadybugDB Allocation Manager - DynamoDB-based
 
 Manages database allocation across LadybugDB writer instances using DynamoDB for persistent state.
 This replaces the in-memory registry with a reliable, distributed storage solution.
@@ -220,9 +220,7 @@ class LadybugAllocationManager:
       self.autoscaling = boto3.client("autoscaling", region_name=region)
       self.cloudwatch = boto3.client("cloudwatch", region_name=region)
 
-    logger.info(
-      f"Initialized LadybugAllocationManagerV2 for environment: {environment}"
-    )
+    logger.info(f"Initialized LadybugAllocationManager for environment: {environment}")
 
   def get_tier_config(self, tier: GraphTier) -> dict[str, Any]:
     """
@@ -617,6 +615,51 @@ class LadybugAllocationManager:
         return None
 
       item = response["Item"]
+      instance_id = item["instance_id"]
+
+      # Get private_ip - first try graph-registry, then fall back to instance-registry
+      # This handles cases where graph-registry entry is stale after instance replacement
+      private_ip = item.get("private_ip")
+      availability_zone = item.get("availability_zone", "unknown")
+
+      if not private_ip:
+        # Look up private_ip from instance-registry (source of truth for instance info)
+        instance_response = self.instance_table.get_item(
+          Key={"instance_id": instance_id}
+        )
+        if "Item" in instance_response:
+          instance_item = instance_response["Item"]
+          private_ip = instance_item.get("private_ip")
+          availability_zone = instance_item.get("availability_zone", availability_zone)
+          logger.info(
+            f"Resolved private_ip for {graph_id} from instance-registry: {private_ip}"
+          )
+
+          # Update graph-registry with current instance info for faster future lookups
+          try:
+            self.graph_table.update_item(
+              Key={"graph_id": graph_id},
+              UpdateExpression="SET private_ip = :ip, availability_zone = :az, last_accessed = :time",
+              ExpressionAttributeValues={
+                ":ip": private_ip,
+                ":az": availability_zone,
+                ":time": datetime.now(UTC).isoformat(),
+              },
+            )
+          except ClientError as update_error:
+            logger.warning(
+              f"Failed to update graph-registry with instance info: {update_error}"
+            )
+        else:
+          logger.warning(
+            f"Instance {instance_id} not found in instance-registry for graph {graph_id}"
+          )
+
+      if not private_ip:
+        logger.error(
+          f"Cannot resolve private_ip for graph {graph_id} - not in graph-registry or instance-registry"
+        )
+        return None
 
       # Update last accessed time
       self.graph_table.update_item(
@@ -627,9 +670,9 @@ class LadybugAllocationManager:
 
       return DatabaseLocation(
         graph_id=graph_id,
-        instance_id=item["instance_id"],
-        private_ip=item["private_ip"],
-        availability_zone=item.get("availability_zone", "unknown"),
+        instance_id=instance_id,
+        private_ip=private_ip,
+        availability_zone=availability_zone,
         created_at=datetime.fromisoformat(item["created_at"]),
         status=DatabaseStatus(item.get("status", "active")),
         backend_type=item.get("backend_type", "ladybug"),
@@ -1237,33 +1280,95 @@ class LadybugAllocationManager:
     Add a database to the volume registry for the given instance.
 
     This ensures the volume registry tracks which databases exist on each volume,
-    which is critical for proper volume reattachment during instance replacement.
+    which is CRITICAL for proper volume reattachment during instance replacement.
+    Without this, ASG refreshes will lose track of databases on the volume.
     """
     # Skip in dev/test environments where volume registry may not exist
     if self.environment in ["dev", "test"]:
       logger.debug(f"Skipping volume registry update in {self.environment} environment")
       return
 
-    try:
-      # Find the volume attached to this instance
-      response = self.volume_table.scan(
-        FilterExpression="instance_id = :iid AND #status = :status",
-        ExpressionAttributeNames={"#status": "status"},
-        ExpressionAttributeValues={
-          ":iid": instance_id,
-          ":status": "attached",
-        },
-      )
+    logger.info(
+      f"Updating volume registry: adding database {graph_id} for instance {instance_id}"
+    )
 
-      items = response.get("Items", [])
-      if not items:
+    try:
+      # Find the volume attached to this instance using paginated scan
+      all_items = []
+      last_evaluated_key = None
+
+      while True:
+        scan_params = {
+          "FilterExpression": "instance_id = :iid AND #status = :status",
+          "ExpressionAttributeNames": {"#status": "status"},
+          "ExpressionAttributeValues": {
+            ":iid": instance_id,
+            ":status": "attached",
+          },
+        }
+
+        if last_evaluated_key:
+          scan_params["ExclusiveStartKey"] = last_evaluated_key
+
+        response = self.volume_table.scan(**scan_params)
+        all_items.extend(response.get("Items", []))
+
+        last_evaluated_key = response.get("LastEvaluatedKey")
+        if not last_evaluated_key:
+          break
+
+      if not all_items:
+        # Try alternative: look up volume from instance registry
         logger.warning(
-          f"No attached volume found for instance {instance_id} - "
-          f"cannot update volume registry for database {graph_id}"
+          f"No attached volume found via scan for instance {instance_id}, "
+          f"trying instance registry lookup"
+        )
+
+        # Check instance registry for volume info
+        try:
+          instance_response = self.instance_table.get_item(
+            Key={"instance_id": instance_id}
+          )
+          if "Item" in instance_response:
+            instance_item = instance_response["Item"]
+            # The instance might have volume info cached
+            logger.info(
+              f"Instance {instance_id} found in instance registry, "
+              f"AZ: {instance_item.get('availability_zone')}, tier: {instance_item.get('tier')}"
+            )
+
+            # Try to find volume by AZ and tier
+            az = instance_item.get("availability_zone")
+            tier = instance_item.get("tier")
+            if az and tier:
+              vol_response = self.volume_table.scan(
+                FilterExpression="availability_zone = :az AND tier = :tier AND #status = :status",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={
+                  ":az": az,
+                  ":tier": tier,
+                  ":status": "attached",
+                },
+              )
+              vol_items = vol_response.get("Items", [])
+              if vol_items:
+                all_items = vol_items
+                logger.info(
+                  f"Found volume {vol_items[0]['volume_id']} via AZ/tier lookup for instance {instance_id}"
+                )
+        except Exception as lookup_error:
+          logger.warning(f"Instance registry lookup failed: {lookup_error}")
+
+      if not all_items:
+        logger.error(
+          f"CRITICAL: No attached volume found for instance {instance_id} - "
+          f"cannot update volume registry for database {graph_id}. "
+          f"This will cause database loss on ASG refresh!"
         )
         return
 
-      volume_id = items[0]["volume_id"]
+      volume_id = all_items[0]["volume_id"]
+      logger.info(f"Found volume {volume_id} for instance {instance_id}")
 
       # Use atomic list_append to avoid lost updates from concurrent writes
       # ConditionExpression prevents duplicates; ConditionalCheckFailedException means already exists
@@ -1279,19 +1384,23 @@ class LadybugAllocationManager:
             ":timestamp": datetime.now(UTC).isoformat(),
           },
         )
-        logger.info(f"Added database {graph_id} to volume {volume_id} registry")
+        logger.info(
+          f"Successfully added database {graph_id} to volume {volume_id} registry"
+        )
       except ClientError as e:
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-          logger.debug(f"Database {graph_id} already in volume {volume_id} registry")
+          logger.info(
+            f"Database {graph_id} already in volume {volume_id} registry (no update needed)"
+          )
         else:
           raise
 
     except ClientError as e:
       logger.error(
-        f"Failed to update volume registry for database {graph_id} "
-        f"on instance {instance_id}: {e}"
+        f"CRITICAL: Failed to update volume registry for database {graph_id} "
+        f"on instance {instance_id}: {e}. This will cause database loss on ASG refresh!"
       )
-      # Don't fail the allocation - volume registry is supplementary
+      # Note: We don't fail the allocation, but this is a critical issue that needs attention
 
   async def _update_volume_registry_remove_database(
     self, instance_id: str, graph_id: str

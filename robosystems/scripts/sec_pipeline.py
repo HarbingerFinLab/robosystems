@@ -58,6 +58,8 @@ from robosystems.logger import logger
 
 # Top companies by market cap (as of 2024)
 # Used when --count is specified without --tickers
+# Note: Only US companies with SEC filings (no foreign ADRs like TSM)
+# LocalStack limits S3 listings to ~1000 files, so capped at 15 companies for local dev
 TOP_COMPANIES_BY_MARKET_CAP = [
   "AAPL",  # Apple - Tech
   "MSFT",  # Microsoft - Tech
@@ -67,17 +69,12 @@ TOP_COMPANIES_BY_MARKET_CAP = [
   "META",  # Meta - Tech
   "BRK-B",  # Berkshire Hathaway - Finance
   "LLY",  # Eli Lilly - Pharma
-  "TSM",  # TSMC - Semiconductors
   "AVGO",  # Broadcom - Tech
   "JPM",  # JPMorgan - Finance
   "WMT",  # Walmart - Retail
   "V",  # Visa - Finance
   "XOM",  # Exxon - Energy
   "UNH",  # UnitedHealth - Healthcare
-  "MA",  # Mastercard - Finance
-  "JNJ",  # Johnson & Johnson - Pharma
-  "PG",  # Procter & Gamble - Consumer
-  "HD",  # Home Depot - Retail
   "COST",  # Costco - Retail
 ]
 
@@ -129,6 +126,13 @@ def get_top_companies(count: int, use_sec_api: bool = False) -> list[str]:
       return tickers
     except Exception as e:
       logger.warning(f"Failed to fetch from SEC API: {e}, using hardcoded list")
+
+  available = len(TOP_COMPANIES_BY_MARKET_CAP)
+  if count > available:
+    logger.warning(
+      f"Requested {count} companies but only {available} available in hardcoded list. "
+      f"Use --tickers to specify additional companies."
+    )
   return TOP_COMPANIES_BY_MARKET_CAP[:count]
 
 
