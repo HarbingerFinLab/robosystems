@@ -32,5 +32,5 @@ sleep 10 && just logs api &
 After starting, verify with:
 ```bash
 curl http://localhost:8000/health
-curl http://localhost:8001/status
+curl http://localhost:8001/health
 ```

@@ -81,10 +81,10 @@ graph_api/
 │   ├── databases/
 │   │   ├── management.py     # Create/delete databases
 │   │   ├── query.py          # Cypher query execution
-│   │   ├── ingest.py         # S3 bulk copy operations
+│   │   ├── copy.py           # S3 bulk copy operations
 │   │   ├── tables/           # DuckDB staging table management
 │   │   │   ├── management.py # Create/list staging tables
-│   │   │   ├── ingest.py     # Parquet file ingestion to tables
+│   │   │   ├── materialize.py # DuckDB → LadybugDB materialization
 │   │   │   └── query.py      # DuckDB SQL queries on tables
 │   │   ├── schema.py         # Schema management
 │   │   ├── metrics.py        # Database metrics
@@ -195,7 +195,7 @@ Tracks all LadybugDB instances across the infrastructure:
 ```python
 {
     "instance_id": "i-1234567890",      # EC2 instance ID
-    "cluster_tier": "standard",         # Actual tier from deployment config
+    "cluster_tier": "ladybug-standard", # Actual tier from deployment config
     "private_ip": "10.0.1.100",
     "status": "healthy",                # initializing|healthy|unhealthy
     "database_count": 5,                # Current databases
@@ -228,7 +228,7 @@ Manages EBS volume persistence:
     "volume_id": "vol-0123456789",      # EBS volume ID
     "instance_id": "i-1234567890",
     "database_id": "kg1a2b3c4d5",
-    "tier": "standard",
+    "tier": "ladybug-standard",
     "size_gb": 100,
     "status": "attached"                # available|attached|expanding
 }
@@ -266,7 +266,7 @@ docker run -d \
   -p 8001:8001 \
   -v /data/lbug-dbs:/data/lbug-dbs \
   -e LBUG_NODE_TYPE=writer \
-  -e WRITER_TIER=standard \
+  -e CLUSTER_TIER=ladybug-standard \
   -e GRAPH_API_KEY=${GRAPH_API_KEY} \
   ${ECR_URI}:${ECR_IMAGE_TAG} \
   /app/bin/entrypoint.sh
@@ -407,10 +407,10 @@ Note: Table name is specified in the SQL query, not the path.
 Supports streaming via Accept: application/x-ndjson or text/event-stream headers.
 ```
 
-**Ingest Table to Graph:**
+**Materialize Table to Graph:**
 
 ```http
-POST /databases/{graph_id}/tables/{table_name}/ingest
+POST /databases/{graph_id}/tables/{table_name}/materialize
 Authorization: X-Graph-API-Key: {api_key}
 Content-Type: application/json
 
@@ -427,7 +427,7 @@ Response: {
   "execution_time_ms": 2340.8
 }
 
-Note: This performs direct DuckDB → LadybugDB ingestion via database extensions.
+Note: This performs direct DuckDB → LadybugDB materialization via database extensions.
 Use rebuild=true to regenerate the graph database from scratch (safe operation).
 ```
 
@@ -448,11 +448,11 @@ Response: {
 #### Health Check
 
 ```http
-GET /status
+GET /health
 Response: {
   "status": "healthy",
   "node_type": "writer",
-  "tier": "standard",
+  "tier": "ladybug-standard",
   "databases": 5,
   "max_databases": 10,
   "memory_usage_mb": 2048,
@@ -466,7 +466,7 @@ Response: {
 GET /info
 Response: {
   "instance_id": "i-1234567890",
-  "cluster_tier": "standard",
+  "cluster_tier": "ladybug-standard",
   "available_capacity": 5,
   "active_connections": 15,
   "queue_depth": 3
@@ -562,7 +562,7 @@ GRAPH_BACKEND_TYPE=ladybug                 # ladybug|neo4j_community|neo4j_enter
 
 # Node Configuration (LadybugDB Backend)
 LBUG_NODE_TYPE=writer                    # writer|shared_master
-WRITER_TIER=standard                     # standard|large|xlarge|shared
+CLUSTER_TIER=ladybug-standard            # ladybug-standard|ladybug-large|ladybug-xlarge|ladybug-shared
 LBUG_DATABASE_PATH=/data/lbug-dbs       # Storage location
 LBUG_PORT=8001                           # API port (8001 for LadybugDB, 8002 for Neo4j)
 
@@ -658,10 +658,10 @@ X-Graph-API-Key: graph_api_64_character_random_string
 
 ```bash
 # System health
-curl http://ladybug-writer:8001/status
+curl http://ladybug-writer:8001/health
 
-# Database health
-curl http://ladybug-writer:8001/status/databases
+# Node information
+curl http://ladybug-writer:8001/info
 
 # Detailed metrics
 curl http://ladybug-writer:8001/metrics
@@ -683,7 +683,7 @@ curl http://ladybug-writer:8001/metrics
   "timestamp": "2024-01-01T00:00:00Z",
   "level": "INFO",
   "node_type": "writer",
-  "tier": "standard",
+  "tier": "ladybug-standard",
   "instance_id": "i-1234567890",
   "graph_id": "kg1a2b3c4d5",
   "operation": "query",
@@ -717,7 +717,7 @@ docker run -d \
   -p 8001:8001 \
   -v lbug_data:/data/lbug-dbs \
   -e LBUG_NODE_TYPE=writer \
-  -e WRITER_TIER=standard \
+  -e CLUSTER_TIER=ladybug-standard \
   robosystems-api:latest \
   python -m robosystems.graph_api
 ```
@@ -827,11 +827,11 @@ curl -X POST http://localhost:8001/databases/test_db/query \
 ### Debugging Commands
 
 ```bash
-# Check instance status (replace 'standard' with your actual tier: standard|large|xlarge)
+# Check instance status (replace 'ladybug-standard' with your tier)
 aws dynamodb scan \
   --table-name robosystems-graph-prod-instance-registry \
   --filter-expression "cluster_tier = :tier" \
-  --expression-attribute-values '{":tier":{"S":"standard"}}'
+  --expression-attribute-values '{":tier":{"S":"ladybug-standard"}}'
 
 # View recent logs (replace with actual log group name for your tier)
 aws logs tail /robosystems/prod/ladybug-writer-standard \
@@ -842,7 +842,7 @@ aws ec2 describe-volumes \
   --filters "Name=tag:Component,Values=LadybugDBWriter" \
   --query 'Volumes[*].[VolumeId,Size,State]'
 
-# Force instance refresh (replace 'standard' with your actual tier: standard|large|xlarge)
+# Force instance refresh (replace 'standard' with your tier suffix)
 aws autoscaling start-instance-refresh \
   --auto-scaling-group-name ladybug-writers-standard-prod
 ```

@@ -163,7 +163,8 @@ All configuration is centralized and config-as-code:
 | Module               | Purpose                                        |
 | -------------------- | ---------------------------------------------- |
 | `env.py`             | Environment variables with validation          |
-| `billing.py`         | Subscription plans and pricing                 |
+| `billing/`           | Subscription plans and pricing (core, ai, repositories) |
+| `graph_tier.py`      | Graph tier config from `.github/configs/graph.yml` |
 | `rate_limits.py`     | Burst-focused rate limiting (1-minute windows) |
 | `credits.py`         | AI operation credit costs                      |
 | `agents.py`          | Claude model configuration (Bedrock)           |
@@ -173,15 +174,16 @@ All configuration is centralized and config-as-code:
 
 ### Subscription Tiers
 
-| Tier     | Credits/Month | Max Graphs | API Rate Multiplier |
-| -------- | ------------- | ---------- | ------------------- |
-| standard | 100K          | 5          | 2.0x                |
-| large    | 1M            | 25         | 5.0x                |
-| xlarge   | 3M            | 100        | 10.0x               |
+| Tier              | Credits/Month | Max Subgraphs | API Rate Multiplier |
+| ----------------- | ------------- | ------------- | ------------------- |
+| ladybug-standard  | 8,000         | 0             | 1.0x                |
+| ladybug-large     | 32,000        | 10            | 2.5x                |
+| ladybug-xlarge    | 100,000       | 25            | 5.0x                |
 
 ### Credit System
 
-- **AI Operations**: Token-based billing (Anthropic/OpenAI)
+- **AI Operations**: Token-based billing (Anthropic/OpenAI in-house agents only)
+- **MCP Tool Access**: Unlimited (no credits for external tool calls)
 - **Database Operations**: 100% included (queries, backups, imports - no credits)
 - **Storage**: Separate optional billing (not credits)
 
@@ -194,7 +196,7 @@ from robosystems.config.valkey_registry import ValkeyDatabase, ValkeyURLBuilder
 redis_url = ValkeyURLBuilder.build_url(env.VALKEY_URL, ValkeyDatabase.AUTH_CACHE)
 ```
 
-Database numbers: 0=Reserved, 1=Reserved, 2=Auth cache, 3=SSE, 4=Locks, 5=Pipeline, 6=Credits, 7=Rate limiting, 8=LadybugDB cache
+Database numbers: 0-1=Reserved, 2=Auth, 3=SSE, 4=Locks, 5=Pipeline, 6=Credits, 7=Rate limiting, 8=LadybugDB, 9=Billing
 
 ## Testing
 
@@ -244,8 +246,8 @@ POST /databases                           # Create database
 POST /databases/{graph_id}/query          # Execute Cypher
 POST /databases/{graph_id}/tables         # Create staging table
 POST /databases/{graph_id}/tables/query   # Query staging (SQL)
-POST /databases/{graph_id}/tables/{name}/ingest  # Ingest to graph
-GET  /status                              # Health check
+POST /databases/{graph_id}/tables/{name}/materialize  # Materialize to graph
+GET  /health                              # Health check
 ```
 
 ### LadybugDB Limitations

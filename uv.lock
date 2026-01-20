@@ -146,7 +146,7 @@ wheels = [
 
 [[package]]
 name = "arelle-release"
-version = "2.38.4"
+version = "2.38.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bottle" },
@@ -165,9 +165,9 @@ dependencies = [
     { name = "truststore" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/de/9deceb63f8bedccc0e514ca26473496e1f7041387d014c3a9c127e439628/arelle_release-2.38.4.tar.gz", hash = "sha256:40faaede1eaeaea69a54b97ec458c15c87d67a04fa43338ec183ceb34a9c6114", size = 5364824, upload-time = "2026-01-14T16:36:10.351Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/78/a800271c3a5689420839c2a6aac3a63e5f1354e56ffcddc734bb95b6d633/arelle_release-2.38.5.tar.gz", hash = "sha256:15351e3ae6844c5b736a8a44012d4d61d3345618507b5a846affb138778c5473", size = 5365195, upload-time = "2026-01-19T20:49:39.392Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/29/a9/ae8a6bea06c374f81d782c96bad119b2ee4641c104d77e20a9c323399872/arelle_release-2.38.4-py3-none-any.whl", hash = "sha256:cc890072cd6bbb9cdf06163c2a8fc4475046ae9fcf6d100888a73ccebddf81e6", size = 5777282, upload-time = "2026-01-14T16:36:07.485Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/05/41b0d1e34cf561c92939883ab9dbd2c496e5e194529416b477368d193f46/arelle_release-2.38.5-py3-none-any.whl", hash = "sha256:5701a466c175308b3f1798a6185758aa2563835516f677470ecdbae6c1abe00b", size = 5777854, upload-time = "2026-01-19T20:49:37.468Z" },
 ]
 
 [[package]]
@@ -1076,14 +1076,14 @@ wheels = [
 
 [[package]]
 name = "holidays"
-version = "0.88"
+version = "0.89"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4c/82/37b4eb3b97b218d6cec19ff90634067911d6ef291ef23673126ad00a7e37/holidays-0.88.tar.gz", hash = "sha256:a356e51353f245c110b2357cea24b11b95acd95ae65df4e105e480e47dfbf547", size = 828806, upload-time = "2026-01-05T21:00:10.407Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/86/7b/4edaf587b45eb5f59d791d1c88255fdaef6010119dd14683c827ad65bd12/holidays-0.89.tar.gz", hash = "sha256:9e7a08d9a704382be0ce70d148087aae95da51c0e77d73b4f8f1a17bdc3729bf", size = 829350, upload-time = "2026-01-19T20:01:14.484Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/45/3b41ddaa6e9cb3da05b43f0803532aefacdc2276b95b6ab7a8ba064d1472/holidays-0.88-py3-none-any.whl", hash = "sha256:ad1dbe41f091106ddb14025dc37f867aef0afa72a9ca601c3ec71d9953f94046", size = 1348348, upload-time = "2026-01-05T21:00:08.315Z" },
+    { url = "https://files.pythonhosted.org/packages/84/84/854304ac830642625a050047096fdc9697c7e09c3645588aeb723488fc01/holidays-0.89-py3-none-any.whl", hash = "sha256:b132a10e8a112d97c17df042b2421c0e7a35f50e2f55975fceb4bd465bb6c658", size = 1348788, upload-time = "2026-01-19T20:01:12.889Z" },
 ]
 
 [[package]]
@@ -2994,11 +2994,11 @@ wheels = [
 
 [[package]]
 name = "soupsieve"
-version = "2.8.2"
+version = "2.8.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/93/f2/21d6ca70c3cf35d01ae9e01be534bf6b6b103c157a728082a5028350c310/soupsieve-2.8.2.tar.gz", hash = "sha256:78a66b0fdee2ab40b7199dc3e747ee6c6e231899feeaae0b9b98a353afd48fd8", size = 118601, upload-time = "2026-01-18T16:21:31.09Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/ae/2d9c981590ed9999a0d91755b47fc74f74de286b0f5cee14c9269041e6c4/soupsieve-2.8.3.tar.gz", hash = "sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349", size = 118627, upload-time = "2026-01-20T04:27:02.457Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/9a/b4450ccce353e2430621b3bb571899ffe1033d5cd72c9e065110f95b1a63/soupsieve-2.8.2-py3-none-any.whl", hash = "sha256:0f4c2f6b5a5fb97a641cf69c0bd163670a0e45e6d6c01a2107f93a6a6f93c51a", size = 37016, upload-time = "2026-01-18T16:21:29.7Z" },
+    { url = "https://files.pythonhosted.org/packages/46/2c/1462b1d0a634697ae9e55b3cecdcb64788e8b7d63f54d923fcd0bb140aed/soupsieve-2.8.3-py3-none-any.whl", hash = "sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95", size = 37016, upload-time = "2026-01-20T04:27:01.012Z" },
 ]
 
 [[package]]

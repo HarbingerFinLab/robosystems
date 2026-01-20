@@ -356,7 +356,7 @@ Resources:
             # Wait for container to be healthy
             echo "Waiting for container health..."
             for i in {1..30}; do
-              if curl -sf http://localhost:8001/status > /dev/null 2>&1; then
+              if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
                 echo "Container is healthy!"
                 break
               fi
@@ -462,7 +462,7 @@ Resources:
       Protocol: HTTP
       TargetType: instance
       HealthCheckEnabled: true
-      HealthCheckPath: /status
+      HealthCheckPath: /health
       HealthCheckProtocol: HTTP
       HealthCheckIntervalSeconds: 30
       HealthCheckTimeoutSeconds: 10
