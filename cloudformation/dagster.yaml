@@ -1,6 +1,4 @@
 Description: RoboSystems Dagster Orchestration - ECS Fargate Only
-# Revised December 18, 2025: Removed EC2 capacity provider
-# Heavy compute (DuckDB + LadybugDB) delegated to shared master via Graph API
 
 Parameters:
   # Environment
@@ -31,7 +29,7 @@ Parameters:
     Default: latest
 
   # Fargate Configuration
-  # Note: CPU/Memory must be valid Fargate combinations
+  # Valid CPU/Memory combinations:
   # 512 CPU: 1024-4096 MB | 1024 CPU: 2048-8192 MB | 2048 CPU: 4096-16384 MB
   DaemonCpu:
     Type: String

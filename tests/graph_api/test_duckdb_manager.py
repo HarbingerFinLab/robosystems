@@ -79,9 +79,20 @@ class TestDuckDBTableManager:
     mock_pool.get_connection.return_value.__enter__.return_value = mock_conn
     mock_get_pool.return_value = mock_pool
 
+    # Mock for schema probe (first execute call)
     mock_probe_result = MagicMock()
     mock_probe_result.description = [("identifier", None), ("name", None)]
-    mock_conn.execute.return_value = mock_probe_result
+
+    # Mock for COUNT(*) query (returns row count)
+    mock_count_result = MagicMock()
+    mock_count_result.fetchone.return_value = (100,)
+
+    # Configure execute to return different results based on call order
+    mock_conn.execute.side_effect = [
+      mock_probe_result,  # Schema probe
+      None,  # CREATE TABLE statement
+      mock_count_result,  # COUNT(*) query
+    ]
 
     request = TableCreateRequest(
       graph_id="test_graph",
@@ -95,6 +106,7 @@ class TestDuckDBTableManager:
     assert response.graph_id == "test_graph"
     assert response.table_name == "customers"
     assert response.execution_time_ms > 0
+    assert response.row_count == 100
 
     mock_conn.execute.assert_called()
     execute_calls = [call[0][0] for call in mock_conn.execute.call_args_list]
@@ -125,7 +137,15 @@ class TestDuckDBTableManager:
 
     mock_probe_result = MagicMock()
     mock_probe_result.description = [("identifier", None), ("name", None)]
-    mock_conn.execute.return_value = mock_probe_result
+
+    mock_count_result = MagicMock()
+    mock_count_result.fetchone.return_value = (50,)
+
+    mock_conn.execute.side_effect = [
+      mock_probe_result,  # Schema probe
+      None,  # CREATE TABLE statement
+      mock_count_result,  # COUNT(*) query
+    ]
 
     request = TableCreateRequest(
       graph_id="test_graph",

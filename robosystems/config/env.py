@@ -363,6 +363,15 @@ class EnvConfig:
     bool(get_secret_value("SEC_PARALLEL_SENSOR_ENABLED", "false").lower() == "true"),
   )
 
+  # SEC incremental staging sensor: auto-triggers daily DuckDB staging for new filings
+  SEC_INCREMENTAL_STAGING_SENSOR_ENABLED = get_bool_env(
+    "SEC_INCREMENTAL_STAGING_SENSOR_ENABLED",
+    bool(
+      get_secret_value("SEC_INCREMENTAL_STAGING_SENSOR_ENABLED", "false").lower()
+      == "true"
+    ),
+  )
+
   # Shared repository schedule: weekly snapshot + replica refresh
   SHARED_REPO_SCHEDULE_ENABLED = get_bool_env(
     "SHARED_REPO_SCHEDULE_ENABLED",

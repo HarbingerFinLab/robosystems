@@ -63,6 +63,9 @@ class TableCreateResponse(BaseModel):
   graph_id: str = Field(..., description="Graph database identifier")
   table_name: str = Field(..., description="Table name")
   execution_time_ms: float = Field(..., description="Creation time in milliseconds")
+  row_count: int | None = Field(
+    None, description="Number of rows in table after creation"
+  )
 
 
 class TableQueryRequest(BaseModel):

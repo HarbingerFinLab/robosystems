@@ -4,7 +4,6 @@ from robosystems.adapters.sec.client import SEC_BASE_URL, SECClient, enable_test
 from robosystems.adapters.sec.client.arelle import ArelleClient
 from robosystems.adapters.sec.models.staging import (
   MaterializeResult,
-  StagingManifest,
   StagingResult,
   TableInfo,
 )
@@ -28,7 +27,6 @@ __all__ = [
   "MaterializeResult",
   "SECClient",
   "SchemaIngestConfig",
-  "StagingManifest",
   "StagingResult",
   "TableInfo",
   "XBRLDuckDBGraphProcessor",

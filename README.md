@@ -283,4 +283,4 @@ pip install robosystems-client
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-Apache-2.0 © 2025 RFS LLC
+Apache-2.0 © 2026 RFS LLC

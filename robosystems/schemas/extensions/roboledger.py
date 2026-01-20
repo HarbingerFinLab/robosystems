@@ -375,9 +375,53 @@ class RoboLedgerContext:
 
   @classmethod
   def get_table_names_for_context(cls, context: str) -> set[str]:
-    """Get table names for a given context (useful for filtering)"""
+    """Get node table names for a given context (useful for filtering)"""
     nodes = cls.get_nodes_for_context(context)
     return {node.name for node in nodes}
+
+  @classmethod
+  def get_all_table_names_for_context(
+    cls, context: str, include_base: bool = True
+  ) -> dict[str, str]:
+    """Get all table names (nodes + relationships) for a context.
+
+    IMPORTANT: Returns tables in dependency order - ALL nodes first, then ALL
+    relationships. This ensures foreign key constraints are satisfied during
+    materialization (nodes must exist before relationships can reference them).
+
+    Args:
+        context: One of SEC_REPOSITORY, FULL_ACCOUNTING, TRANSACTION_ONLY, REPORTING_ONLY
+        include_base: Whether to include base schema tables (default: True)
+
+    Returns:
+        Dictionary mapping table name to entity type ("nodes" or "relationships")
+        Order: base nodes, extension nodes, base relationships, extension relationships
+    """
+    from ..base import BASE_NODES, BASE_RELATIONSHIPS
+
+    tables: dict[str, str] = {}
+
+    # Get context-specific tables
+    ext_nodes = cls.get_nodes_for_context(context)
+    ext_relationships = cls.get_relationships_for_context(context)
+
+    # Add ALL nodes first (base nodes before extension nodes)
+    if include_base:
+      for node in BASE_NODES:
+        tables[node.name] = "nodes"
+
+    for node in ext_nodes:
+      tables[node.name] = "nodes"
+
+    # Then add ALL relationships (base before extension)
+    if include_base:
+      for rel in BASE_RELATIONSHIPS:
+        tables[rel.name] = "relationships"
+
+    for rel in ext_relationships:
+      tables[rel.name] = "relationships"
+
+    return tables
 
 
 # ============================================================================
