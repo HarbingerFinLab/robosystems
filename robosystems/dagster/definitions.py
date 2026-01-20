@@ -32,6 +32,7 @@ from robosystems.dagster.assets import (
   qb_transactions,
   repository_provisioning_source,
   # SEC pipeline - two-stage materialization
+  sec_duckdb_incremental_staged,
   sec_duckdb_staged,
   sec_graph_materialized,
   # SEC pipeline - dynamic partition processing
@@ -90,6 +91,7 @@ from robosystems.dagster.jobs.provisioning import (
 from robosystems.dagster.jobs.sec import (
   sec_daily_download_schedule,
   sec_download_job,
+  sec_incremental_stage_job,
   sec_materialize_job,
   sec_nightly_materialize_schedule,
   sec_process_job,
@@ -102,10 +104,11 @@ from robosystems.dagster.resources import (
   S3Resource,
 )
 
-# Import sensors
+# Import sensors and schedules from sensors module
 from robosystems.dagster.sensors import (
   pending_repository_sensor,
   pending_subscription_sensor,
+  sec_incremental_staging_schedule,
   sec_processing_sensor,
 )
 
@@ -157,6 +160,7 @@ all_jobs = [
   sec_download_job,  # Download raw filings to S3
   sec_process_job,  # Per-filing processing (sensor-triggered)
   sec_stage_job,  # Stage to persistent DuckDB
+  sec_incremental_stage_job,  # Incremental staging (sensor-triggered)
   sec_materialize_job,  # Materialize from DuckDB to LadybugDB (retry-safe)
   sec_staged_materialize_job,  # Full pipeline: stage + materialize
   # Notification jobs
@@ -185,6 +189,7 @@ all_schedules = [
   # SEC pipeline schedules
   sec_daily_download_schedule,
   sec_nightly_materialize_schedule,
+  sec_incremental_staging_schedule,
 ]
 
 # ============================================================================
@@ -215,6 +220,7 @@ all_assets = [
   sec_process_filing,
   # SEC pipeline - two-stage materialization
   sec_duckdb_staged,  # Stage 1: DuckDB staging
+  sec_duckdb_incremental_staged,  # Incremental staging (sensor-triggered)
   sec_graph_materialized,  # Stage 2: LadybugDB materialization (retry-safe)
   # QuickBooks pipeline assets
   qb_accounts,
