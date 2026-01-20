@@ -1294,10 +1294,13 @@ class LadybugAllocationManager:
 
     try:
       # Find the volume attached to this instance using paginated scan
+      # Safety limits to prevent infinite loops
+      MAX_PAGES = 100  # Volume registry should never have this many pages
       all_items = []
       last_evaluated_key = None
+      pages_scanned = 0
 
-      while True:
+      while pages_scanned < MAX_PAGES:
         scan_params = {
           "FilterExpression": "instance_id = :iid AND #status = :status",
           "ExpressionAttributeNames": {"#status": "status"},
@@ -1312,10 +1315,16 @@ class LadybugAllocationManager:
 
         response = self.volume_table.scan(**scan_params)
         all_items.extend(response.get("Items", []))
+        pages_scanned += 1
 
         last_evaluated_key = response.get("LastEvaluatedKey")
         if not last_evaluated_key:
           break
+
+      if pages_scanned >= MAX_PAGES:
+        logger.warning(
+          f"Volume registry scan hit safety limit ({MAX_PAGES} pages) for instance {instance_id}"
+        )
 
       if not all_items:
         # Try alternative: look up volume from instance registry
@@ -1360,8 +1369,8 @@ class LadybugAllocationManager:
           logger.warning(f"Instance registry lookup failed: {lookup_error}")
 
       if not all_items:
-        logger.error(
-          f"CRITICAL: No attached volume found for instance {instance_id} - "
+        logger.critical(
+          f"No attached volume found for instance {instance_id} - "
           f"cannot update volume registry for database {graph_id}. "
           f"This will cause database loss on ASG refresh!"
         )
@@ -1396,8 +1405,8 @@ class LadybugAllocationManager:
           raise
 
     except ClientError as e:
-      logger.error(
-        f"CRITICAL: Failed to update volume registry for database {graph_id} "
+      logger.critical(
+        f"Failed to update volume registry for database {graph_id} "
         f"on instance {instance_id}: {e}. This will cause database loss on ASG refresh!"
       )
       # Note: We don't fail the allocation, but this is a critical issue that needs attention
@@ -1419,17 +1428,39 @@ class LadybugAllocationManager:
       return
 
     try:
-      # Find the volume attached to this instance
-      response = self.volume_table.scan(
-        FilterExpression="instance_id = :iid AND #status = :status",
-        ExpressionAttributeNames={"#status": "status"},
-        ExpressionAttributeValues={
-          ":iid": instance_id,
-          ":status": "attached",
-        },
-      )
+      # Find the volume attached to this instance using paginated scan
+      # Safety limits to prevent infinite loops
+      MAX_PAGES = 100  # Volume registry should never have this many pages
+      items = []
+      last_evaluated_key = None
+      pages_scanned = 0
 
-      items = response.get("Items", [])
+      while pages_scanned < MAX_PAGES:
+        scan_params = {
+          "FilterExpression": "instance_id = :iid AND #status = :status",
+          "ExpressionAttributeNames": {"#status": "status"},
+          "ExpressionAttributeValues": {
+            ":iid": instance_id,
+            ":status": "attached",
+          },
+        }
+
+        if last_evaluated_key:
+          scan_params["ExclusiveStartKey"] = last_evaluated_key
+
+        response = self.volume_table.scan(**scan_params)
+        items.extend(response.get("Items", []))
+        pages_scanned += 1
+
+        last_evaluated_key = response.get("LastEvaluatedKey")
+        if not last_evaluated_key:
+          break
+
+      if pages_scanned >= MAX_PAGES:
+        logger.warning(
+          f"Volume registry scan hit safety limit ({MAX_PAGES} pages) for instance {instance_id}"
+        )
+
       if not items:
         logger.warning(
           f"No attached volume found for instance {instance_id} - "
