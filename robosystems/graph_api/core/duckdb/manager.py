@@ -109,18 +109,20 @@ class DuckDBTableManager:
 
     if has_identifier:
       # Node table: deduplicate on identifier using window function
+      # union_by_name=true handles schema variations between files (different filings may have different columns)
       return f"""
         CREATE OR REPLACE TABLE {quoted_table} AS
         SELECT * EXCLUDE (rn)
         FROM (
           SELECT *, ROW_NUMBER() OVER (PARTITION BY identifier ORDER BY identifier) AS rn
-          FROM read_parquet({read_pattern}, hive_partitioning=false)
+          FROM read_parquet({read_pattern}, union_by_name=true, hive_partitioning=false)
         )
         WHERE rn = 1
       """
     elif has_from_to:
       # Relationship table: deduplicate on (from, to) and rename to src/dst
       # IMPORTANT: LadybugDB expects columns in order: src, dst, then properties
+      # union_by_name=true handles schema variations between files
       return f"""
         CREATE OR REPLACE TABLE {quoted_table} AS
         SELECT
@@ -129,16 +131,17 @@ class DuckDBTableManager:
           * EXCLUDE ("from", "to", rn)
         FROM (
           SELECT *, ROW_NUMBER() OVER (PARTITION BY "from", "to" ORDER BY "from", "to") AS rn
-          FROM read_parquet({read_pattern}, hive_partitioning=false)
+          FROM read_parquet({read_pattern}, union_by_name=true, hive_partitioning=false)
         )
         WHERE rn = 1
       """
     else:
       # Unknown table type: just read without deduplication
+      # union_by_name=true handles schema variations between files
       return f"""
         CREATE OR REPLACE TABLE {quoted_table} AS
         SELECT *
-        FROM read_parquet({read_pattern}, hive_partitioning=false)
+        FROM read_parquet({read_pattern}, union_by_name=true, hive_partitioning=false)
       """
 
   def _build_table_sql_with_file_id(
@@ -173,25 +176,28 @@ class DuckDBTableManager:
 
       if has_identifier:
         # Node table: keep identifier, add file_id
+        # union_by_name=true handles schema variations between files
         select = f"""
           SELECT *, '{file_id}' as file_id
-          FROM read_parquet('{s3_key}', hive_partitioning=false)
+          FROM read_parquet('{s3_key}', union_by_name=true, hive_partitioning=false)
         """
       elif has_from_to:
         # Relationship table: rename from/to to src/dst, add file_id
+        # union_by_name=true handles schema variations between files
         select = f"""
           SELECT
             "from" as src,
             "to" as dst,
             * EXCLUDE ("from", "to"),
             '{file_id}' as file_id
-          FROM read_parquet('{s3_key}', hive_partitioning=false)
+          FROM read_parquet('{s3_key}', union_by_name=true, hive_partitioning=false)
         """
       else:
         # Unknown table: just add file_id
+        # union_by_name=true handles schema variations between files
         select = f"""
           SELECT *, '{file_id}' as file_id
-          FROM read_parquet('{s3_key}', hive_partitioning=false)
+          FROM read_parquet('{s3_key}', union_by_name=true, hive_partitioning=false)
         """
 
       selects.append(select)
@@ -331,6 +337,101 @@ class DuckDBTableManager:
       raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=f"Failed to create table: {e!s}",
+      )
+
+  @validate_table_name_decorator
+  def insert_into_table(self, request: TableCreateRequest) -> TableCreateResponse:
+    """
+    Insert data into an existing table from S3 files (incremental append).
+
+    This method appends new data to an existing DuckDB staging table using
+    INSERT INTO ... SELECT. Used for incremental ingestion where the table
+    already exists from a previous full staging.
+
+    Deduplication Note:
+    Unlike create_table(), this method does NOT deduplicate rows. This is
+    intentional because:
+    1. Filing-date partitions (filed=YYYY-MM-DD) ensure each filing is only
+       processed once per partition
+    2. The materialization step handles deduplication when ingesting to LadybugDB
+    3. For retry scenarios, the full staging (create_table) should be used
+
+    Prerequisites:
+    - Table must already exist (created via create_table)
+    - Schema must be compatible with the new files
+
+    Args:
+        request: TableCreateRequest with graph_id, table_name, and s3_pattern
+
+    Returns:
+        TableCreateResponse with status and timing info
+
+    Raises:
+        HTTPException: If table doesn't exist or insert fails
+    """
+    import time
+
+    start_time = time.time()
+
+    validate_table_name(request.table_name)
+
+    is_list = isinstance(request.s3_pattern, list)
+    file_count = len(request.s3_pattern) if is_list else "pattern"
+
+    logger.info(
+      f"Inserting into table {request.table_name} for graph {request.graph_id} "
+      f"from {file_count} {'files' if is_list else ''}"
+    )
+
+    pool = get_duckdb_pool()
+
+    try:
+      with pool.get_connection(request.graph_id) as conn:
+        quoted_table = f'"{request.table_name}"'
+
+        # Build the INSERT INTO ... SELECT statement
+        # Using union_by_name=true to handle schema variations
+        if is_list:
+          files_list = "[" + ", ".join(f"'{path}'" for path in request.s3_pattern) + "]"
+          sql = f"""
+            INSERT INTO {quoted_table}
+            SELECT * FROM read_parquet(
+              {files_list},
+              union_by_name=true,
+              hive_partitioning=false
+            )
+          """
+          conn.execute(sql)
+        else:
+          sql = f"""
+            INSERT INTO {quoted_table}
+            SELECT * FROM read_parquet(
+              ?,
+              union_by_name=true,
+              hive_partitioning=false
+            )
+          """
+          conn.execute(sql, [request.s3_pattern])
+
+        execution_time_ms = (time.time() - start_time) * 1000
+
+        logger.info(
+          f"Inserted into table {request.table_name} for graph {request.graph_id} "
+          f"in {execution_time_ms:.2f}ms ({file_count} {'files' if is_list else ''})"
+        )
+
+        return TableCreateResponse(
+          status="success",
+          graph_id=request.graph_id,
+          table_name=request.table_name,
+          execution_time_ms=execution_time_ms,
+        )
+
+    except Exception as e:
+      logger.error(f"Failed to insert into table {request.table_name}: {e}")
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Failed to insert into table: {e!s}",
       )
 
   def query_table(self, request: TableQueryRequest) -> TableQueryResponse:
@@ -567,7 +668,8 @@ class DuckDBTableManager:
         conn.execute(f"DROP TABLE IF EXISTS {quoted_table}")
 
         s3_pattern_list = ", ".join([f"'{key}'" for key in s3_keys])
-        create_view_sql = f"CREATE VIEW {quoted_table} AS SELECT * FROM read_parquet([{s3_pattern_list}])"
+        # union_by_name=true handles schema variations between files
+        create_view_sql = f"CREATE VIEW {quoted_table} AS SELECT * FROM read_parquet([{s3_pattern_list}], union_by_name=true)"
         conn.execute(create_view_sql)
         logger.info(f"Recreated external table {table_name} with {len(s3_keys)} files")
 
@@ -727,4 +829,199 @@ class DuckDBTableManager:
       raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=f"Failed to delete file data: {e!s}",
+      )
+
+  # ============================================================================
+  # Staging Progress Tracking
+  # ============================================================================
+
+  def ensure_progress_table(self, graph_id: str) -> None:
+    """
+    Create the staging progress table if it doesn't exist.
+
+    This table tracks which filing dates have been successfully staged,
+    enabling incremental updates and crash recovery.
+
+    Args:
+        graph_id: Graph database identifier
+    """
+    pool = get_duckdb_pool()
+
+    try:
+      with pool.get_connection(graph_id) as conn:
+        conn.execute("""
+          CREATE TABLE IF NOT EXISTS _sec_staging_progress (
+            filing_date TEXT PRIMARY KEY,
+            staged_at TIMESTAMP NOT NULL,
+            table_count INTEGER,
+            total_rows BIGINT,
+            status TEXT DEFAULT 'complete'
+          )
+        """)
+        logger.info(f"Ensured _sec_staging_progress table exists for graph {graph_id}")
+
+    except Exception as e:
+      logger.error(f"Failed to create progress table: {e}")
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Failed to create progress table: {e!s}",
+      )
+
+  def record_staging_progress(
+    self,
+    graph_id: str,
+    filing_date: str,
+    table_count: int = 0,
+    total_rows: int = 0,
+    status: str = "complete",
+  ) -> dict[str, Any]:
+    """
+    Record that a filing date has been successfully staged.
+
+    Args:
+        graph_id: Graph database identifier
+        filing_date: The filing date that was staged (YYYY-MM-DD)
+        table_count: Number of tables staged
+        total_rows: Total rows inserted
+        status: "complete" or "failed"
+
+    Returns:
+        Dict with status and recorded date
+    """
+    from datetime import UTC, datetime
+
+    pool = get_duckdb_pool()
+
+    try:
+      with pool.get_connection(graph_id) as conn:
+        # Ensure table exists first
+        self.ensure_progress_table(graph_id)
+
+        # Insert or replace the progress record
+        conn.execute(
+          """
+          INSERT OR REPLACE INTO _sec_staging_progress
+          (filing_date, staged_at, table_count, total_rows, status)
+          VALUES (?, ?, ?, ?, ?)
+          """,
+          [filing_date, datetime.now(UTC), table_count, total_rows, status],
+        )
+
+        logger.info(
+          f"Recorded staging progress: {filing_date} ({table_count} tables, {total_rows} rows)"
+        )
+
+        return {
+          "status": "success",
+          "filing_date": filing_date,
+          "table_count": table_count,
+          "total_rows": total_rows,
+        }
+
+    except Exception as e:
+      logger.error(f"Failed to record staging progress: {e}")
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Failed to record staging progress: {e!s}",
+      )
+
+  def get_staged_dates(self, graph_id: str) -> list[str]:
+    """
+    Get all filing dates that have been successfully staged.
+
+    Args:
+        graph_id: Graph database identifier
+
+    Returns:
+        List of filing dates (YYYY-MM-DD strings) that have been staged
+    """
+    pool = get_duckdb_pool()
+
+    try:
+      with pool.get_connection(graph_id) as conn:
+        # Check if progress table exists
+        table_check = conn.execute(
+          "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '_sec_staging_progress'"
+        ).fetchone()
+
+        if not table_check or table_check[0] == 0:
+          logger.info(f"No progress table found for graph {graph_id}")
+          return []
+
+        # Get all completed filing dates
+        result = conn.execute(
+          "SELECT filing_date FROM _sec_staging_progress WHERE status = 'complete' ORDER BY filing_date"
+        ).fetchall()
+
+        dates = [row[0] for row in result]
+        logger.info(f"Found {len(dates)} staged dates for graph {graph_id}")
+        return dates
+
+    except Exception as e:
+      logger.error(f"Failed to get staged dates: {e}")
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Failed to get staged dates: {e!s}",
+      )
+
+  def get_staging_progress_summary(self, graph_id: str) -> dict[str, Any]:
+    """
+    Get a summary of staging progress for a graph.
+
+    Args:
+        graph_id: Graph database identifier
+
+    Returns:
+        Dict with min_date, max_date, total_dates, total_rows
+    """
+    pool = get_duckdb_pool()
+
+    try:
+      with pool.get_connection(graph_id) as conn:
+        # Check if progress table exists
+        table_check = conn.execute(
+          "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '_sec_staging_progress'"
+        ).fetchone()
+
+        if not table_check or table_check[0] == 0:
+          return {
+            "status": "no_progress_table",
+            "min_date": None,
+            "max_date": None,
+            "total_dates": 0,
+            "total_rows": 0,
+          }
+
+        result = conn.execute("""
+          SELECT
+            MIN(filing_date) as min_date,
+            MAX(filing_date) as max_date,
+            COUNT(*) as total_dates,
+            SUM(total_rows) as total_rows
+          FROM _sec_staging_progress
+          WHERE status = 'complete'
+        """).fetchone()
+
+        if not result:
+          return {
+            "status": "ok",
+            "min_date": None,
+            "max_date": None,
+            "total_dates": 0,
+            "total_rows": 0,
+          }
+
+        return {
+          "status": "ok",
+          "min_date": result[0],
+          "max_date": result[1],
+          "total_dates": result[2] or 0,
+          "total_rows": result[3] or 0,
+        }
+
+    except Exception as e:
+      logger.error(f"Failed to get staging progress summary: {e}")
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Failed to get staging progress summary: {e!s}",
       )

@@ -310,6 +310,20 @@ class SECMaterializeConfig(Config):
   graph_id: str = "sec"  # Target graph ID
 
 
+class SECIncrementalStageConfig(Config):
+  """Configuration for incremental DuckDB staging.
+
+  Use this config with sec_duckdb_incremental_staged asset for daily
+  incremental updates. Appends new filings to existing DuckDB tables.
+
+  Note: Incremental mode requires existing DuckDB staging tables.
+  If tables don't exist, run sec_duckdb_staged (full staging) first.
+  """
+
+  graph_id: str = "sec"  # Target graph ID
+  filing_date: str | None = None  # YYYY-MM-DD date filter (e.g., "2026-01-15")
+
+
 # ============================================================================
 # Year-Partitioned Assets (download phase)
 # ============================================================================
@@ -873,6 +887,14 @@ def sec_process_filing(
       processor.process()
 
       # Upload parquet files to S3
+      # Use filing date for partition (filed=YYYY-MM-DD) instead of year
+      # This enables date-range filtering for incremental loads
+      filing_date = sec_report.get("filingDate", "unknown")
+      if filing_date == "unknown":
+        context.log.warning(
+          f"No filingDate found for {partition_key}, using 'unknown' partition"
+        )
+
       files_uploaded = 0
       for entity_type in ["nodes", "relationships"]:
         entity_dir = os.path.join(tmpdir, entity_type)
@@ -883,7 +905,8 @@ def sec_process_filing(
               table_name = parquet_file.replace(".parquet", "")
               s3_key = get_processed_key(
                 DataSourceType.SEC,
-                f"year={year}",
+                "processed",
+                f"filed={filing_date}",
                 entity_type,
                 table_name,
                 f"{cik}_{accession}.parquet",
@@ -1012,7 +1035,95 @@ def sec_duckdb_staged(
       "table_names": result.table_names,
       "total_files": result.total_files,
       "total_rows": result.total_rows,
-      "manifest_path": result.manifest_path,
+      "duckdb_path": result.duckdb_path,
+      "duration_seconds": result.duration_seconds,
+    }
+  )
+
+
+@asset(
+  group_name="sec_pipeline",
+  description="Incremental staging: append new filings to existing DuckDB tables",
+  compute_kind="duckdb",
+  metadata={
+    "pipeline": "sec",
+    "stage": "incremental_staging",
+    "decoupled": True,
+  },
+)
+def sec_duckdb_incremental_staged(
+  context: AssetExecutionContext,
+  config: SECIncrementalStageConfig,
+) -> MaterializeResult:
+  """Incrementally stage new SEC filings to existing DuckDB tables.
+
+  This asset appends new filings to existing DuckDB staging tables using
+  INSERT INTO rather than CREATE TABLE. It's designed for daily incremental
+  updates after an initial full staging has been completed.
+
+  Prerequisites:
+  - Initial full staging must have been run (sec_duckdb_staged creates tables)
+  - DuckDB staging tables must already exist
+  - Progress table (_sec_staging_progress) tracks staged dates
+
+  Key features:
+  - Uses incremental=True mode (INSERT INTO existing tables)
+  - Optional filing_date filter for targeted updates
+  - Records progress to _sec_staging_progress table for tracking
+  - Schema-driven: table names from RoboLedgerContext (no manifest needed)
+
+  Run via Dagster UI: Launch sec_incremental_stage job with config {"filing_date": "2026-01-15"}
+
+  Returns:
+      MaterializeResult with staging statistics
+  """
+  import asyncio
+
+  from robosystems.adapters.sec import XBRLDuckDBGraphProcessor
+
+  context.log.info(
+    f"Incremental staging for graph: {config.graph_id}, "
+    f"filing_date filter: {config.filing_date or 'none'}"
+  )
+
+  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id, source_prefix="sec")
+
+  async def run_incremental_staging():
+    result = await processor.stage_to_duckdb(
+      rebuild=False,  # Never rebuild graph in incremental mode
+      filing_date=config.filing_date,
+      reset_staging=False,  # Never reset in incremental mode
+      incremental=True,  # Key: use INSERT INTO instead of CREATE TABLE
+    )
+    return result
+
+  result = asyncio.run(run_incremental_staging())
+
+  if result.status == "error":
+    context.log.error(f"Incremental staging failed: {result.error}")
+    return MaterializeResult(
+      metadata={
+        "graph_id": config.graph_id,
+        "status": "error",
+        "error": result.error,
+        "duration_seconds": result.duration_seconds,
+      }
+    )
+
+  context.log.info(
+    f"Incremental staging complete: {len(result.table_names)} tables, "
+    f"{result.total_files} files, {result.duration_seconds:.2f}s"
+  )
+
+  return MaterializeResult(
+    metadata={
+      "graph_id": config.graph_id,
+      "status": result.status,
+      "mode": "incremental",
+      "tables_updated": len(result.table_names),
+      "table_names": result.table_names,
+      "total_files": result.total_files,
+      "total_rows": result.total_rows,
       "duckdb_path": result.duckdb_path,
       "duration_seconds": result.duration_seconds,
     }

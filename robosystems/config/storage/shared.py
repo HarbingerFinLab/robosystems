@@ -136,8 +136,8 @@ def get_processed_key(source: DataSourceType, *parts: str) -> str:
       S3 key string (without bucket name)
 
   Example:
-      >>> get_processed_key(DataSourceType.SEC, "year=2024", "nodes", "Entity", "file.parquet")
-      'sec/year=2024/nodes/Entity/file.parquet'
+      >>> get_processed_key(DataSourceType.SEC, "processed", "filed=2024-01-15", "nodes", "Entity", "file.parquet")
+      'sec/processed/filed=2024-01-15/nodes/Entity/file.parquet'
   """
   config = DATA_SOURCES[source]
   if parts:
@@ -230,25 +230,3 @@ def get_staging_duckdb_path(graph_id: str = "sec") -> str:
 
   base = env.DUCKDB_STAGING_PATH
   return f"{base}/{graph_id}.duckdb"
-
-
-def get_staging_manifest_path(graph_id: str = "sec") -> str:
-  """Get staging manifest JSON path.
-
-  The manifest tracks which tables have been staged, row counts,
-  and timestamps for recovery and monitoring purposes.
-
-  Args:
-      graph_id: Graph database identifier (default: "sec")
-
-  Returns:
-      Full path to the manifest JSON file
-
-  Example:
-      >>> get_staging_manifest_path("sec")
-      '/mnt/ladybug-data/staging/sec_manifest.json'
-  """
-  from robosystems.config import env
-
-  base = env.DUCKDB_STAGING_PATH
-  return f"{base}/{graph_id}_manifest.json"

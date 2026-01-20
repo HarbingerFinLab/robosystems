@@ -26,10 +26,12 @@ from robosystems.dagster.assets.quickbooks import (
 from robosystems.dagster.assets.sec import (
   # Config classes
   SECDownloadConfig,
+  SECIncrementalStageConfig,
   SECMaterializeConfig,
   SECSingleFilingConfig,
   SECStageConfig,
   # Assets - two-stage materialization
+  sec_duckdb_incremental_staged,
   sec_duckdb_staged,
   # Assets - dynamic partition processing
   sec_filing_partitions,
@@ -43,6 +45,7 @@ from robosystems.dagster.assets.staged_files import staged_files_source
 
 __all__ = [
   "SECDownloadConfig",
+  "SECIncrementalStageConfig",
   "SECMaterializeConfig",
   "SECSingleFilingConfig",
   "SECStageConfig",
@@ -55,6 +58,7 @@ __all__ = [
   "qb_graph_data",
   "qb_transactions",
   "repository_provisioning_source",
+  "sec_duckdb_incremental_staged",
   "sec_duckdb_staged",
   "sec_filing_partitions",
   "sec_graph_materialized",

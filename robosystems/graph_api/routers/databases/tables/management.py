@@ -205,6 +205,76 @@ async def perform_table_creation(
     )
 
 
+async def perform_table_insert(
+  task_id: str,
+  request: TableCreateRequest,
+  timeout_seconds: int = 1800,  # 30 minutes default
+) -> None:
+  """
+  Perform incremental table insert in the background.
+  Updates task status in Redis for SSE monitoring.
+
+  Args:
+      task_id: Unique task identifier for SSE tracking
+      request: Table creation request with graph_id, table_name, s3_pattern
+      timeout_seconds: Maximum time allowed for insert (default 30 min)
+  """
+  try:
+    # Update task status to running
+    await staging_task_manager.update_task(
+      task_id,
+      status=TaskStatus.RUNNING,
+      started_at=datetime.now(UTC).isoformat(),
+    )
+
+    logger.info(
+      f"[Task {task_id}] Starting table insert: {request.table_name} for graph {request.graph_id}"
+    )
+
+    # Perform the actual table insert with timeout
+    start_time = time.time()
+    try:
+      result = await asyncio.wait_for(
+        asyncio.to_thread(table_manager.insert_into_table, request),
+        timeout=timeout_seconds,
+      )
+    except TimeoutError:
+      raise TimeoutError(
+        f"Table insert timed out after {timeout_seconds}s "
+        f"({timeout_seconds // 60} minutes)"
+      )
+    duration = time.time() - start_time
+
+    # Update task as completed
+    await staging_task_manager.update_task(
+      task_id,
+      status=TaskStatus.COMPLETED,
+      completed_at=datetime.now(UTC).isoformat(),
+      progress_percent=100,
+      result={
+        "status": result.status,
+        "table_name": result.table_name,
+        "execution_time_ms": result.execution_time_ms,
+        "duration_seconds": duration,
+      },
+    )
+
+    logger.info(
+      f"[Task {task_id}] Completed: inserted into {request.table_name} in {duration:.2f}s"
+    )
+
+  except Exception as e:
+    logger.error(f"[Task {task_id}] Failed: {e}")
+
+    # Update task as failed
+    await staging_task_manager.update_task(
+      task_id,
+      status=TaskStatus.FAILED,
+      completed_at=datetime.now(UTC).isoformat(),
+      error=str(e),
+    )
+
+
 @router.post("")
 async def create_table(
   background_tasks: BackgroundTasks,
@@ -262,6 +332,64 @@ async def create_table(
   }
 
 
+@router.post("/{table_name}/insert")
+async def insert_into_table(
+  background_tasks: BackgroundTasks,
+  graph_id: str = Path(..., description="Graph database identifier"),
+  table_name: str = Path(..., description="Table name to insert into"),
+  request: TableCreateRequest = Body(...),
+) -> dict[str, Any]:
+  """
+  Insert data into an existing DuckDB table from S3 files (incremental append).
+
+  This endpoint:
+  1. Creates a background task for table insert
+  2. Returns a task_id immediately
+  3. Client monitors progress via SSE endpoint
+
+  Prerequisites:
+  - Table must already exist (created via POST /tables)
+  - Schema must be compatible with the new files
+
+  Returns:
+      Dict with task_id and SSE monitoring URL
+  """
+  request.graph_id = graph_id
+  request.table_name = table_name
+
+  # Calculate file count for logging
+  file_count = len(request.s3_pattern) if isinstance(request.s3_pattern, list) else 1
+
+  logger.info(
+    f"Starting background table insert: {table_name} for graph {graph_id} "
+    f"({file_count} {'files' if file_count > 1 else 'pattern'})"
+  )
+
+  # Create task
+  task_id = await staging_task_manager.create_task(
+    graph_id=graph_id,
+    table_name=table_name,
+    s3_pattern=request.s3_pattern,
+    file_count=file_count,
+  )
+
+  # Add background task
+  background_tasks.add_task(
+    perform_table_insert,
+    task_id=task_id,
+    request=request,
+  )
+
+  logger.info(f"Started background insert task {task_id} for table {table_name}")
+
+  return {
+    "task_id": task_id,
+    "status": "started",
+    "sse_url": f"/tasks/{task_id}/monitor",
+    "message": f"Background table insert started for {table_name}",
+  }
+
+
 @router.get("", response_model=list[TableInfo])
 async def list_tables(
   graph_id: str = Path(..., description="Graph database identifier"),
@@ -314,4 +442,84 @@ async def delete_file_data(
     raise HTTPException(
       status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
       detail=f"Failed to delete file data: {e!s}",
+    )
+
+
+# ============================================================================
+# Staging Progress Tracking Endpoints
+# ============================================================================
+
+
+@router.get("/staging/progress")
+async def get_staging_progress(
+  graph_id: str = Path(..., description="Graph database identifier"),
+) -> dict:
+  """
+  Get staging progress summary for a graph.
+
+  Returns min/max filing dates staged, total dates, and total rows.
+  Used by incremental staging sensor to determine what's already staged.
+  """
+  logger.info(f"Getting staging progress for graph {graph_id}")
+
+  try:
+    return table_manager.get_staging_progress_summary(graph_id)
+  except Exception as e:
+    logger.error(f"Failed to get staging progress for graph {graph_id}: {e}")
+    raise HTTPException(
+      status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail=f"Failed to get staging progress: {e!s}",
+    )
+
+
+@router.get("/staging/progress/dates")
+async def get_staged_dates(
+  graph_id: str = Path(..., description="Graph database identifier"),
+) -> list[str]:
+  """
+  Get all filing dates that have been successfully staged.
+
+  Returns a list of YYYY-MM-DD date strings.
+  Used by incremental staging sensor to diff against S3.
+  """
+  logger.info(f"Getting staged dates for graph {graph_id}")
+
+  try:
+    return table_manager.get_staged_dates(graph_id)
+  except Exception as e:
+    logger.error(f"Failed to get staged dates for graph {graph_id}: {e}")
+    raise HTTPException(
+      status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail=f"Failed to get staged dates: {e!s}",
+    )
+
+
+@router.post("/staging/progress")
+async def record_staging_progress(
+  graph_id: str = Path(..., description="Graph database identifier"),
+  filing_date: str = Body(..., embed=True, description="Filing date (YYYY-MM-DD)"),
+  table_count: int = Body(0, embed=True, description="Number of tables staged"),
+  total_rows: int = Body(0, embed=True, description="Total rows inserted"),
+  status: str = Body("complete", embed=True, description="Status: complete or failed"),
+) -> dict:
+  """
+  Record that a filing date has been successfully staged.
+
+  Called after incremental staging completes for a specific date.
+  """
+  logger.info(f"Recording staging progress for {filing_date} in graph {graph_id}")
+
+  try:
+    return table_manager.record_staging_progress(
+      graph_id=graph_id,
+      filing_date=filing_date,
+      table_count=table_count,
+      total_rows=total_rows,
+      status=status,
+    )
+  except Exception as e:
+    logger.error(f"Failed to record staging progress for {filing_date}: {e}")
+    raise HTTPException(
+      status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail=f"Failed to record staging progress: {e!s}",
     )

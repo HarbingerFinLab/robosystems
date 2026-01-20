@@ -280,3 +280,173 @@ def sec_processing_sensor(context: SensorEvaluationContext):
   except Exception as e:
     context.log.error(f"Error in SEC processing sensor: {type(e).__name__}: {e}")
     raise
+
+
+# ============================================================================
+# SEC Incremental Staging Sensor
+# ============================================================================
+
+# Sensor status controlled by environment variable (default: STOPPED)
+SEC_INCREMENTAL_STAGING_SENSOR_STATUS = (
+  DefaultSensorStatus.RUNNING
+  if env.SEC_INCREMENTAL_STAGING_SENSOR_ENABLED
+  else DefaultSensorStatus.STOPPED
+)
+
+
+def _list_s3_filed_dates(s3_client, bucket: str, prefix: str) -> list[str]:
+  """List all filed= partition dates from S3 processed bucket.
+
+  Args:
+      s3_client: boto3 S3 client
+      bucket: S3 bucket name
+      prefix: Prefix to search (e.g., "sec/processed")
+
+  Returns:
+      Sorted list of filing dates (YYYY-MM-DD strings)
+  """
+  filed_dates: list[str] = []
+
+  paginator = s3_client.get_paginator("list_objects_v2")
+  pages = paginator.paginate(Bucket=bucket, Prefix=f"{prefix}/", Delimiter="/")
+
+  for page in pages:
+    if "CommonPrefixes" in page:
+      for prefix_info in page["CommonPrefixes"]:
+        prefix_path = prefix_info["Prefix"]
+        if "filed=" in prefix_path:
+          # Extract date from "sec/processed/filed=2026-01-15/"
+          filed_part = prefix_path.split("filed=")[1].rstrip("/")
+          filed_dates.append(filed_part)
+
+  filed_dates.sort()
+  return filed_dates
+
+
+async def _get_staged_dates_from_graph_api(graph_id: str) -> list[str]:
+  """Query Graph API for already-staged filing dates.
+
+  Args:
+      graph_id: Graph database identifier
+
+  Returns:
+      List of filing dates that have been staged
+  """
+  from robosystems.graph_api.client.factory import get_graph_client
+
+  try:
+    client = await get_graph_client(graph_id=graph_id, operation_type="read")
+    return await client.get_staged_dates(graph_id)
+  except Exception as e:
+    # If no progress table exists, return empty list
+    if "no_progress_table" in str(e).lower() or "does not exist" in str(e).lower():
+      return []
+    raise
+
+
+@sensor(
+  job_name="sec_incremental_stage",
+  minimum_interval_seconds=86400,  # Daily (24 hours)
+  default_status=SEC_INCREMENTAL_STAGING_SENSOR_STATUS,
+  description="Watch for new filed= partitions in S3 and trigger incremental staging",
+)
+def sec_incremental_staging_sensor(context: SensorEvaluationContext):
+  """Watch for new SEC filings in S3 and trigger incremental DuckDB staging.
+
+  This sensor:
+  1. Lists all filed=YYYY-MM-DD partitions in S3 processed bucket
+  2. Queries Graph API for dates already staged (from _sec_staging_progress table)
+  3. Triggers incremental staging job for each unstaged date (oldest first)
+
+  Requires:
+  - Initial full staging must have been run (creates _sec_staging_progress table)
+  - Graph API must be accessible from Dagster
+
+  Enable via: SEC_INCREMENTAL_STAGING_SENSOR_ENABLED=true
+  """
+  import asyncio
+
+  if env.ENVIRONMENT == "dev":
+    yield SkipReason(
+      "Skipped in dev environment - use manual job launch for local testing"
+    )
+    return
+
+  processed_bucket = env.SHARED_PROCESSED_BUCKET
+  if not processed_bucket:
+    yield SkipReason("Missing SHARED_PROCESSED_BUCKET configuration")
+    return
+
+  graph_id = "sec"
+  s3_prefix = "sec/processed"
+
+  try:
+    s3_client = _get_s3_client()
+
+    # Step 1: List all filed= dates in S3
+    s3_dates = _list_s3_filed_dates(s3_client, processed_bucket, s3_prefix)
+    context.log.info(f"Found {len(s3_dates)} filing dates in S3")
+
+    if not s3_dates:
+      yield SkipReason("No filed= partitions found in S3")
+      return
+
+    # Step 2: Get already-staged dates from Graph API
+    try:
+      staged_dates = asyncio.get_event_loop().run_until_complete(
+        _get_staged_dates_from_graph_api(graph_id)
+      )
+    except RuntimeError:
+      # No event loop running, create one
+      staged_dates = asyncio.run(_get_staged_dates_from_graph_api(graph_id))
+
+    staged_dates_set = set(staged_dates)
+    context.log.info(f"Found {len(staged_dates_set)} dates already staged")
+
+    if not staged_dates_set:
+      yield SkipReason(
+        "No staging progress found. Run full sec_duckdb_staged job first to initialize."
+      )
+      return
+
+    # Step 3: Find unstaged dates
+    unstaged_dates = [d for d in s3_dates if d not in staged_dates_set]
+
+    if not unstaged_dates:
+      yield SkipReason(
+        f"All {len(s3_dates)} S3 filing dates already staged (up to {max(s3_dates)})"
+      )
+      return
+
+    context.log.info(
+      f"Found {len(unstaged_dates)} unstaged dates: {unstaged_dates[:5]}..."
+    )
+
+    # Step 4: Trigger job for oldest unstaged date (one at a time)
+    # This ensures we stage in chronological order and don't overwhelm the system
+    oldest_unstaged = min(unstaged_dates)
+    context.log.info(f"Triggering incremental staging for {oldest_unstaged}")
+
+    yield RunRequest(
+      run_key=f"sec-incremental-stage-{oldest_unstaged}",
+      run_config={
+        "ops": {
+          "sec_duckdb_incremental_staged": {
+            "config": {
+              "graph_id": graph_id,
+              "filing_date": oldest_unstaged,
+            }
+          }
+        }
+      },
+    )
+
+  except ClientError as e:
+    error_code = e.response.get("Error", {}).get("Code", "Unknown")
+    context.log.error(f"S3 error ({error_code}): {e}")
+    raise
+  except Exception as e:
+    context.log.error(
+      f"Error in SEC incremental staging sensor: {type(e).__name__}: {e}"
+    )
+    raise

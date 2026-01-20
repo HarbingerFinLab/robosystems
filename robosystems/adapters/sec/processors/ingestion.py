@@ -5,25 +5,32 @@ This module provides a decoupled ingestion approach using DuckDB staging tables
 with persistent storage for independent retry of staging and materialization.
 
 Architecture:
-- **Stage 1 (stage_to_duckdb)**: Discover S3 files → Create DuckDB tables → Write manifest
-- **Stage 2 (materialize_from_duckdb)**: Read manifest → Materialize to LadybugDB
+- **Stage 1 (stage_to_duckdb)**: Schema-driven table creation via glob patterns
+- **Stage 2 (materialize_from_duckdb)**: Schema-driven materialization to LadybugDB
 
 Key benefits of decoupled stages:
 - If LadybugDB materialization fails, don't lose 2+ hours of DuckDB staging work
 - Staging persists to disk, enabling independent retry of materialization
-- Manifest tracks staging state for recovery and monitoring
+- Schema-driven: table names come from robosystems.schemas (no manifest needed)
+
+Glob Pattern Optimization (2026-01-20):
+- Uses glob patterns instead of explicit file lists for DuckDB table creation
+- DuckDB handles file discovery internally (more efficient than S3 ListObjects)
+- union_by_name=true handles schema variations between filings
+- Eliminates the bottleneck of passing 17K+ explicit file paths
+
+Schema-Driven Design (2026-01-20):
+- Table names derived from RoboLedgerContext.get_all_table_names_for_context()
+- No manifest file needed - schema is the source of truth
+- Works across services (Dagster/Graph API) without shared filesystem
 
 Flow:
-1. stage_to_duckdb(): Discover processed Parquet files → Create DuckDB tables → Persist
-2. materialize_from_duckdb(): Read from persisted DuckDB → Ingest to LadybugDB
+1. stage_to_duckdb(): Get tables from schema → Create DuckDB tables via glob → Persist
+2. materialize_from_duckdb(): Get tables from schema → Ingest to LadybugDB
 
 Backward Compatibility:
 - process_files() still works as before (runs staging then materialization)
 - New Dagster assets can call staging and materialization independently
-
-LIMITATION: This approach currently ALWAYS rebuilds the graph from scratch because it
-discovers and loads ALL files from S3, not just new/changed files. This is fundamentally
-different from the COPY-based approach which works incrementally with consolidated files.
 
 Status: Production - enables independent retry of failed materialization.
 """
@@ -34,20 +41,17 @@ from typing import Any
 
 from robosystems.adapters.sec.models.staging import (
   MaterializeResult,
-  StagingManifest,
   StagingResult,
   TableInfo,
 )
 from robosystems.config import env
 from robosystems.config.storage.shared import (
-  DATA_SOURCES,
-  DataSourceType,
   get_staging_duckdb_path,
-  get_staging_manifest_path,
 )
 from robosystems.graph_api.client.factory import get_graph_client
 from robosystems.logger import logger
 from robosystems.operations.aws.s3 import S3Client
+from robosystems.schemas.extensions.roboledger import RoboLedgerContext
 
 
 class XBRLDuckDBGraphProcessor:
@@ -71,49 +75,67 @@ class XBRLDuckDBGraphProcessor:
 
     Args:
         graph_id: Graph database identifier (default: "sec")
-        source_prefix: S3 prefix for source files (default: SEC prefix from shared_data.py)
+        source_prefix: S3 prefix for source files (default: "sec/processed" for new filed= structure)
     """
     self.graph_id = graph_id
     self.s3_client = S3Client()
     self.bucket = env.SHARED_PROCESSED_BUCKET
-    # Use SEC prefix from centralized config if not specified
-    sec_config = DATA_SOURCES[DataSourceType.SEC]
-    self.source_prefix = source_prefix or sec_config.processed_prefix.rstrip("/")
+    # New structure: sec/processed/filed=YYYY-MM-DD/nodes/TABLE/*.parquet
+    # Old structure (deprecated): sec/year=YYYY/nodes/TABLE/*.parquet
+    self.source_prefix = source_prefix or "sec/processed"
 
   async def stage_to_duckdb(
     self,
     rebuild: bool = True,
     year: int | None = None,
+    filing_date: str | None = None,
     reset_staging: bool = False,
+    use_glob: bool = True,
+    incremental: bool = False,
   ) -> StagingResult:
     """
     Stage processed Parquet files to persistent DuckDB.
 
-    This is Stage 1 of the decoupled pipeline. It discovers processed files,
-    optionally rebuilds the LadybugDB database, creates DuckDB staging tables,
-    and writes a manifest for recovery.
+    This is Stage 1 of the decoupled pipeline. It uses the schema to determine
+    which tables to create, optionally rebuilds the LadybugDB database, and
+    creates DuckDB staging tables from S3 parquet files.
 
-    The staging result and manifest are persisted, enabling materialize_from_duckdb()
-    to run independently (e.g., after a failed materialization attempt).
+    Schema-Driven Design:
+    - Table names come from RoboLedgerContext.get_all_table_names_for_context()
+    - No manifest file needed - schema is the source of truth
+    - Works across services (Dagster/Graph API) without shared filesystem
+
+    Incremental Mode (incremental=True):
+    - Uses INSERT INTO (not CREATE TABLE) to append new data
+    - Skips LadybugDB rebuild to preserve existing data
+    - Filters to specific filing_date if provided
 
     Args:
         rebuild: Whether to rebuild LadybugDB database from scratch (default: True).
-        year: Optional year filter. If provided, only files from that year
-              will be included in staging.
+        year: Optional year filter. If provided, only files from filings in that year
+              will be included (filters to filed=YYYY-*).
+        filing_date: Optional exact date filter (YYYY-MM-DD). If provided, only files
+              from that specific filing date will be included. Takes precedence over year.
         reset_staging: If True, delete DuckDB staging alongside LadybugDB for a
             fresh start. If False (default), preserve DuckDB for incremental scenarios.
+        use_glob: If True (default), use glob patterns for efficient file discovery.
+            If False, use explicit file lists (legacy behavior, slower for many files).
+        incremental: If True, append to existing tables instead of recreating them.
+            Default: False.
 
     Returns:
-        StagingResult with table counts, file counts, and manifest path
+        StagingResult with table counts and file counts
     """
     start_time = time.time()
 
+    # Determine date filter for logging
+    date_filter = filing_date or (f"{year}-*" if year else "all")
+    mode_str = "incremental" if incremental else "full"
     logger.info(
       f"Starting DuckDB staging for graph {self.graph_id} "
-      f"(year={year or 'all'}, rebuild={rebuild}, reset_staging={reset_staging})"
+      f"(mode={mode_str}, filed={date_filter}, rebuild={rebuild}, reset_staging={reset_staging})"
     )
 
-    manifest_path = get_staging_manifest_path(self.graph_id)
     duckdb_path = get_staging_duckdb_path(self.graph_id)
 
     try:
@@ -132,51 +154,88 @@ class XBRLDuckDBGraphProcessor:
           duration_seconds=time.time() - start_time,
         )
 
-      # Step 1: Discover processed files
-      logger.info("Step 1: Discovering processed Parquet files...")
-      tables_info = await self._discover_processed_files(year)
+      # Step 1: Get table names from schema (no S3 discovery needed for glob mode)
+      # Initialize variables for type checker
+      tables_by_type: dict[str, str] = {}
+      tables_info: dict[str, list[str]] = {}
 
-      if not tables_info:
-        logger.warning("No processed files found")
-        return StagingResult(
-          status="no_data",
-          table_names=[],
-          error="No processed files found",
-          duration_seconds=time.time() - start_time,
+      if use_glob:
+        logger.info("Step 1: Getting table names from schema (glob mode)...")
+        # Schema-driven: get all tables for SEC repository context
+        tables_by_type = RoboLedgerContext.get_all_table_names_for_context(
+          RoboLedgerContext.SEC_REPOSITORY
         )
+        logger.info(f"Schema defines {len(tables_by_type)} tables to stage")
+        # With glob, we don't know file count upfront - DuckDB will discover files
+        total_files = 0
+      else:
+        logger.info("Step 1: Discovering processed Parquet files (legacy mode)...")
+        tables_info = await self._discover_processed_files(year)
 
-      logger.info(f"Found {len(tables_info)} tables to stage")
-      total_files = sum(len(files) for files in tables_info.values())
-      logger.info(f"Total files: {total_files}")
+        if not tables_info:
+          logger.warning("No processed files found")
+          return StagingResult(
+            status="no_data",
+            table_names=[],
+            error="No processed files found",
+            duration_seconds=time.time() - start_time,
+          )
+
+        logger.info(f"Found {len(tables_info)} tables to stage")
+        total_files = sum(len(files) for files in tables_info.values())
+        logger.info(f"Total files: {total_files}")
 
       # Step 2: Handle LadybugDB database rebuild BEFORE creating DuckDB tables
-      if rebuild:
+      # Skip rebuild in incremental mode - we're appending to existing tables
+      if rebuild and not incremental:
         logger.info("Step 2: Rebuilding LadybugDB database...")
         await self._rebuild_ladybug_database(client, reset_staging=reset_staging)
+      elif incremental:
+        logger.info("Step 2: Skipped (incremental mode - preserving existing data)")
 
-      # Step 3: Create DuckDB staging tables via Graph API
-      logger.info("Step 3: Creating DuckDB staging tables via Graph API...")
-      successful_tables, table_infos = await self._create_duckdb_tables_with_info(
-        tables_info, client
+      # Step 3: Create or append to DuckDB staging tables via Graph API
+      if incremental and use_glob:
+        # Incremental mode: INSERT INTO existing tables
+        logger.info("Step 3: Inserting into DuckDB staging tables (incremental)...")
+        (
+          successful_tables,
+          table_infos,
+        ) = await self._insert_into_duckdb_tables_with_glob(
+          tables_by_type, client, year=year, filing_date=filing_date
+        )
+      elif use_glob:
+        # Full mode: CREATE TABLE
+        logger.info("Step 3: Creating DuckDB staging tables via glob patterns...")
+        successful_tables, table_infos = await self._create_duckdb_tables_with_glob(
+          tables_by_type, client, year=year, filing_date=filing_date
+        )
+      else:
+        logger.info("Step 3: Creating DuckDB staging tables via file lists (legacy)...")
+        successful_tables, table_infos = await self._create_duckdb_tables_with_info(
+          tables_info, client
+        )
+
+      # Determine expected table count based on mode
+      expected_table_count = len(tables_by_type) if use_glob else len(tables_info)
+      status = (
+        "complete" if len(successful_tables) == expected_table_count else "partial"
       )
 
-      # Step 4: Write staging manifest
-      logger.info("Step 4: Writing staging manifest...")
-      manifest = StagingManifest(
-        version="1.0",
-        staged_at=datetime.now(UTC).isoformat(),
-        mode="full",
-        source={
-          "year": year,
-          "bucket": self.bucket,
-          "prefix": self.source_prefix,
-        },
-        tables=table_infos,
-        status="complete" if len(successful_tables) == len(tables_info) else "partial",
-        graph_id=self.graph_id,
+      logger.info(
+        f"Staging status: {status} ({len(successful_tables)}/{expected_table_count} tables)"
       )
-      manifest.save(manifest_path)
-      logger.info(f"Manifest saved to {manifest_path}")
+
+      # Step 4: Record staging progress
+      total_rows = sum(info.row_count for info in table_infos.values())
+      if status == "complete":
+        await self._record_staging_progress(
+          client=client,
+          filing_date=filing_date,
+          year=year,
+          incremental=incremental,
+          table_count=len(successful_tables),
+          total_rows=total_rows,
+        )
 
       duration = time.time() - start_time
 
@@ -186,13 +245,12 @@ class XBRLDuckDBGraphProcessor:
       )
 
       return StagingResult(
-        status="success",
+        status=status,
         table_names=successful_tables,
         tables=table_infos,
         total_files=total_files,
-        total_rows=sum(info.row_count for info in table_infos.values()),
+        total_rows=total_rows,
         duration_seconds=duration,
-        manifest_path=manifest_path,
         duckdb_path=duckdb_path,
       )
 
@@ -212,64 +270,48 @@ class XBRLDuckDBGraphProcessor:
     """
     Materialize LadybugDB graph from existing DuckDB staging.
 
-    This is Stage 2 of the decoupled pipeline. It reads the staging manifest,
-    verifies staging is complete, and triggers ingestion for each table.
+    This is Stage 2 of the decoupled pipeline. It uses the schema to determine
+    which tables to materialize and triggers ingestion for each table.
+
+    Schema-Driven Design:
+    - Table names come from RoboLedgerContext.get_all_table_names_for_context()
+    - No manifest file needed - schema is the source of truth
+    - Works across services (Dagster/Graph API) without shared filesystem
 
     Precondition: stage_to_duckdb() must have been run successfully, creating
-    a valid staging_manifest.json file.
+    DuckDB staging tables.
 
     Args:
         table_names: Optional list of specific tables to materialize.
-                     If None, materializes all tables from the manifest.
+                     If None, materializes all tables from the schema.
 
     Returns:
         MaterializeResult with rows ingested per table
     """
     start_time = time.time()
 
-    manifest_path = get_staging_manifest_path(self.graph_id)
-
     logger.info(f"Starting materialization from DuckDB for graph {self.graph_id}")
 
     try:
-      # Step 1: Read and verify staging manifest
-      logger.info("Step 1: Reading staging manifest...")
-      if not StagingManifest.exists(manifest_path):
-        error_msg = (
-          f"Staging manifest not found at {manifest_path}. Run stage_to_duckdb() first."
-        )
-        logger.error(error_msg)
-        return MaterializeResult(
-          status="error",
-          error=error_msg,
-        )
-
-      manifest = StagingManifest.load(manifest_path)
-      logger.info(
-        f"Manifest loaded: {len(manifest.tables)} tables, "
-        f"staged at {manifest.staged_at}, status={manifest.status}"
-      )
-
-      if manifest.status != "complete":
-        logger.warning(
-          f"Staging manifest status is '{manifest.status}', not 'complete'. "
-          "Some tables may be missing."
-        )
-
-      # Step 2: Determine which tables to materialize
+      # Step 1: Determine which tables to materialize (schema-driven)
       if table_names is None:
-        table_names = manifest.get_table_names()
+        logger.info("Step 1: Getting table names from schema...")
+        tables_by_type = RoboLedgerContext.get_all_table_names_for_context(
+          RoboLedgerContext.SEC_REPOSITORY
+        )
+        table_names = list(tables_by_type.keys())
+        logger.info(f"Schema defines {len(table_names)} tables to materialize")
 
       if not table_names:
         logger.warning("No tables to materialize")
         return MaterializeResult(
           status="no_data",
-          error="No tables found in manifest",
+          error="No tables found in schema",
         )
 
       logger.info(f"Materializing {len(table_names)} tables...")
 
-      # Step 3: Get graph client
+      # Step 2: Get graph client
       try:
         client = await get_graph_client(graph_id=self.graph_id, operation_type="write")
       except Exception as client_err:
@@ -282,10 +324,10 @@ class XBRLDuckDBGraphProcessor:
           error=f"Graph client initialization failed: {client_err!s}",
         )
 
-      # Step 4: Ensure LadybugDB database exists with schema
+      # Step 3: Ensure LadybugDB database exists with schema
       # This handles retry scenarios where LadybugDB was deleted but DuckDB preserved
       # Uses ensure_shared_repository_exists for production-compatible routing
-      logger.info("Step 4: Ensuring LadybugDB database exists with schema...")
+      logger.info("Step 3: Ensuring LadybugDB database exists with schema...")
       from robosystems.config import env
       from robosystems.operations.graph.shared_repository_service import (
         ensure_shared_repository_exists,
@@ -298,8 +340,8 @@ class XBRLDuckDBGraphProcessor:
       )
       logger.info(f"Repository ensure result: {repo_result.get('status', 'unknown')}")
 
-      # Step 5: Trigger ingestion for each table
-      logger.info("Step 5: Triggering graph ingestion...")
+      # Step 4: Trigger ingestion for each table
+      logger.info("Step 4: Triggering graph ingestion...")
       ingestion_results = await self._trigger_ingestion(
         table_names, client, rebuild=False
       )
@@ -551,6 +593,291 @@ class XBRLDuckDBGraphProcessor:
 
     return tables_info
 
+  async def _discover_table_names(
+    self,
+    year: int | None = None,
+    filing_date: str | None = None,
+  ) -> dict[str, str]:
+    """
+    Discover table names via S3 directory listing (lightweight, no file enumeration).
+
+    This is a faster alternative to _discover_processed_files() when using glob patterns.
+    Instead of listing all files, it only lists directory prefixes to get table names.
+
+    Uses the new filed=YYYY-MM-DD partition structure:
+    sec/processed/filed=YYYY-MM-DD/nodes/TABLE/*.parquet
+
+    Args:
+        year: Optional year filter. If provided, discovers from filed=YYYY-* partitions.
+        filing_date: Optional exact date filter (YYYY-MM-DD). Takes precedence over year.
+
+    Returns:
+        Dictionary mapping table names to entity type ("nodes" or "relationships")
+    """
+    tables: dict[str, str] = {}
+
+    # Find a sample filed= prefix to discover table names
+    # (S3 ListObjects doesn't support glob, so we need one concrete prefix)
+    filed_prefix = f"{self.source_prefix}/"
+    paginator = self.s3_client.s3_client.get_paginator("list_objects_v2")
+    pages = paginator.paginate(Bucket=self.bucket, Prefix=filed_prefix, Delimiter="/")
+
+    sample_filed_path = None
+    for page in pages:
+      if "CommonPrefixes" in page:
+        for prefix_info in page["CommonPrefixes"]:
+          prefix_path = prefix_info["Prefix"]
+          if "filed=" in prefix_path:
+            # Extract the date from filed=YYYY-MM-DD
+            filed_date = prefix_path.split("filed=")[1].rstrip("/")
+
+            # If filtering by exact date, only use that one
+            if filing_date and filed_date == filing_date:
+              sample_filed_path = prefix_path
+              break
+
+            # If filtering by year, check if date starts with that year
+            if year and not filed_date.startswith(str(year)):
+              continue
+
+            # Use this prefix as sample (or first match)
+            sample_filed_path = prefix_path
+            break
+      if sample_filed_path:
+        break
+
+    if not sample_filed_path:
+      filter_desc = filing_date or (str(year) if year else "any")
+      logger.warning(
+        f"No filed= directories found under {filed_prefix} for filter {filter_desc}"
+      )
+      return tables
+
+    # List table directories under nodes/ and relationships/
+    for entity_type in ["nodes", "relationships"]:
+      prefix = f"{sample_filed_path}{entity_type}/"
+      paginator = self.s3_client.s3_client.get_paginator("list_objects_v2")
+      pages = paginator.paginate(Bucket=self.bucket, Prefix=prefix, Delimiter="/")
+
+      for page in pages:
+        if "CommonPrefixes" in page:
+          for prefix_info in page["CommonPrefixes"]:
+            # Extract table name from prefix like "sec/processed/filed=2025-01-15/nodes/Entity/"
+            table_path = prefix_info["Prefix"]
+            table_name = table_path.rstrip("/").split("/")[-1]
+            if table_name and table_name not in tables:
+              tables[table_name] = entity_type
+              logger.debug(f"Discovered table: {table_name} ({entity_type})")
+
+    logger.info(f"Discovered {len(tables)} tables via directory listing")
+    return tables
+
+  async def _create_duckdb_tables_with_glob(
+    self,
+    tables: dict[str, str],
+    graph_client,
+    year: int | None = None,
+    filing_date: str | None = None,
+  ) -> tuple[list[str], dict[str, TableInfo]]:
+    """
+    Create DuckDB staging tables using glob patterns (efficient for many files).
+
+    Instead of passing explicit file lists, this method constructs glob patterns
+    and lets DuckDB handle file discovery internally. This is much faster for
+    large file counts (17K+ files).
+
+    Uses the new filed=YYYY-MM-DD partition structure:
+    sec/processed/filed=YYYY-MM-DD/nodes/TABLE/*.parquet
+
+    Args:
+        tables: Dictionary mapping table names to entity type ("nodes" or "relationships")
+        graph_client: Graph API client instance
+        year: Optional year filter. If provided, uses filed=YYYY-* pattern.
+        filing_date: Optional exact date filter (YYYY-MM-DD). Takes precedence over year.
+
+    Returns:
+        Tuple of (successful_table_names, table_info_dict)
+    """
+    successful_tables: list[str] = []
+    table_infos: dict[str, TableInfo] = {}
+    failed_tables: list[tuple[str, str]] = []
+
+    # Build filed= pattern for glob
+    # - filing_date: exact date (filed=2025-01-15)
+    # - year: year prefix (filed=2025-*)
+    # - neither: all dates (filed=*)
+    if filing_date:
+      filed_pattern = f"filed={filing_date}"
+    elif year:
+      filed_pattern = f"filed={year}-*"
+    else:
+      filed_pattern = "filed=*"
+
+    for table_name, entity_type in tables.items():
+      # Build glob pattern: s3://bucket/sec/processed/filed=*/nodes/Entity/*.parquet
+      s3_pattern = (
+        f"s3://{self.bucket}/{self.source_prefix}/"
+        f"{filed_pattern}/{entity_type}/{table_name}/*.parquet"
+      )
+
+      logger.info(f"Creating DuckDB table: {table_name} (glob: {s3_pattern})")
+
+      try:
+        # Use graph client to call Graph API's table creation endpoint
+        # Pass glob pattern (string) instead of file list
+        response = await graph_client.create_table(
+          graph_id=self.graph_id,
+          table_name=table_name,
+          s3_pattern=s3_pattern,  # Glob pattern, not a file list
+          timeout=1800,  # 30 minutes for large file sets
+        )
+
+        # Handle SSE-based response format
+        if response.get("status") == "failed":
+          error = response.get("error", "Unknown error")
+          logger.error(f"Failed to create DuckDB table {table_name}: {error}")
+          failed_tables.append((table_name, error))
+          continue
+
+        # Extract result from SSE response
+        result = response.get("result", {})
+        duration = response.get("duration_seconds", result.get("duration_seconds", 0))
+        row_count = result.get("row_count", 0)
+
+        logger.info(
+          f"Created DuckDB table {table_name} in {duration:.1f}s "
+          f"(glob pattern, {row_count} rows)"
+        )
+
+        successful_tables.append(table_name)
+        table_infos[table_name] = TableInfo(
+          name=table_name,
+          row_count=row_count,
+          file_count=0,  # Unknown with glob pattern
+          staged_at=datetime.now(UTC).isoformat(),
+        )
+
+      except Exception as e:
+        logger.error(f"Failed to create DuckDB table {table_name}: {e}")
+        failed_tables.append((table_name, str(e)))
+        continue
+
+    # Report summary
+    if failed_tables:
+      logger.warning(
+        f"DuckDB table creation: {len(successful_tables)} succeeded, "
+        f"{len(failed_tables)} failed"
+      )
+      for table_name, error in failed_tables:
+        logger.error(f"  Failed: {table_name} - {error}")
+
+      # Raise after attempting all tables so we can see partial results
+      raise RuntimeError(
+        f"Failed to create {len(failed_tables)} DuckDB tables: "
+        f"{[t[0] for t in failed_tables]}"
+      )
+
+    return successful_tables, table_infos
+
+  async def _insert_into_duckdb_tables_with_glob(
+    self,
+    tables: dict[str, str],
+    graph_client,
+    year: int | None = None,
+    filing_date: str | None = None,
+  ) -> tuple[list[str], dict[str, TableInfo]]:
+    """
+    Insert into existing DuckDB staging tables using glob patterns (incremental append).
+
+    This is the incremental version of _create_duckdb_tables_with_glob(). Instead of
+    CREATE TABLE, it uses INSERT INTO to append new data to existing tables.
+
+    Uses the new filed=YYYY-MM-DD partition structure:
+    sec/processed/filed=YYYY-MM-DD/nodes/TABLE/*.parquet
+
+    Args:
+        tables: Dictionary mapping table names to entity type ("nodes" or "relationships")
+        graph_client: Graph API client instance
+        year: Optional year filter. If provided, uses filed=YYYY-* pattern.
+        filing_date: Optional exact date filter (YYYY-MM-DD). Takes precedence over year.
+
+    Returns:
+        Tuple of (successful_table_names, table_info_dict)
+    """
+    successful_tables: list[str] = []
+    table_infos: dict[str, TableInfo] = {}
+    failed_tables: list[tuple[str, str]] = []
+
+    # Build filed= pattern for glob
+    if filing_date:
+      filed_pattern = f"filed={filing_date}"
+    elif year:
+      filed_pattern = f"filed={year}-*"
+    else:
+      filed_pattern = "filed=*"
+
+    for table_name, entity_type in tables.items():
+      # Build glob pattern: s3://bucket/sec/processed/filed=*/nodes/Entity/*.parquet
+      s3_pattern = (
+        f"s3://{self.bucket}/{self.source_prefix}/"
+        f"{filed_pattern}/{entity_type}/{table_name}/*.parquet"
+      )
+
+      logger.info(f"Inserting into DuckDB table: {table_name} (glob: {s3_pattern})")
+
+      try:
+        # Use graph client to call Graph API's insert_into_table endpoint
+        response = await graph_client.insert_into_table(
+          graph_id=self.graph_id,
+          table_name=table_name,
+          s3_pattern=s3_pattern,
+          timeout=1800,  # 30 minutes for large file sets
+        )
+
+        # Handle SSE-based response format
+        if response.get("status") == "failed":
+          error = response.get("error", "Unknown error")
+          logger.error(f"Failed to insert into DuckDB table {table_name}: {error}")
+          failed_tables.append((table_name, error))
+          continue
+
+        # Extract result from SSE response
+        result = response.get("result", {})
+        duration = response.get("duration_seconds", result.get("duration_seconds", 0))
+
+        logger.info(
+          f"Inserted into DuckDB table {table_name} in {duration:.1f}s (incremental)"
+        )
+
+        successful_tables.append(table_name)
+        table_infos[table_name] = TableInfo(
+          name=table_name,
+          row_count=0,  # Don't track row count for incremental
+          file_count=0,  # Unknown with glob pattern
+          staged_at=datetime.now(UTC).isoformat(),
+        )
+
+      except Exception as e:
+        logger.error(f"Failed to insert into DuckDB table {table_name}: {e}")
+        failed_tables.append((table_name, str(e)))
+        continue
+
+    # Report summary
+    if failed_tables:
+      logger.warning(
+        f"DuckDB table insert: {len(successful_tables)} succeeded, "
+        f"{len(failed_tables)} failed"
+      )
+      for table_name, error in failed_tables:
+        logger.error(f"  Failed: {table_name} - {error}")
+
+      raise RuntimeError(
+        f"Failed to insert into {len(failed_tables)} DuckDB tables: "
+        f"{[t[0] for t in failed_tables]}"
+      )
+
+    return successful_tables, table_infos
+
   async def _create_duckdb_tables_with_info(
     self,
     tables_info: dict[str, list[str]],
@@ -785,3 +1112,98 @@ class XBRLDuckDBGraphProcessor:
       "total_time_ms": total_time_ms,
       "tables": results,
     }
+
+  async def _record_staging_progress(
+    self,
+    client,
+    filing_date: str | None,
+    year: int | None,
+    incremental: bool,
+    table_count: int,
+    total_rows: int,
+  ) -> None:
+    """
+    Record staging progress to the DuckDB progress table.
+
+    For incremental staging (single filing_date): Records that specific date.
+    For full staging: Discovers all filed= dates from S3 and records them.
+
+    Args:
+        client: Graph API client instance
+        filing_date: Specific filing date (for incremental) or None (for full)
+        year: Year filter (for full staging) or None
+        incremental: Whether this is incremental mode
+        table_count: Number of tables staged
+        total_rows: Total rows inserted
+    """
+    try:
+      if incremental and filing_date:
+        # Incremental mode: record the specific filing_date
+        logger.info(f"Recording staging progress for {filing_date}")
+        await client.record_staging_progress(
+          graph_id=self.graph_id,
+          filing_date=filing_date,
+          table_count=table_count,
+          total_rows=total_rows,
+          status="complete",
+        )
+      else:
+        # Full staging: discover all filed= dates and record them
+        logger.info("Discovering filed= dates from S3 for progress tracking...")
+        filed_dates = await self._discover_filed_dates(year=year)
+
+        if not filed_dates:
+          logger.warning("No filed= dates discovered, skipping progress recording")
+          return
+
+        logger.info(f"Recording progress for {len(filed_dates)} filing dates")
+
+        # Record each date (rows are distributed across dates, so we estimate)
+        rows_per_date = total_rows // len(filed_dates) if filed_dates else 0
+
+        for filed_date in filed_dates:
+          await client.record_staging_progress(
+            graph_id=self.graph_id,
+            filing_date=filed_date,
+            table_count=table_count,
+            total_rows=rows_per_date,
+            status="complete",
+          )
+
+        logger.info(f"Recorded staging progress for {len(filed_dates)} dates")
+
+    except Exception as e:
+      # Don't fail staging if progress recording fails - it's just bookkeeping
+      logger.warning(f"Failed to record staging progress (non-fatal): {e}")
+
+  async def _discover_filed_dates(self, year: int | None = None) -> list[str]:
+    """
+    Discover all filed= partition dates from S3.
+
+    Args:
+        year: Optional year filter. If provided, only returns dates from that year.
+
+    Returns:
+        Sorted list of filing dates (YYYY-MM-DD strings)
+    """
+    filed_dates: list[str] = []
+    prefix = f"{self.source_prefix}/"
+
+    paginator = self.s3_client.s3_client.get_paginator("list_objects_v2")
+    pages = paginator.paginate(Bucket=self.bucket, Prefix=prefix, Delimiter="/")
+
+    for page in pages:
+      if "CommonPrefixes" in page:
+        for prefix_info in page["CommonPrefixes"]:
+          prefix_path = prefix_info["Prefix"]
+          if "filed=" in prefix_path:
+            # Extract date from "sec/processed/filed=2026-01-15/"
+            filed_part = prefix_path.split("filed=")[1].rstrip("/")
+            # Filter by year if specified
+            if year and not filed_part.startswith(str(year)):
+              continue
+            filed_dates.append(filed_part)
+
+    filed_dates.sort()
+    logger.info(f"Discovered {len(filed_dates)} filed= dates from S3")
+    return filed_dates

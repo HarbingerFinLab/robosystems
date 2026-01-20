@@ -1200,6 +1200,72 @@ class GraphClient(BaseGraphClient):
       logger.error(f"Failed to start/monitor table creation: {e}")
       return {"status": "failed", "error": str(e)}
 
+  async def insert_into_table(
+    self,
+    graph_id: str,
+    table_name: str,
+    s3_pattern: str | list[str],
+    timeout: int = 1800,  # 30 minutes default for large file sets
+  ) -> dict[str, Any]:
+    """
+    Insert data into an existing DuckDB staging table with SSE monitoring.
+
+    This method starts a background table insert task and monitors it via SSE
+    until completion. Used for incremental data append to existing tables.
+
+    Prerequisites:
+    - Table must already exist (created via create_table)
+    - Schema must be compatible with the new files
+
+    Args:
+        graph_id: Graph database identifier
+        table_name: Name of the existing table
+        s3_pattern: S3 glob pattern (string) or list of S3 file paths
+        timeout: Maximum time to wait for completion (seconds), default 30 min
+
+    Returns:
+        Dict with insert results:
+        - status: "completed" or "failed"
+        - result: Table insert details (if successful)
+        - duration_seconds: Total time taken
+        - error: Error message (if failed)
+    """
+    try:
+      # Step 1: Start the background table insert task
+      file_count = len(s3_pattern) if isinstance(s3_pattern, list) else 1
+      logger.info(
+        f"Starting table insert for {table_name} ({file_count} {'files' if file_count > 1 else 'pattern'})"
+      )
+
+      json_data: dict[str, Any] = {
+        "graph_id": graph_id,
+        "table_name": table_name,
+        "s3_pattern": s3_pattern,
+      }
+
+      start_response = await self._request(
+        "POST",
+        f"/databases/{graph_id}/tables/{table_name}/insert",
+        json_data=json_data,
+        timeout=30.0,  # Short timeout for starting the task
+        retries=0,  # Non-idempotent: retries could insert duplicate data
+      )
+
+      start_data = start_response.json()
+      task_id = start_data["task_id"]
+      sse_path = start_data["sse_url"]
+
+      logger.info(f"Started insert task {task_id}, monitoring via SSE...")
+
+      # Step 2: Monitor via SSE
+      return await self._monitor_task_sse(
+        sse_path=sse_path, task_id=task_id, task_type="insert", timeout=timeout
+      )
+
+    except Exception as e:
+      logger.error(f"Failed to start/monitor table insert: {e}")
+      return {"status": "failed", "error": str(e)}
+
   async def list_tables(self, graph_id: str) -> list[dict[str, Any]]:
     """
     List all DuckDB staging tables for a graph.
@@ -1270,6 +1336,73 @@ class GraphClient(BaseGraphClient):
     """
     response = await self._request(
       "DELETE", f"/databases/{graph_id}/tables/{table_name}/files/{file_id}"
+    )
+    return response.json()
+
+  # ============================================================================
+  # Staging Progress Tracking
+  # ============================================================================
+
+  async def get_staging_progress(self, graph_id: str) -> dict[str, Any]:
+    """
+    Get staging progress summary for a graph.
+
+    Args:
+        graph_id: Graph database identifier
+
+    Returns:
+        Dict with min_date, max_date, total_dates, total_rows
+    """
+    response = await self._request(
+      "GET", f"/databases/{graph_id}/tables/staging/progress"
+    )
+    return response.json()
+
+  async def get_staged_dates(self, graph_id: str) -> list[str]:
+    """
+    Get all filing dates that have been successfully staged.
+
+    Args:
+        graph_id: Graph database identifier
+
+    Returns:
+        List of filing dates (YYYY-MM-DD strings)
+    """
+    response = await self._request(
+      "GET", f"/databases/{graph_id}/tables/staging/progress/dates"
+    )
+    return response.json()
+
+  async def record_staging_progress(
+    self,
+    graph_id: str,
+    filing_date: str,
+    table_count: int = 0,
+    total_rows: int = 0,
+    status: str = "complete",
+  ) -> dict[str, Any]:
+    """
+    Record that a filing date has been successfully staged.
+
+    Args:
+        graph_id: Graph database identifier
+        filing_date: The filing date that was staged (YYYY-MM-DD)
+        table_count: Number of tables staged
+        total_rows: Total rows inserted
+        status: "complete" or "failed"
+
+    Returns:
+        Dict with status and recorded date
+    """
+    response = await self._request(
+      "POST",
+      f"/databases/{graph_id}/tables/staging/progress",
+      json_data={
+        "filing_date": filing_date,
+        "table_count": table_count,
+        "total_rows": total_rows,
+        "status": status,
+      },
     )
     return response.json()
 

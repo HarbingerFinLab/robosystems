@@ -375,9 +375,46 @@ class RoboLedgerContext:
 
   @classmethod
   def get_table_names_for_context(cls, context: str) -> set[str]:
-    """Get table names for a given context (useful for filtering)"""
+    """Get node table names for a given context (useful for filtering)"""
     nodes = cls.get_nodes_for_context(context)
     return {node.name for node in nodes}
+
+  @classmethod
+  def get_all_table_names_for_context(
+    cls, context: str, include_base: bool = True
+  ) -> dict[str, str]:
+    """Get all table names (nodes + relationships) for a context.
+
+    Args:
+        context: One of SEC_REPOSITORY, FULL_ACCOUNTING, TRANSACTION_ONLY, REPORTING_ONLY
+        include_base: Whether to include base schema tables (default: True)
+
+    Returns:
+        Dictionary mapping table name to entity type ("nodes" or "relationships")
+    """
+    from ..base import BASE_NODES, BASE_RELATIONSHIPS
+
+    tables: dict[str, str] = {}
+
+    # Get context-specific tables
+    nodes = cls.get_nodes_for_context(context)
+    relationships = cls.get_relationships_for_context(context)
+
+    for node in nodes:
+      tables[node.name] = "nodes"
+
+    for rel in relationships:
+      tables[rel.name] = "relationships"
+
+    # Add base schema tables
+    if include_base:
+      for node in BASE_NODES:
+        tables[node.name] = "nodes"
+
+      for rel in BASE_RELATIONSHIPS:
+        tables[rel.name] = "relationships"
+
+    return tables
 
 
 # ============================================================================
