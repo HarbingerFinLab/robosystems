@@ -279,8 +279,24 @@ class XBRLDuckDBGraphProcessor:
           error=f"Graph client initialization failed: {client_err!s}",
         )
 
-      # Step 4: Trigger ingestion for each table
-      logger.info("Step 4: Triggering graph ingestion...")
+      # Step 4: Ensure LadybugDB database exists with schema
+      # This handles retry scenarios where LadybugDB was deleted but DuckDB preserved
+      # Uses ensure_shared_repository_exists for production-compatible routing
+      logger.info("Step 4: Ensuring LadybugDB database exists with schema...")
+      from robosystems.config import env
+      from robosystems.operations.graph.shared_repository_service import (
+        ensure_shared_repository_exists,
+      )
+
+      repo_result = await ensure_shared_repository_exists(
+        repository_name=self.graph_id,
+        created_by="system",
+        instance_id="local-dev" if env.ENVIRONMENT == "dev" else "ladybug-shared-prod",
+      )
+      logger.info(f"Repository ensure result: {repo_result.get('status', 'unknown')}")
+
+      # Step 5: Trigger ingestion for each table
+      logger.info("Step 5: Triggering graph ingestion...")
       ingestion_results = await self._trigger_ingestion(
         table_names, client, rebuild=False
       )
@@ -400,7 +416,9 @@ class XBRLDuckDBGraphProcessor:
     try:
       # Preserve DuckDB staging so we can retry materialization without re-staging
       await client.delete_database(self.graph_id, preserve_duckdb=True)
-      logger.info(f"Deleted LadybugDB database: {self.graph_id} (DuckDB staging preserved)")
+      logger.info(
+        f"Deleted LadybugDB database: {self.graph_id} (DuckDB staging preserved)"
+      )
 
       schema = GraphSchema.get_active_schema(self.graph_id, db)
       if not schema:

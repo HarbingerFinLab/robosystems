@@ -246,7 +246,9 @@ class LadybugDatabaseManager:
         detail=f"Database creation failed: {e!s}",
       )
 
-  def delete_database(self, graph_id: str, preserve_duckdb: bool = False) -> dict[str, Any]:
+  def delete_database(
+    self, graph_id: str, preserve_duckdb: bool = False
+  ) -> dict[str, Any]:
     """
     Delete a database and cleanup resources.
 
