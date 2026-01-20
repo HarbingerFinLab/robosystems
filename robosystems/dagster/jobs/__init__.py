@@ -31,9 +31,12 @@ from robosystems.dagster.jobs.provisioning import (
 from robosystems.dagster.jobs.sec import (
   sec_daily_download_schedule,
   sec_download_job,
+  sec_materialize_from_duckdb_job,
   sec_materialize_job,
   sec_nightly_materialize_schedule,
   sec_process_job,
+  sec_stage_job,
+  sec_staged_materialize_job,
 )
 from robosystems.dagster.jobs.shared_repository import (
   shared_repository_refresh_replicas_job,
@@ -46,26 +49,23 @@ __all__ = [
   "build_email_job_config",
   "build_stripe_webhook_job_config",
   "daily_storage_billing_job",
-  # Infrastructure
   "hourly_auth_cleanup_job",
   "hourly_usage_collection_job",
-  # Billing
   "monthly_credit_allocation_job",
   "monthly_usage_report_job",
   "process_stripe_webhook_job",
-  # Provisioning
   "provision_graph_job",
   "provision_repository_job",
   "sec_daily_download_schedule",
-  # SEC Pipeline
   "sec_download_job",
+  "sec_materialize_from_duckdb_job",
   "sec_materialize_job",
   "sec_nightly_materialize_schedule",
   "sec_process_job",
-  # Notifications
+  "sec_stage_job",
+  "sec_staged_materialize_job",
   "send_email_job",
   "shared_repository_refresh_replicas_job",
-  # Shared Repository Management
   "shared_repository_snapshot_job",
   "shared_repository_snapshot_only_job",
   "weekly_health_check_job",

@@ -40,7 +40,9 @@ from dagster import (
 from robosystems.config import env
 from robosystems.dagster.assets import (
   SECDownloadConfig,
+  sec_duckdb_staged,
   sec_filing_partitions,
+  sec_graph_from_duckdb,
   sec_graph_materialized,
   sec_process_filing,
   sec_quarter_partitions,
@@ -106,6 +108,44 @@ sec_materialize_job = define_asset_job(
   description="Materialize SEC graph from processed parquet files via DuckDB staging.",
   selection=AssetSelection.assets(sec_graph_materialized),
   tags={"pipeline": "sec", "phase": "materialize"},
+)
+
+
+# ============================================================================
+# Decoupled Staging/Materialization Jobs (P0 Implementation)
+# ============================================================================
+# These jobs enable independent retry of staging and materialization:
+# - If LadybugDB materialization fails, don't lose 2+ hours of DuckDB staging work
+# - sec_stage_job: Stage to persistent DuckDB (can run independently)
+# - sec_materialize_from_duckdb_job: Materialize from existing DuckDB
+
+# Stage 1: DuckDB Staging (decoupled)
+# Discovers processed files from S3 and stages to persistent DuckDB.
+# Use when you want to stage without immediately materializing.
+sec_stage_job = define_asset_job(
+  name="sec_stage",
+  description="Stage SEC files to persistent DuckDB (no graph ingestion).",
+  selection=AssetSelection.assets(sec_duckdb_staged),
+  tags={"pipeline": "sec", "phase": "stage", "decoupled": "true"},
+)
+
+# Stage 2: Materialization from DuckDB (decoupled)
+# Materializes to LadybugDB from existing DuckDB staging.
+# Use to retry materialization after a failure without re-staging.
+sec_materialize_from_duckdb_job = define_asset_job(
+  name="sec_materialize_from_duckdb",
+  description="Materialize graph from existing DuckDB staging (retry-friendly).",
+  selection=AssetSelection.assets(sec_graph_from_duckdb),
+  tags={"pipeline": "sec", "phase": "materialize", "decoupled": "true"},
+)
+
+# Combined decoupled job: Run both stages in sequence
+# Useful for full rebuilds with checkpointing between stages.
+sec_staged_materialize_job = define_asset_job(
+  name="sec_staged_materialize",
+  description="Full SEC pipeline with persistent DuckDB staging (stage → materialize).",
+  selection=AssetSelection.assets(sec_duckdb_staged, sec_graph_from_duckdb),
+  tags={"pipeline": "sec", "phase": "full", "decoupled": "true"},
 )
 
 

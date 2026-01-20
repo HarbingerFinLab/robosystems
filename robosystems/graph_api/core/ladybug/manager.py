@@ -158,23 +158,10 @@ class LadybugDatabaseManager:
     try:
       logger.info(f"Creating database: {request.graph_id}")
 
-      # Get memory configuration from tier config (same logic as pool.py)
-      from robosystems.config import env
+      # Get memory configuration from shared helper (single source of truth)
+      from .config import get_database_memory_config
 
-      tier_config = env.get_lbug_tier_config()
-      memory_per_db_mb = tier_config.get("memory_per_db_mb", 0)
-      if memory_per_db_mb > 0:
-        # Use the per-database limit (for standard tier with oversubscription)
-        max_memory_mb = memory_per_db_mb
-        logger.info(f"Using per-database memory limit: {max_memory_mb} MB")
-      else:
-        # Fall back to total memory for single-database instances (shared/dedicated)
-        max_memory_mb = tier_config.get(
-          "lbug_max_memory_mb", tier_config.get("max_memory_mb", env.LBUG_MAX_MEMORY_MB)
-        )
-        logger.info(
-          f"Using total memory allocation: {max_memory_mb} MB (tier: {tier_config.get('tier', 'default')})"
-        )
+      max_memory_mb = get_database_memory_config()
       buffer_pool_size = max_memory_mb * 1024 * 1024
 
       # For SEC database, use explicit checkpoint threshold for large tables

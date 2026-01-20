@@ -7,6 +7,7 @@ This module provides LadybugDB-specific functionality including:
 - LadybugService: High-level service orchestration
 """
 
+from .config import get_database_memory_config
 from .engine import ConnectionError, Engine, QueryError, Repository
 from .manager import LadybugDatabaseManager
 from .pool import (
@@ -34,6 +35,7 @@ __all__ = [
   "QueryError",
   "Repository",
   "get_connection_pool",
+  "get_database_memory_config",
   "get_ladybug_service",
   "init_ladybug_service",
   "initialize_connection_pool",

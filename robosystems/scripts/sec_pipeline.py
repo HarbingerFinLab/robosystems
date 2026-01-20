@@ -12,8 +12,12 @@ This script manages SEC XBRL data processing through 3 independent phases:
   Phase 2 - Process: sec_process job (parallel)
     Processes each filing to parquet via dynamic partitions.
 
-  Phase 3 - Materialize: sec_materialize job
+  Phase 3 - Materialize: sec_materialize job (or decoupled stage/materialize)
     Stages parquet files in DuckDB and materializes to LadybugDB.
+
+    Decoupled mode (P0 implementation - retry-friendly):
+    - just sec-stage              # Stage to persistent DuckDB only (2+ hours)
+    - just sec-materialize-duckdb # Materialize from existing DuckDB (retry-safe)
 
 Usage:
     # All-in-one (chains all 3 phases):
@@ -22,8 +26,12 @@ Usage:
 
     # Step-by-step (for production use):
     just sec-download 10 2024      # Phase 1: Download (4 quarterly partitions)
-    just sec-process-parallel 2024 # Phase 2: Process in parallel
+    just sec-process 2024          # Phase 2: Process in parallel
     just sec-materialize           # Phase 3: Materialize to graph
+
+    # Decoupled materialization (retry-friendly):
+    just sec-stage                 # Stage 1: DuckDB staging (persists on failure)
+    just sec-materialize-duckdb    # Stage 2: Materialize from DuckDB (retry-safe)
 
     # Reset database
     just sec-reset
@@ -177,20 +185,44 @@ class SECPipeline:
     year: str | None = None,
     skip_existing: bool = True,
     job_type: str = "download_only",
+    graph_id: str = "sec",
+    rebuild_graph: bool = True,
   ) -> str:
     """Create YAML config for Dagster job.
 
     Args:
-        job_type: "download_only" or "materialize"
+        job_type: "download_only", "materialize", "stage", or "materialize_duckdb"
+        graph_id: Graph ID for staging/materialization jobs
+        rebuild_graph: Whether to rebuild LadybugDB (stage job only)
     """
     if job_type == "materialize":
-      # sec_materialize job - ingests all processed data to graph
+      # sec_materialize job - ingests all processed data to graph (combined)
       # Always rebuilds graph from scratch - incremental not yet supported
       config = {
         "ops": {
           "sec_graph_materialized": {
-            "config": {"graph_id": "sec", "ignore_errors": True}
+            "config": {"graph_id": graph_id, "ignore_errors": True}
           },
+        }
+      }
+    elif job_type == "stage":
+      # sec_stage job - stages to persistent DuckDB only (decoupled Stage 1)
+      stage_config: dict[str, Any] = {
+        "graph_id": graph_id,
+        "rebuild_graph": rebuild_graph,
+      }
+      if year:
+        stage_config["year"] = int(year)
+      config = {
+        "ops": {
+          "sec_duckdb_staged": {"config": stage_config},
+        }
+      }
+    elif job_type == "materialize_duckdb":
+      # sec_materialize_from_duckdb job - materializes from existing DuckDB (decoupled Stage 2)
+      config = {
+        "ops": {
+          "sec_graph_from_duckdb": {"config": {"graph_id": graph_id}},
         }
       }
     else:
@@ -884,6 +916,142 @@ def cmd_materialize(args):
   return 0 if result.success else 1
 
 
+def cmd_stage(args):
+  """Stage command - stages parquet files to persistent DuckDB (decoupled Stage 1).
+
+  This is the first stage of the decoupled pipeline. It persists staging to disk,
+  enabling independent retry of materialization without re-running staging.
+
+  Use this when:
+  - You want to save 2+ hours of staging work that persists if materialization fails
+  - You need to retry materialization without re-staging
+  """
+  logger.info("=" * 60)
+  logger.info("SEC DuckDB Staging (Decoupled Stage 1)")
+  logger.info("=" * 60)
+  logger.info("Staging processed parquet files to persistent DuckDB")
+  logger.info("This enables retry of materialization without re-staging")
+  logger.info("=" * 60)
+
+  # Log settings
+  if args.year:
+    logger.info(f"Year filter: {args.year}")
+  if not args.rebuild:
+    logger.info("Rebuild disabled - appending to existing database")
+
+  # Create minimal pipeline for staging
+  pipeline = SECPipeline(
+    tickers=[],
+    years=[],
+    skip_download=True,
+    skip_processing=True,
+    skip_reset=True,
+    verbose=args.verbose,
+    materialize_timeout=args.timeout,
+  )
+
+  # Run stage job
+  config_path = pipeline._create_job_config(
+    tickers=[],
+    year=args.year,
+    job_type="stage",
+    graph_id=args.graph_id,
+    rebuild_graph=args.rebuild,
+  )
+
+  result = pipeline.run_stage(
+    job_name="sec_stage",
+    config_path=config_path,
+    timeout=args.timeout,
+  )
+
+  if result.success:
+    logger.info(f"Staging complete ({result.duration_seconds:.1f}s)")
+    logger.info("Run 'just sec-materialize-duckdb' to materialize to LadybugDB")
+  else:
+    logger.error(f"Staging failed: {result.error}")
+
+  if args.json:
+    print(
+      json.dumps(
+        {
+          "status": "success" if result.success else "failure",
+          "duration_seconds": result.duration_seconds,
+          "error": result.error,
+          "graph_id": args.graph_id,
+        },
+        indent=2,
+      )
+    )
+
+  return 0 if result.success else 1
+
+
+def cmd_materialize_duckdb(args):
+  """Materialize from DuckDB command - materializes from existing DuckDB staging (decoupled Stage 2).
+
+  This is the second stage of the decoupled pipeline. It reads from the persistent
+  DuckDB staging created by 'just sec-stage' and materializes to LadybugDB.
+
+  Use this when:
+  - Staging completed but materialization failed (retry without re-staging)
+  - You ran 'just sec-stage' and want to complete the pipeline
+  """
+  logger.info("=" * 60)
+  logger.info("SEC LadybugDB Materialization (Decoupled Stage 2)")
+  logger.info("=" * 60)
+  logger.info("Materializing from existing DuckDB staging to LadybugDB")
+  logger.info("=" * 60)
+
+  # Create minimal pipeline for materialization
+  pipeline = SECPipeline(
+    tickers=[],
+    years=[],
+    skip_download=True,
+    skip_processing=True,
+    skip_reset=True,
+    verbose=args.verbose,
+    materialize_timeout=args.timeout,
+  )
+
+  # Run materialize_from_duckdb job
+  config_path = pipeline._create_job_config(
+    tickers=[],
+    year=None,
+    job_type="materialize_duckdb",
+    graph_id=args.graph_id,
+  )
+
+  result = pipeline.run_stage(
+    job_name="sec_materialize_from_duckdb",
+    config_path=config_path,
+    timeout=args.timeout,
+  )
+
+  if result.success:
+    logger.info(f"Materialization complete ({result.duration_seconds:.1f}s)")
+  else:
+    logger.error(f"Materialization failed: {result.error}")
+    logger.info(
+      "You can retry with 'just sec-materialize-duckdb' - staging is preserved"
+    )
+
+  if args.json:
+    print(
+      json.dumps(
+        {
+          "status": "success" if result.success else "failure",
+          "duration_seconds": result.duration_seconds,
+          "error": result.error,
+          "graph_id": args.graph_id,
+        },
+        indent=2,
+      )
+    )
+
+  return 0 if result.success else 1
+
+
 def cmd_process_parallel(args):
   """Process filings in parallel via Dagster dynamic partitions.
 
@@ -1172,9 +1340,10 @@ def main():
   )
   download_parser.add_argument("--json", action="store_true", help="JSON output")
 
-  # Materialize command - ingests all processed data to graph
+  # Materialize command - ingests all processed data to graph (combined approach)
   mat_parser = subparsers.add_parser(
-    "materialize", help="Ingest all processed parquet files to LadybugDB graph"
+    "materialize",
+    help="Ingest all processed parquet files to LadybugDB graph (combined)",
   )
   mat_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
   mat_parser.add_argument("--json", action="store_true", help="JSON output")
@@ -1184,6 +1353,51 @@ def main():
     default=DEFAULT_MATERIALIZE_TIMEOUT,
     help=f"Timeout in seconds (default: {DEFAULT_MATERIALIZE_TIMEOUT})",
   )
+
+  # Stage command - decoupled Stage 1 (persistent DuckDB staging)
+  stage_parser = subparsers.add_parser(
+    "stage",
+    help="Stage to persistent DuckDB only (decoupled Stage 1 - retry-friendly)",
+  )
+  stage_parser.add_argument(
+    "--graph-id", type=str, default="sec", help="Graph ID (default: sec)"
+  )
+  stage_parser.add_argument("--year", type=str, help="Optional year filter")
+  stage_parser.add_argument(
+    "--no-rebuild",
+    action="store_false",
+    dest="rebuild",
+    help="Don't rebuild LadybugDB (append to existing)",
+  )
+  stage_parser.add_argument(
+    "--timeout",
+    type=int,
+    default=DEFAULT_MATERIALIZE_TIMEOUT,
+    help=f"Timeout in seconds (default: {DEFAULT_MATERIALIZE_TIMEOUT})",
+  )
+  stage_parser.add_argument(
+    "-v", "--verbose", action="store_true", help="Verbose output"
+  )
+  stage_parser.add_argument("--json", action="store_true", help="JSON output")
+
+  # Materialize-duckdb command - decoupled Stage 2 (materialize from existing DuckDB)
+  mat_duckdb_parser = subparsers.add_parser(
+    "materialize-duckdb",
+    help="Materialize from existing DuckDB staging (decoupled Stage 2 - retry-safe)",
+  )
+  mat_duckdb_parser.add_argument(
+    "--graph-id", type=str, default="sec", help="Graph ID (default: sec)"
+  )
+  mat_duckdb_parser.add_argument(
+    "--timeout",
+    type=int,
+    default=DEFAULT_MATERIALIZE_TIMEOUT,
+    help=f"Timeout in seconds (default: {DEFAULT_MATERIALIZE_TIMEOUT})",
+  )
+  mat_duckdb_parser.add_argument(
+    "-v", "--verbose", action="store_true", help="Verbose output"
+  )
+  mat_duckdb_parser.add_argument("--json", action="store_true", help="JSON output")
 
   # Process-parallel command
   parallel_parser = subparsers.add_parser(
@@ -1214,6 +1428,10 @@ def main():
     sys.exit(cmd_download(args))
   elif args.command == "materialize":
     sys.exit(cmd_materialize(args))
+  elif args.command == "stage":
+    sys.exit(cmd_stage(args))
+  elif args.command == "materialize-duckdb":
+    sys.exit(cmd_materialize_duckdb(args))
   elif args.command == "process-parallel":
     sys.exit(cmd_process_parallel(args))
   else:

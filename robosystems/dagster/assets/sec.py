@@ -293,6 +293,27 @@ class SECMaterializeConfig(Config):
   # Note: Always rebuilds graph from scratch - incremental not yet supported
 
 
+class SECStageConfig(Config):
+  """Configuration for DuckDB staging (decoupled Stage 1).
+
+  Use this config with sec_duckdb_staged asset for independent staging control.
+  """
+
+  graph_id: str = "sec"  # Target graph ID
+  rebuild_graph: bool = True  # Whether to rebuild LadybugDB before staging
+  year: int | None = None  # Optional year filter
+
+
+class SECMaterializeFromDuckDBConfig(Config):
+  """Configuration for materialization from existing DuckDB (decoupled Stage 2).
+
+  Use this config with sec_graph_from_duckdb asset for independent
+  materialization from already-staged DuckDB.
+  """
+
+  graph_id: str = "sec"  # Target graph ID
+
+
 # ============================================================================
 # Year-Partitioned Assets (download phase)
 # ============================================================================
@@ -981,5 +1002,179 @@ def sec_graph_materialized(
       "tables_processed": tables_count,
       "execution_time_ms": total_time,
       "status": result.get("status", "unknown"),
+    }
+  )
+
+
+# ============================================================================
+# Decoupled Staging and Materialization Assets (P0 Implementation)
+# ============================================================================
+# These assets split the materialization pipeline into two independent stages:
+# 1. sec_duckdb_staged: Stage to persistent DuckDB (2+ hours of work)
+# 2. sec_graph_from_duckdb: Materialize from DuckDB to LadybugDB
+#
+# Key benefit: If LadybugDB materialization fails, retry without re-staging.
+
+
+@asset(
+  group_name="sec_pipeline",
+  description="Stage SEC processed files to persistent DuckDB (decoupled Stage 1)",
+  compute_kind="duckdb",
+  metadata={
+    "pipeline": "sec",
+    "stage": "staging",
+    "decoupled": True,
+  },
+)
+def sec_duckdb_staged(
+  context: AssetExecutionContext,
+  config: SECStageConfig,
+) -> MaterializeResult:
+  """Stage SEC processed files to persistent DuckDB.
+
+  This is Stage 1 of the decoupled pipeline. It discovers processed files,
+  creates DuckDB staging tables, and persists them to disk. The staging
+  result is saved to a manifest for recovery.
+
+  Key features:
+  - Persists DuckDB to disk (survives job restarts)
+  - Writes manifest for tracking staged tables
+  - Can be run independently of materialization
+
+  Run with: just dagster-materialize sec_duckdb_staged
+
+  Returns:
+      MaterializeResult with staging statistics
+  """
+  import asyncio
+
+  from robosystems.adapters.sec import XBRLDuckDBGraphProcessor
+  from robosystems.operations.graph.shared_repository_service import (
+    ensure_shared_repository_exists,
+  )
+
+  context.log.info(f"Staging SEC data to DuckDB for graph: {config.graph_id}")
+
+  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id, source_prefix="sec")
+
+  async def run_staging():
+    # Ensure the SEC repository metadata exists in PostgreSQL
+    context.log.info("Ensuring SEC repository metadata exists...")
+    repo_result = await ensure_shared_repository_exists(
+      repository_name=config.graph_id,
+      created_by="system",
+      instance_id="local-dev" if env.ENVIRONMENT == "dev" else "ladybug-shared-prod",
+    )
+    context.log.info(f"SEC repository status: {repo_result.get('status', 'unknown')}")
+
+    # Run staging
+    result = await processor.stage_to_duckdb(
+      rebuild=config.rebuild_graph,
+      year=config.year,
+    )
+    return result
+
+  result = asyncio.run(run_staging())
+
+  if result.status == "error":
+    context.log.error(f"Staging failed: {result.error}")
+    return MaterializeResult(
+      metadata={
+        "graph_id": config.graph_id,
+        "status": "error",
+        "error": result.error,
+        "duration_seconds": result.duration_seconds,
+      }
+    )
+
+  context.log.info(
+    f"Staging complete: {len(result.table_names)} tables, "
+    f"{result.total_files} files, {result.duration_seconds:.2f}s"
+  )
+
+  return MaterializeResult(
+    metadata={
+      "graph_id": config.graph_id,
+      "status": result.status,
+      "tables_staged": len(result.table_names),
+      "table_names": result.table_names,
+      "total_files": result.total_files,
+      "total_rows": result.total_rows,
+      "manifest_path": result.manifest_path,
+      "duckdb_path": result.duckdb_path,
+      "duration_seconds": result.duration_seconds,
+    }
+  )
+
+
+@asset(
+  group_name="sec_pipeline",
+  description="Materialize LadybugDB graph from staged DuckDB (decoupled Stage 2)",
+  compute_kind="ladybug",
+  deps=["sec_duckdb_staged"],  # Explicit dependency on staging
+  metadata={
+    "pipeline": "sec",
+    "stage": "materialization",
+    "decoupled": True,
+  },
+)
+def sec_graph_from_duckdb(
+  context: AssetExecutionContext,
+  config: SECMaterializeFromDuckDBConfig,
+) -> MaterializeResult:
+  """Materialize LadybugDB graph from existing DuckDB staging.
+
+  This is Stage 2 of the decoupled pipeline. It reads from the persistent
+  DuckDB staging tables and materializes to LadybugDB.
+
+  Precondition: sec_duckdb_staged must have completed successfully,
+  creating a valid staging manifest.
+
+  Key features:
+  - Reads from persisted DuckDB (no S3 access needed)
+  - Can be retried independently if it fails
+  - Uses manifest to verify staging completeness
+
+  Run with: just dagster-materialize sec_graph_from_duckdb
+
+  Returns:
+      MaterializeResult with materialization statistics
+  """
+  import asyncio
+
+  from robosystems.adapters.sec import XBRLDuckDBGraphProcessor
+
+  context.log.info(f"Materializing graph from DuckDB staging: {config.graph_id}")
+
+  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id, source_prefix="sec")
+
+  async def run_materialization():
+    result = await processor.materialize_from_duckdb()
+    return result
+
+  result = asyncio.run(run_materialization())
+
+  if result.status == "error":
+    context.log.error(f"Materialization failed: {result.error}")
+    return MaterializeResult(
+      metadata={
+        "graph_id": config.graph_id,
+        "status": "error",
+        "error": result.error,
+      }
+    )
+
+  context.log.info(
+    f"Materialization complete: {result.total_rows_ingested} rows, "
+    f"{result.total_time_ms:.2f}ms"
+  )
+
+  return MaterializeResult(
+    metadata={
+      "graph_id": config.graph_id,
+      "status": result.status,
+      "rows_ingested": result.total_rows_ingested,
+      "execution_time_ms": result.total_time_ms,
+      "tables": result.tables,
     }
   )
