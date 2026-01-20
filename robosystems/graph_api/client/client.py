@@ -587,9 +587,20 @@ class GraphClient(BaseGraphClient):
     response = await self._request("POST", "/databases", json_data=payload)
     return response.json()
 
-  async def delete_database(self, graph_id: str) -> dict[str, Any]:
-    """Delete a database."""
-    response = await self._request("DELETE", f"/databases/{graph_id}")
+  async def delete_database(
+    self, graph_id: str, preserve_duckdb: bool = False
+  ) -> dict[str, Any]:
+    """Delete a database.
+
+    Args:
+        graph_id: Graph database identifier to delete
+        preserve_duckdb: If True, preserve DuckDB staging database for retry scenarios.
+            Useful when you want to rebuild LadybugDB from existing staging.
+    """
+    params = {}
+    if preserve_duckdb:
+      params["preserve_duckdb"] = "true"
+    response = await self._request("DELETE", f"/databases/{graph_id}", params=params)
     return response.json()
 
   async def ingest(

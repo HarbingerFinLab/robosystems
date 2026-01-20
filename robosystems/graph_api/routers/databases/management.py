@@ -5,7 +5,7 @@ This module provides endpoints for creating, listing, retrieving,
 and deleting LadybugDB graph databases.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi import status as http_status
 
 from robosystems.graph_api.core.ladybug import get_ladybug_service
@@ -82,6 +82,10 @@ async def get_database_info(
 @router.delete("/{graph_id}")
 async def delete_database(
   graph_id: str = Path(..., description="Graph database identifier"),
+  preserve_duckdb: bool = Query(
+    False,
+    description="If true, preserve DuckDB staging database (for retry scenarios)",
+  ),
   ladybug_service=Depends(get_ladybug_service),
 ) -> dict:
   """
@@ -89,6 +93,10 @@ async def delete_database(
 
   Permanently removes a database and all associated data.
   This operation cannot be undone.
+
+  Use preserve_duckdb=true when you want to delete only the LadybugDB
+  graph database while keeping DuckDB staging data for retry scenarios
+  (e.g., SEC pipeline materialization retry).
   """
   if ladybug_service.read_only:
     raise HTTPException(
@@ -101,5 +109,5 @@ async def delete_database(
     # Add extra confirmation or restrictions for shared database deletion
     logger.warning(f"Attempting to delete shared database: {graph_id}")
 
-  ladybug_service.db_manager.delete_database(graph_id)
+  ladybug_service.db_manager.delete_database(graph_id, preserve_duckdb=preserve_duckdb)
   return {"status": "success", "message": f"Database {graph_id} deleted successfully"}

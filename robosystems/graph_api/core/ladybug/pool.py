@@ -243,27 +243,10 @@ class LadybugConnectionPool:
       if database_name not in self._databases:
         logger.info(f"Creating new Database object for {database_name}")
 
-        # Get memory configuration from environment
-        # Use per-database memory limit if specified, otherwise fall back to total memory
-        from robosystems.config import env
+        # Get memory configuration from shared helper (single source of truth)
+        from .config import get_database_memory_config
 
-        # Get tier configuration with overrides from lbug.yml
-        tier_config = env.get_lbug_tier_config()
-
-        memory_per_db_mb = tier_config.get("memory_per_db_mb", 0)
-        if memory_per_db_mb > 0:
-          # Use the per-database limit (for standard tier with oversubscription)
-          buffer_pool_mb = memory_per_db_mb
-          logger.info(f"Using per-database memory limit: {buffer_pool_mb} MB")
-        else:
-          # Fall back to total memory for single-database instances (enterprise/premium/shared)
-          # Note: This only applies to LadybugDB databases (Standard tier uses this pool)
-          buffer_pool_mb = tier_config.get(
-            "lbug_max_memory_mb", tier_config.get("max_memory_mb", 2048)
-          )
-          logger.info(
-            f"Using total memory allocation: {buffer_pool_mb} MB (tier: {tier_config.get('tier', 'default')})"
-          )
+        buffer_pool_mb = get_database_memory_config()
 
         # Create database with buffer pool size configuration
         # Note: LadybugDB Python API uses buffer_pool_size in bytes

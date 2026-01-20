@@ -158,23 +158,10 @@ class LadybugDatabaseManager:
     try:
       logger.info(f"Creating database: {request.graph_id}")
 
-      # Get memory configuration from tier config (same logic as pool.py)
-      from robosystems.config import env
+      # Get memory configuration from shared helper (single source of truth)
+      from .config import get_database_memory_config
 
-      tier_config = env.get_lbug_tier_config()
-      memory_per_db_mb = tier_config.get("memory_per_db_mb", 0)
-      if memory_per_db_mb > 0:
-        # Use the per-database limit (for standard tier with oversubscription)
-        max_memory_mb = memory_per_db_mb
-        logger.info(f"Using per-database memory limit: {max_memory_mb} MB")
-      else:
-        # Fall back to total memory for single-database instances (shared/dedicated)
-        max_memory_mb = tier_config.get(
-          "lbug_max_memory_mb", tier_config.get("max_memory_mb", env.LBUG_MAX_MEMORY_MB)
-        )
-        logger.info(
-          f"Using total memory allocation: {max_memory_mb} MB (tier: {tier_config.get('tier', 'default')})"
-        )
+      max_memory_mb = get_database_memory_config()
       buffer_pool_size = max_memory_mb * 1024 * 1024
 
       # For SEC database, use explicit checkpoint threshold for large tables
@@ -259,12 +246,17 @@ class LadybugDatabaseManager:
         detail=f"Database creation failed: {e!s}",
       )
 
-  def delete_database(self, graph_id: str) -> dict[str, Any]:
+  def delete_database(
+    self, graph_id: str, preserve_duckdb: bool = False
+  ) -> dict[str, Any]:
     """
     Delete a database and cleanup resources.
 
     Args:
         graph_id: Graph database identifier to delete
+        preserve_duckdb: If True, preserve DuckDB staging database for retry scenarios.
+            This is useful for decoupled pipelines where you want to rebuild
+            LadybugDB from existing DuckDB staging without re-running staging.
 
     Returns:
         Deletion status
@@ -278,7 +270,7 @@ class LadybugDatabaseManager:
       )
 
     try:
-      logger.info(f"Deleting database: {graph_id}")
+      logger.info(f"Deleting database: {graph_id} (preserve_duckdb={preserve_duckdb})")
 
       # Close any connections in the pool for this database
       self.connection_pool.close_database_connections(graph_id)
@@ -291,16 +283,20 @@ class LadybugDatabaseManager:
         shutil.rmtree(db_path)
 
       # Clean up DuckDB staging database alongside LadybugDB database
-      from robosystems.graph_api.core.duckdb import get_duckdb_pool
+      # Skip if preserve_duckdb is True (for retry/incremental scenarios)
+      if not preserve_duckdb:
+        from robosystems.graph_api.core.duckdb import get_duckdb_pool
 
-      try:
-        duckdb_pool = get_duckdb_pool()
-        duckdb_pool.force_database_cleanup(graph_id)
-        logger.info(f"Deleted DuckDB staging database for {graph_id}")
-      except Exception as duck_err:
-        logger.warning(
-          f"Could not delete DuckDB staging database for {graph_id}: {duck_err}"
-        )
+        try:
+          duckdb_pool = get_duckdb_pool()
+          duckdb_pool.force_database_cleanup(graph_id)
+          logger.info(f"Deleted DuckDB staging database for {graph_id}")
+        except Exception as duck_err:
+          logger.warning(
+            f"Could not delete DuckDB staging database for {graph_id}: {duck_err}"
+          )
+      else:
+        logger.info(f"Preserving DuckDB staging database for {graph_id}")
 
       logger.info(f"Database {graph_id} deleted successfully")
 

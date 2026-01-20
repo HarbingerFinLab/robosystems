@@ -378,17 +378,29 @@ duckdb-query-i graph_id env=_local_env:
 #   just sec-process 2024
 #   just sec-pipeline 50 2024
 
+# --- Full Pipeline (convenience) ---
+
+# Full pipeline: download → process → materialize (top N companies by market cap)
+sec-pipeline count="10" year="2025" limit="":
+    @just sec-download {{count}} {{year}}
+    @just sec-process {{year}} {{limit}}
+    @just sec-materialize
+
 # Load single ticker end-to-end (download + process + materialize)
 sec-load ticker year="" env=_local_env:
     UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline run \
         --tickers {{ticker}} \
         {{ if year != "" { "--year " + year } else { "" } }}
 
+# --- Phase 1: Download ---
+
 # Download raw XBRL ZIPs to S3 (top N companies by market cap)
 sec-download count="10" year="" env=_local_env:
     UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline download \
         --count {{count}} \
         {{ if year != "" { "--year " + year } else { "" } }}
+
+# --- Phase 2: Process ---
 
 # Process downloaded filings to parquet (parallel)
 sec-process year="" limit="" concurrency="2" env=_local_env:
@@ -397,15 +409,26 @@ sec-process year="" limit="" concurrency="2" env=_local_env:
         {{ if limit != "" { "--limit " + limit } else { "" } }} \
         --concurrency {{concurrency}}
 
-# Materialize processed parquet files to graph (ingests all available data)
+# --- Phase 3: Materialize ---
+
+# Materialize processed parquet files to graph (combined: staging + ingestion)
 sec-materialize env=_local_env:
     UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline materialize
 
-# Full pipeline: download → process → materialize (top N companies by market cap)
-sec-pipeline count="10" year="2025" limit="":
-    @just sec-download {{count}} {{year}}
-    @just sec-process {{year}} {{limit}}
-    @just sec-materialize
+# Stage to persistent DuckDB only (decoupled Stage 1)
+# Use this to save 2+ hours of work that persists if materialization fails
+sec-stage graph_id="sec" year="" env=_local_env:
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline stage \
+        --graph-id {{graph_id}} \
+        {{ if year != "" { "--year " + year } else { "" } }}
+
+# Materialize from existing DuckDB staging (decoupled Stage 2)
+# Use this to retry materialization without re-staging
+sec-materialize-duckdb graph_id="sec" env=_local_env:
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline materialize-duckdb \
+        --graph-id {{graph_id}}
+
+# --- Utilities ---
 
 # Reset SEC database and optionally S3 data
 sec-reset clear_s3="" env=_local_env:

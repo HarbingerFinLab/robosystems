@@ -202,3 +202,53 @@ def is_source_enabled(source: DataSourceType) -> bool:
       True if the source is enabled
   """
   return DATA_SOURCES[source].enabled
+
+
+# =============================================================================
+# DuckDB Staging Path Helpers
+# =============================================================================
+
+
+def get_staging_duckdb_path(graph_id: str = "sec") -> str:
+  """Get persistent DuckDB staging database path on EBS.
+
+  This path is used for DuckDB staging tables that persist between
+  job runs, enabling independent retry of LadybugDB materialization
+  without re-running the DuckDB staging step.
+
+  Args:
+      graph_id: Graph database identifier (default: "sec")
+
+  Returns:
+      Full path to the DuckDB database file
+
+  Example:
+      >>> get_staging_duckdb_path("sec")
+      '/mnt/ladybug-data/staging/sec.duckdb'
+  """
+  from robosystems.config import env
+
+  base = env.DUCKDB_STAGING_PATH
+  return f"{base}/{graph_id}.duckdb"
+
+
+def get_staging_manifest_path(graph_id: str = "sec") -> str:
+  """Get staging manifest JSON path.
+
+  The manifest tracks which tables have been staged, row counts,
+  and timestamps for recovery and monitoring purposes.
+
+  Args:
+      graph_id: Graph database identifier (default: "sec")
+
+  Returns:
+      Full path to the manifest JSON file
+
+  Example:
+      >>> get_staging_manifest_path("sec")
+      '/mnt/ladybug-data/staging/sec_manifest.json'
+  """
+  from robosystems.config import env
+
+  base = env.DUCKDB_STAGING_PATH
+  return f"{base}/{graph_id}_manifest.json"

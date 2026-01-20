@@ -11,15 +11,17 @@ Pipeline Architecture (3 phases, run independently):
     sec_process_job: sec_process_filing (dynamic partitions)
     Parallel processing - one partition per filing.
 
-  Phase 3 - Materialize:
-    sec_materialize_job: sec_graph_materialized
-    Discovers processed files, stages to DuckDB, ingests to LadybugDB graph.
-    Uses SSE for progress monitoring on long-running operations.
+  Phase 3 - Materialize (two-stage pipeline):
+    sec_stage_job: sec_duckdb_staged (Stage 1 - DuckDB staging)
+    sec_materialize_job: sec_graph_materialized (Stage 2 - LadybugDB materialization)
+
+    If LadybugDB materialization fails, just re-run sec_materialize_job.
 
 Workflow:
   just sec-download 10 2024    # Download top 10 companies (all 4 quarters)
   just sec-process 2024        # Process in parallel
-  just sec-materialize         # Ingest to graph
+  just sec-stage               # Stage to DuckDB
+  just sec-materialize         # Materialize to LadybugDB (retry-safe)
 
   # Or all-in-one for demos:
   just sec-load NVDA 2024      # Chains all steps for single company
@@ -40,6 +42,7 @@ from dagster import (
 from robosystems.config import env
 from robosystems.dagster.assets import (
   SECDownloadConfig,
+  sec_duckdb_staged,
   sec_filing_partitions,
   sec_graph_materialized,
   sec_process_filing,
@@ -100,12 +103,41 @@ sec_process_job = define_asset_job(
 )
 
 
-# Phase 3: Materialize (unpartitioned)
+# ============================================================================
+# Phase 3: Materialize (Decoupled Staging + Materialization)
+# ============================================================================
+# Decoupled design enables retry of materialization without re-staging:
+# - sec_stage_job: Stage to persistent DuckDB (2+ hours for full SEC)
+# - sec_materialize_job: Materialize from DuckDB to LadybugDB (retry-safe)
+#
+# If LadybugDB materialization fails, just re-run sec_materialize_job.
+
+# Stage 1: DuckDB Staging
+# Discovers processed files from S3 and stages to persistent DuckDB.
+sec_stage_job = define_asset_job(
+  name="sec_stage",
+  description="Stage SEC files to persistent DuckDB (no graph ingestion).",
+  selection=AssetSelection.assets(sec_duckdb_staged),
+  tags={"pipeline": "sec", "phase": "stage"},
+)
+
+# Stage 2: LadybugDB Materialization
+# Materializes to LadybugDB from existing DuckDB staging.
+# Retry-safe: if this fails, just re-run it - DuckDB staging is preserved.
 sec_materialize_job = define_asset_job(
   name="sec_materialize",
-  description="Materialize SEC graph from processed parquet files via DuckDB staging.",
+  description="Materialize SEC graph from DuckDB staging (retry-safe).",
   selection=AssetSelection.assets(sec_graph_materialized),
   tags={"pipeline": "sec", "phase": "materialize"},
+)
+
+# Combined: Run both stages in sequence
+# Useful for full rebuilds with checkpointing between stages.
+sec_staged_materialize_job = define_asset_job(
+  name="sec_staged_materialize",
+  description="Full SEC pipeline: stage to DuckDB then materialize to LadybugDB.",
+  selection=AssetSelection.assets(sec_duckdb_staged, sec_graph_materialized),
+  tags={"pipeline": "sec", "phase": "full"},
 )
 
 

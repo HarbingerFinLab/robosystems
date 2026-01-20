@@ -2,6 +2,12 @@
 
 from robosystems.adapters.sec.client import SEC_BASE_URL, SECClient, enable_test_mode
 from robosystems.adapters.sec.client.arelle import ArelleClient
+from robosystems.adapters.sec.models.staging import (
+  MaterializeResult,
+  StagingManifest,
+  StagingResult,
+  TableInfo,
+)
 from robosystems.adapters.sec.processors import (
   XBRL_GRAPH_PROCESSOR_VERSION,
   IngestTableInfo,
@@ -19,11 +25,13 @@ __all__ = [
   "XBRL_GRAPH_PROCESSOR_VERSION",
   "ArelleClient",
   "IngestTableInfo",
-  # Client
+  "MaterializeResult",
   "SECClient",
   "SchemaIngestConfig",
+  "StagingManifest",
+  "StagingResult",
+  "TableInfo",
   "XBRLDuckDBGraphProcessor",
-  # Processors
   "XBRLGraphProcessor",
   "XBRLSchemaAdapter",
   "XBRLSchemaConfigGenerator",
