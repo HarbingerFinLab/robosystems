@@ -608,18 +608,6 @@ Resources:
           - AZRebalance
           - ScheduledActions
 
-  # Scaling Policies
-  ScaleUpPolicy:
-    Type: AWS::AutoScaling::ScalingPolicy
-    DeletionPolicy: Delete
-    Properties:
-      AutoScalingGroupName: !Ref WriterAutoScalingGroup
-      PolicyType: TargetTrackingScaling
-      TargetTrackingConfiguration:
-        PredefinedMetricSpecification:
-          PredefinedMetricType: ASGAverageCPUUtilization
-        TargetValue: 70.0
-
   # ========================================
   # LIFECYCLE HOOKS
   # ========================================
