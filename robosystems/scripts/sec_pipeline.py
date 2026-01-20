@@ -26,8 +26,11 @@ Usage:
     # Step-by-step (for production use):
     just sec-download 10 2024      # Phase 1: Download (4 quarterly partitions)
     just sec-process 2024          # Phase 2: Process in parallel
-    just sec-stage                 # Phase 3a: Stage to DuckDB
-    just sec-materialize           # Phase 3b: Materialize to LadybugDB (retry-safe)
+    just sec-materialize           # Phase 3: Stage to DuckDB + Materialize to LadybugDB
+
+    # Decoupled materialization (for checkpointing/retry):
+    just sec-stage                 # Stage 1: Stage to DuckDB only
+    just sec-materialize-graph    # Stage 2: Materialize to LadybugDB (retry-safe)
 
     # Reset database
     just sec-reset
@@ -415,7 +418,7 @@ class SECPipeline:
         else:
           logger.error(f"  Materialization failed: {mat_result.error}")
           logger.info(
-            "  Retry with 'just sec-materialize-duckdb' - staging is preserved"
+            "  Retry with 'just sec-materialize-graph' - staging is preserved"
           )
       else:
         logger.error(f"  Staging failed: {stage_result.error}")
@@ -930,7 +933,7 @@ def cmd_stage(args):
 
   if result.success:
     logger.info(f"Staging complete ({result.duration_seconds:.1f}s)")
-    logger.info("Run 'just sec-materialize-duckdb' to materialize to LadybugDB")
+    logger.info("Run 'just sec-materialize-graph' to materialize to LadybugDB")
   else:
     logger.error(f"Staging failed: {result.error}")
 
@@ -950,7 +953,7 @@ def cmd_stage(args):
   return 0 if result.success else 1
 
 
-def cmd_materialize_duckdb(args):
+def cmd_materialize_graph(args):
   """Materialize from DuckDB command - materializes from existing DuckDB staging (decoupled Stage 2).
 
   This is the second stage of the decoupled pipeline. It reads from the persistent
@@ -996,7 +999,7 @@ def cmd_materialize_duckdb(args):
   else:
     logger.error(f"Materialization failed: {result.error}")
     logger.info(
-      "You can retry with 'just sec-materialize-duckdb' - staging is preserved"
+      "You can retry with 'just sec-materialize-graph' - staging is preserved"
     )
 
   if args.json:
@@ -1335,23 +1338,23 @@ def main():
   stage_parser.add_argument("--json", action="store_true", help="JSON output")
 
   # Materialize-duckdb command - Stage 2 (materialize from existing DuckDB)
-  mat_duckdb_parser = subparsers.add_parser(
-    "materialize-duckdb",
+  mat_graph_parser = subparsers.add_parser(
+    "materialize-graph",
     help="Materialize to LadybugDB from existing DuckDB staging (Stage 2, retry-safe)",
   )
-  mat_duckdb_parser.add_argument(
+  mat_graph_parser.add_argument(
     "--graph-id", type=str, default="sec", help="Graph ID (default: sec)"
   )
-  mat_duckdb_parser.add_argument(
+  mat_graph_parser.add_argument(
     "--timeout",
     type=int,
     default=DEFAULT_MATERIALIZE_TIMEOUT,
     help=f"Timeout in seconds (default: {DEFAULT_MATERIALIZE_TIMEOUT})",
   )
-  mat_duckdb_parser.add_argument(
+  mat_graph_parser.add_argument(
     "-v", "--verbose", action="store_true", help="Verbose output"
   )
-  mat_duckdb_parser.add_argument("--json", action="store_true", help="JSON output")
+  mat_graph_parser.add_argument("--json", action="store_true", help="JSON output")
 
   # Process-parallel command
   parallel_parser = subparsers.add_parser(
@@ -1382,8 +1385,8 @@ def main():
     sys.exit(cmd_download(args))
   elif args.command == "stage":
     sys.exit(cmd_stage(args))
-  elif args.command == "materialize-duckdb":
-    sys.exit(cmd_materialize_duckdb(args))
+  elif args.command == "materialize-graph":
+    sys.exit(cmd_materialize_graph(args))
   elif args.command == "process-parallel":
     sys.exit(cmd_process_parallel(args))
   else:

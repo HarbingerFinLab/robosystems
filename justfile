@@ -412,8 +412,9 @@ sec-process year="" limit="" concurrency="2" env=_local_env:
 # --- Phase 3: Materialize ---
 
 # Materialize processed parquet files to graph (combined: staging + ingestion)
-sec-materialize env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline materialize
+sec-materialize graph_id="sec" env=_local_env:
+    @just sec-stage {{graph_id}} "" {{env}}
+    @just sec-materialize-graph {{graph_id}} {{env}}
 
 # Stage to persistent DuckDB only (decoupled Stage 1)
 # Use this to save 2+ hours of work that persists if materialization fails
@@ -422,10 +423,10 @@ sec-stage graph_id="sec" year="" env=_local_env:
         --graph-id {{graph_id}} \
         {{ if year != "" { "--year " + year } else { "" } }}
 
-# Materialize from existing DuckDB staging (decoupled Stage 2)
+# Materialize graph from existing DuckDB staging (decoupled Stage 2)
 # Use this to retry materialization without re-staging
-sec-materialize-duckdb graph_id="sec" env=_local_env:
-    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline materialize-duckdb \
+sec-materialize-graph graph_id="sec" env=_local_env:
+    UV_ENV_FILE={{env}} uv run python -m robosystems.scripts.sec_pipeline materialize-graph \
         --graph-id {{graph_id}}
 
 # --- Utilities ---

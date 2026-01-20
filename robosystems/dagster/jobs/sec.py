@@ -20,8 +20,11 @@ Pipeline Architecture (3 phases, run independently):
 Workflow:
   just sec-download 10 2024    # Download top 10 companies (all 4 quarters)
   just sec-process 2024        # Process in parallel
-  just sec-stage               # Stage to DuckDB
-  just sec-materialize         # Materialize to LadybugDB (retry-safe)
+  just sec-materialize         # Stage to DuckDB + Materialize to LadybugDB
+
+  # Decoupled (for checkpointing/retry):
+  just sec-stage               # Stage 1: Stage to DuckDB only
+  just sec-materialize-graph  # Stage 2: Materialize to LadybugDB (retry-safe)
 
   # Or all-in-one for demos:
   just sec-load NVDA 2024      # Chains all steps for single company
