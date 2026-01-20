@@ -84,6 +84,7 @@ class XBRLDuckDBGraphProcessor:
     self,
     rebuild: bool = True,
     year: int | None = None,
+    reset_staging: bool = False,
   ) -> StagingResult:
     """
     Stage processed Parquet files to persistent DuckDB.
@@ -99,6 +100,8 @@ class XBRLDuckDBGraphProcessor:
         rebuild: Whether to rebuild LadybugDB database from scratch (default: True).
         year: Optional year filter. If provided, only files from that year
               will be included in staging.
+        reset_staging: If True, delete DuckDB staging alongside LadybugDB for a
+            fresh start. If False (default), preserve DuckDB for incremental scenarios.
 
     Returns:
         StagingResult with table counts, file counts, and manifest path
@@ -107,7 +110,7 @@ class XBRLDuckDBGraphProcessor:
 
     logger.info(
       f"Starting DuckDB staging for graph {self.graph_id} "
-      f"(year={year or 'all'}, rebuild={rebuild})"
+      f"(year={year or 'all'}, rebuild={rebuild}, reset_staging={reset_staging})"
     )
 
     manifest_path = get_staging_manifest_path(self.graph_id)
@@ -149,7 +152,7 @@ class XBRLDuckDBGraphProcessor:
       # Step 2: Handle LadybugDB database rebuild BEFORE creating DuckDB tables
       if rebuild:
         logger.info("Step 2: Rebuilding LadybugDB database...")
-        await self._rebuild_ladybug_database(client)
+        await self._rebuild_ladybug_database(client, reset_staging=reset_staging)
 
       # Step 3: Create DuckDB staging tables via Graph API
       logger.info("Step 3: Creating DuckDB staging tables via Graph API...")
@@ -397,13 +400,17 @@ class XBRLDuckDBGraphProcessor:
       "duration_seconds": duration,
     }
 
-  async def _rebuild_ladybug_database(self, client) -> None:
+  async def _rebuild_ladybug_database(
+    self, client, reset_staging: bool = False
+  ) -> None:
     """Rebuild the LadybugDB database from scratch.
 
     Deletes the existing database and recreates it with the same schema.
 
     Args:
         client: Graph API client instance
+        reset_staging: If True, also delete DuckDB staging for a fresh start.
+            If False (default), preserve DuckDB for incremental/retry scenarios.
     """
     from robosystems.database import SessionFactory
     from robosystems.models.iam import GraphSchema
@@ -414,11 +421,18 @@ class XBRLDuckDBGraphProcessor:
 
     db = SessionFactory()
     try:
-      # Preserve DuckDB staging so we can retry materialization without re-staging
-      await client.delete_database(self.graph_id, preserve_duckdb=True)
-      logger.info(
-        f"Deleted LadybugDB database: {self.graph_id} (DuckDB staging preserved)"
-      )
+      # preserve_duckdb=True keeps DuckDB for retry/incremental scenarios
+      # preserve_duckdb=False (reset_staging=True) deletes both for fresh start
+      preserve_duckdb = not reset_staging
+      await client.delete_database(self.graph_id, preserve_duckdb=preserve_duckdb)
+      if reset_staging:
+        logger.info(
+          f"Deleted LadybugDB and DuckDB staging: {self.graph_id} (fresh start)"
+        )
+      else:
+        logger.info(
+          f"Deleted LadybugDB database: {self.graph_id} (DuckDB staging preserved)"
+        )
 
       schema = GraphSchema.get_active_schema(self.graph_id, db)
       if not schema:

@@ -31,7 +31,6 @@ from robosystems.dagster.jobs.provisioning import (
 from robosystems.dagster.jobs.sec import (
   sec_daily_download_schedule,
   sec_download_job,
-  sec_materialize_from_duckdb_job,
   sec_materialize_job,
   sec_nightly_materialize_schedule,
   sec_process_job,
@@ -58,7 +57,6 @@ __all__ = [
   "provision_repository_job",
   "sec_daily_download_schedule",
   "sec_download_job",
-  "sec_materialize_from_duckdb_job",
   "sec_materialize_job",
   "sec_nightly_materialize_schedule",
   "sec_process_job",

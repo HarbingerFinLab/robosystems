@@ -31,10 +31,8 @@ from robosystems.dagster.assets import (
   qb_graph_data,
   qb_transactions,
   repository_provisioning_source,
-  # SEC pipeline - decoupled staging/materialization (P0)
+  # SEC pipeline - two-stage materialization
   sec_duckdb_staged,
-  sec_graph_from_duckdb,
-  # SEC pipeline - materialization (original combined approach)
   sec_graph_materialized,
   # SEC pipeline - dynamic partition processing
   sec_process_filing,
@@ -92,7 +90,6 @@ from robosystems.dagster.jobs.provisioning import (
 from robosystems.dagster.jobs.sec import (
   sec_daily_download_schedule,
   sec_download_job,
-  sec_materialize_from_duckdb_job,
   sec_materialize_job,
   sec_nightly_materialize_schedule,
   sec_process_job,
@@ -156,14 +153,12 @@ all_jobs = [
   stage_file_job,
   materialize_file_job,
   materialize_graph_job,
-  # SEC pipeline jobs (original)
+  # SEC pipeline jobs
   sec_download_job,  # Download raw filings to S3
   sec_process_job,  # Per-filing processing (sensor-triggered)
-  sec_materialize_job,  # Staging + materialization to graph (combined)
-  # SEC pipeline jobs (decoupled P0)
-  sec_stage_job,  # Stage to persistent DuckDB only
-  sec_materialize_from_duckdb_job,  # Materialize from existing DuckDB
-  sec_staged_materialize_job,  # Full pipeline with checkpointing
+  sec_stage_job,  # Stage to persistent DuckDB
+  sec_materialize_job,  # Materialize from DuckDB to LadybugDB (retry-safe)
+  sec_staged_materialize_job,  # Full pipeline: stage + materialize
   # Notification jobs
   send_email_job,
 ]
@@ -218,11 +213,9 @@ all_assets = [
   sec_raw_filings,
   # SEC pipeline - dynamic partition processing (sensor handles discovery)
   sec_process_filing,
-  # SEC pipeline - materialization (original combined approach)
-  sec_graph_materialized,
-  # SEC pipeline - decoupled staging/materialization (P0)
+  # SEC pipeline - two-stage materialization
   sec_duckdb_staged,  # Stage 1: DuckDB staging
-  sec_graph_from_duckdb,  # Stage 2: LadybugDB materialization
+  sec_graph_materialized,  # Stage 2: LadybugDB materialization (retry-safe)
   # QuickBooks pipeline assets
   qb_accounts,
   qb_transactions,

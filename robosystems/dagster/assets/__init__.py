@@ -27,15 +27,12 @@ from robosystems.dagster.assets.sec import (
   # Config classes
   SECDownloadConfig,
   SECMaterializeConfig,
-  SECMaterializeFromDuckDBConfig,
   SECSingleFilingConfig,
   SECStageConfig,
-  # Assets - decoupled staging/materialization
+  # Assets - two-stage materialization
   sec_duckdb_staged,
   # Assets - dynamic partition processing
   sec_filing_partitions,
-  sec_graph_from_duckdb,
-  # Assets - materialization (original combined approach)
   sec_graph_materialized,
   sec_process_filing,
   # Partitions (quarterly to stay under EFTS 10k limit)
@@ -47,7 +44,6 @@ from robosystems.dagster.assets.staged_files import staged_files_source
 __all__ = [
   "SECDownloadConfig",
   "SECMaterializeConfig",
-  "SECMaterializeFromDuckDBConfig",
   "SECSingleFilingConfig",
   "SECStageConfig",
   "graph_provisioning_source",
@@ -61,7 +57,6 @@ __all__ = [
   "repository_provisioning_source",
   "sec_duckdb_staged",
   "sec_filing_partitions",
-  "sec_graph_from_duckdb",
   "sec_graph_materialized",
   "sec_process_filing",
   "sec_quarter_partitions",
