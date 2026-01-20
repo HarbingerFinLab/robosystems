@@ -202,6 +202,25 @@ async def materialize_table(
         f"Materialized {rows_ingested} rows from {table_name} in {execution_time_ms:.2f}ms"
       )
 
+      # Checkpoint and release LadybugDB memory after each table
+      # This prevents memory accumulation during multi-table materialization
+      try:
+        # Checkpoint to flush data to disk
+        with ladybug_service.db_manager.connection_pool.get_connection(
+          graph_id
+        ) as conn:
+          conn.execute("CHECKPOINT")
+          logger.debug(f"Checkpointed LadybugDB after {table_name} materialization")
+
+        # Release buffer pool memory - data is safe on disk now
+        ladybug_service.db_manager.connection_pool.force_database_cleanup(
+          graph_id, aggressive=True
+        )
+        logger.info(f"Released LadybugDB memory after {table_name} materialization")
+      except Exception as cleanup_err:
+        # Log but don't fail - materialization succeeded
+        logger.warning(f"Could not release LadybugDB memory: {cleanup_err}")
+
       return TableMaterializationResponse(
         status="success",
         graph_id=graph_id,
@@ -218,16 +237,24 @@ async def materialize_table(
       )
 
     finally:
-      # Clean up temp table
+      # Clean up temp table and release DuckDB memory
       if temp_table_created:
+        # Drop temp table
         try:
           with duckdb_pool.get_connection(graph_id) as duck_conn:
             duck_conn.execute(f"DROP TABLE IF EXISTS {temp_table_name}")
             logger.info(f"Cleaned up temp DuckDB table: {temp_table_name}")
-        except Exception as cleanup_err:
-          logger.warning(
-            f"Failed to clean up temp table {temp_table_name}: {cleanup_err}"
-          )
+        except Exception as drop_err:
+          logger.warning(f"Failed to drop temp table {temp_table_name}: {drop_err}")
+
+        # Checkpoint and release connections (always attempt even if drop failed)
+        try:
+          with duckdb_pool.get_connection(graph_id) as duck_conn:
+            duck_conn.execute("CHECKPOINT")
+          duckdb_pool.close_database_connections(graph_id)
+          logger.debug(f"Released DuckDB connections for {graph_id}")
+        except Exception as release_err:
+          logger.warning(f"Failed to release DuckDB connections: {release_err}")
 
   except Exception as outer_err:
     logger.error(f"Failed during table preparation or materialization: {outer_err}")
