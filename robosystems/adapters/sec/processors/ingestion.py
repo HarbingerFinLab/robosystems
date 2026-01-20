@@ -310,7 +310,6 @@ class XBRLDuckDBGraphProcessor:
         f"Materialization complete in {duration:.2f}s: "
         f"{ingestion_results.get('total_rows_ingested', 0)} rows ingested"
       )
-
       return MaterializeResult(
         status="success",
         total_rows_ingested=ingestion_results.get("total_rows_ingested", 0),
