@@ -409,10 +409,14 @@ class SECPipeline:
         all_results.append(mat_result)
 
         if mat_result.success:
-          logger.info(f"  Materialization complete ({mat_result.duration_seconds:.1f}s)")
+          logger.info(
+            f"  Materialization complete ({mat_result.duration_seconds:.1f}s)"
+          )
         else:
           logger.error(f"  Materialization failed: {mat_result.error}")
-          logger.info("  Retry with 'just sec-materialize-duckdb' - staging is preserved")
+          logger.info(
+            "  Retry with 'just sec-materialize-duckdb' - staging is preserved"
+          )
       else:
         logger.error(f"  Staging failed: {stage_result.error}")
 

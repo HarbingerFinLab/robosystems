@@ -146,9 +146,10 @@ class GraphClient(BaseGraphClient):
     json_data: dict[str, Any] | None = None,
     params: dict[str, Any] | None = None,
     timeout: float | None = None,
+    retries: int | None = None,
   ) -> httpx.Response:
     """
-    Make HTTP request with retry logic.
+    Make HTTP request with optional retry logic.
 
     Args:
         method: HTTP method
@@ -156,6 +157,8 @@ class GraphClient(BaseGraphClient):
         json_data: JSON body
         params: Query parameters
         timeout: Request timeout
+        retries: Number of retries. None uses config default, 0 disables retries.
+                 Use retries=0 for non-idempotent operations like materialization.
 
     Returns:
         Response object
@@ -197,6 +200,12 @@ class GraphClient(BaseGraphClient):
         raise error
 
       return response
+
+    # Skip retry logic if explicitly disabled (retries=0)
+    # Use for non-idempotent operations like materialization where
+    # retries can cause duplicate data
+    if retries == 0:
+      return await make_request()
 
     return await self._execute_with_retry(make_request)
 
@@ -1173,6 +1182,7 @@ class GraphClient(BaseGraphClient):
         f"/databases/{graph_id}/tables",
         json_data=json_data,
         timeout=30.0,  # Short timeout for starting the task
+        retries=0,  # Non-idempotent: retries could start duplicate staging tasks
       )
 
       start_data = start_response.json()
@@ -1269,6 +1279,7 @@ class GraphClient(BaseGraphClient):
     table_name: str,
     ignore_errors: bool = True,
     file_ids: list[str] | None = None,
+    timeout: float = 600.0,
   ) -> dict[str, Any]:
     """
     Materialize a DuckDB staging table into the graph database.
@@ -1281,6 +1292,8 @@ class GraphClient(BaseGraphClient):
         table_name: Table name to materialize
         ignore_errors: Continue on row errors
         file_ids: Optional list of file IDs to materialize. If None, materializes all rows (full materialization).
+        timeout: Request timeout in seconds. Default 600s (10 min) for large bulk operations.
+                 The default 30s timeout is insufficient for tables with millions of rows.
 
     Returns:
         Materialization response with rows materialized and timing
@@ -1294,6 +1307,8 @@ class GraphClient(BaseGraphClient):
       "POST",
       f"/databases/{graph_id}/tables/{table_name}/materialize",
       json_data=json_data,
+      timeout=timeout,
+      retries=0,  # Non-idempotent: retries cause duplicate data
     )
     return response.json()
 
