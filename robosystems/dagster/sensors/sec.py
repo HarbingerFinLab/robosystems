@@ -34,7 +34,7 @@ from robosystems.config.storage.shared import (
   DataSourceType,
   get_raw_key,
 )
-from robosystems.dagster.jobs.sec import sec_process_job
+from robosystems.dagster.jobs.sec import sec_process_job, sec_stage_job
 
 
 def _get_s3_client():
@@ -354,7 +354,7 @@ SEC_INCREMENTAL_STAGING_SCHEDULE_STATUS = (
 
 
 @schedule(
-  job_name="sec_stage",
+  job=sec_stage_job,
   cron_schedule="0 5 * * *",  # 5am UTC = 12am EST (after processing, before materialize)
   default_status=SEC_INCREMENTAL_STAGING_SCHEDULE_STATUS,
   execution_timezone="UTC",
