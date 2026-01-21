@@ -158,7 +158,7 @@ async def run_graph_creation(
 
     # Report to Dagster for observability (non-blocking)
     await _report_graph_materialization_async(
-      asset_key="graphs",
+      asset_key="user_graph_creation",
       description=f"Direct creation of graph {result.get('graph_id')}",
       metadata={
         "graph_id": result.get("graph_id", ""),
@@ -270,7 +270,7 @@ async def run_entity_graph_creation(
 
       # Report to Dagster for observability (non-blocking)
       await _report_graph_materialization_async(
-        asset_key="graphs",
+        asset_key="user_graph_creation",
         description=f"Direct creation of entity graph {result.get('graph_id')}",
         metadata={
           "graph_id": result.get("graph_id", ""),
@@ -379,7 +379,7 @@ async def run_subgraph_creation(
 
       # Report to Dagster
       await _report_graph_materialization_async(
-        asset_key="subgraphs",
+        asset_key="user_subgraph_creation",
         description=f"Direct creation of subgraph {result.get('graph_id')}",
         metadata={
           "graph_id": result.get("graph_id", ""),
@@ -657,7 +657,7 @@ async def run_graph_provisioning(
 
       # Report to Dagster for observability
       await _report_graph_materialization_async(
-        asset_key="graph_provisioning",
+        asset_key="user_graph_provisioning",
         description=f"Direct provisioning of graph {graph_id}",
         metadata={
           "subscription_id": subscription_id,
@@ -727,7 +727,7 @@ async def run_graph_provisioning(
     raise
 
 
-async def run_repository_provisioning(
+async def run_repository_access_provisioning(
   operation_id: str | None,
   subscription_id: str,
   user_id: str,
@@ -894,7 +894,7 @@ async def run_repository_provisioning(
 
       # Report to Dagster for observability
       await _report_graph_materialization_async(
-        asset_key="repository_provisioning",
+        asset_key="repository_access_provisioning",
         description=f"Direct provisioning of {repository_name} access",
         metadata={
           "subscription_id": subscription_id,

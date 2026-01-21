@@ -13,7 +13,7 @@ from robosystems.middleware.sse.direct_monitor import (
   run_entity_graph_creation,
   run_graph_creation,
   run_graph_provisioning,
-  run_repository_provisioning,
+  run_repository_access_provisioning,
   run_subgraph_creation,
 )
 
@@ -431,12 +431,12 @@ class TestRunGraphProvisioning:
           mock_manager.fail_operation.assert_called_once()
 
 
-class TestRunRepositoryProvisioning:
-  """Test run_repository_provisioning function."""
+class TestRunRepositoryAccessProvisioning:
+  """Test run_repository_access_provisioning function."""
 
   @pytest.mark.asyncio
-  async def test_successful_repository_provisioning(self):
-    """Test successful repository provisioning."""
+  async def test_successful_repository_access_provisioning(self):
+    """Test successful repository access provisioning."""
     with patch(
       "robosystems.middleware.sse.direct_monitor.get_operation_manager"
     ) as mock_get_manager:
@@ -485,7 +485,7 @@ class TestRunRepositoryProvisioning:
                 with patch(
                   "robosystems.middleware.sse.direct_monitor._report_graph_materialization_async"
                 ):
-                  result = await run_repository_provisioning(
+                  result = await run_repository_access_provisioning(
                     operation_id="op123",
                     subscription_id="sub123",
                     user_id="user456",
@@ -499,8 +499,8 @@ class TestRunRepositoryProvisioning:
                   mock_subscription.activate.assert_called_once()
 
   @pytest.mark.asyncio
-  async def test_repository_provisioning_invalid_type(self):
-    """Test repository provisioning with invalid repository type."""
+  async def test_repository_access_provisioning_invalid_type(self):
+    """Test repository access provisioning with invalid repository type."""
     with patch(
       "robosystems.middleware.sse.direct_monitor.get_operation_manager"
     ) as mock_get_manager:
@@ -529,7 +529,7 @@ class TestRunRepositoryProvisioning:
           mock_billing_customer.get_by_user_id.return_value = mock_customer
 
           with pytest.raises(ValueError, match="Invalid repository type"):
-            await run_repository_provisioning(
+            await run_repository_access_provisioning(
               operation_id="op123",
               subscription_id="sub123",
               user_id="user456",
@@ -547,13 +547,13 @@ class TestDagsterMaterialization:
       "robosystems.middleware.sse.direct_monitor._report_graph_materialization_sync"
     ) as mock_sync:
       await _report_graph_materialization_async(
-        asset_key="graphs",
+        asset_key="user_graph_creation",
         description="Test creation",
         metadata={"graph_id": "kg123"},
       )
 
       mock_sync.assert_called_once_with(
-        "graphs",
+        "user_graph_creation",
         "Test creation",
         {"graph_id": "kg123"},
       )
@@ -571,7 +571,7 @@ class TestDagsterMaterialization:
       ):
         # Should not raise, just log warning
         await _report_graph_materialization_async(
-          asset_key="graphs",
+          asset_key="user_graph_creation",
           description="Test",
           metadata={},
         )
@@ -582,7 +582,7 @@ class TestDagsterMaterialization:
     with patch("asyncio.to_thread", side_effect=Exception("Dagster unavailable")):
       # Should not raise, just log warning
       await _report_graph_materialization_async(
-        asset_key="graphs",
+        asset_key="user_graph_creation",
         description="Test",
         metadata={},
       )
@@ -595,7 +595,7 @@ class TestDagsterMaterialization:
     """
     # This should not raise - it should just log a debug message and return
     _report_graph_materialization_sync(
-      asset_key="graphs",
+      asset_key="user_graph_creation",
       description="Test",
       metadata={"graph_id": "kg123"},
     )

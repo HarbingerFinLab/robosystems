@@ -19,9 +19,6 @@ from dagster import Definitions
 
 # Import assets
 from robosystems.dagster.assets import (
-  # Direct graph operations observable sources
-  graph_provisioning_source,
-  graphs_source,
   # Plaid pipeline
   plaid_accounts,
   plaid_graph_data,
@@ -30,7 +27,8 @@ from robosystems.dagster.assets import (
   qb_accounts,
   qb_graph_data,
   qb_transactions,
-  repository_provisioning_source,
+  # Repository access provisioning
+  repository_access_provisioning_source,
   # SEC pipeline - two-stage materialization
   sec_duckdb_incremental_staged,
   sec_duckdb_staged,
@@ -38,9 +36,11 @@ from robosystems.dagster.assets import (
   # SEC pipeline - dynamic partition processing
   sec_process_filing,
   sec_raw_filings,
-  # Direct staging observable source
-  staged_files_source,
-  subgraphs_source,
+  # User graph operations (observable sources for API direct execution)
+  user_graph_creation_source,
+  user_graph_provisioning_source,
+  user_graph_staged_files_source,
+  user_subgraph_creation_source,
 )
 
 # Import jobs
@@ -207,13 +207,13 @@ all_sensors = [
 # ============================================================================
 
 all_assets = [
-  # Direct staging (observable source for API direct staging)
-  staged_files_source,
-  # Direct graph operations (observable sources for API direct execution)
-  graphs_source,
-  graph_provisioning_source,
-  repository_provisioning_source,
-  subgraphs_source,
+  # User graph operations (observable sources for API direct execution)
+  user_graph_staged_files_source,
+  user_graph_creation_source,
+  user_graph_provisioning_source,
+  user_subgraph_creation_source,
+  # Repository access provisioning
+  repository_access_provisioning_source,
   # SEC pipeline - download phase (EFTS-based discovery)
   sec_raw_filings,
   # SEC pipeline - dynamic partition processing (sensor handles discovery)

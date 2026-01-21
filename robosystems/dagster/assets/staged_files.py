@@ -1,4 +1,4 @@
-"""Observable source asset for direct-staged files.
+"""Observable source asset for user graph staged files.
 
 This asset definition allows AssetMaterializations reported from the API
 (via direct staging) to appear in the Dagster UI's Assets tab.
@@ -10,13 +10,13 @@ those materializations visible in the UI.
 
 from dagster import AssetKey, SourceAsset
 
-# Observable source asset for direct-staged files
-# This matches the asset key used in direct_staging.py: AssetKey(["staged_files", graph_id])
+# Observable source asset for user graph staged files
+# This matches the asset key used in direct_staging.py
 # Since graph_ids are dynamic, we define a base asset that receives all materializations
-staged_files_source = SourceAsset(
-  key=AssetKey("staged_files"),
+user_graph_staged_files_source = SourceAsset(
+  key=AssetKey("user_graph_staged_files"),
   description=(
-    "Files staged directly to DuckDB via the API. "
+    "User files staged directly to DuckDB via the API. "
     "These files bypass Dagster orchestration for performance but "
     "report materializations here for observability."
   ),
