@@ -13,8 +13,8 @@ from robosystems.middleware.sse.direct_monitor import (
   run_entity_graph_creation,
   run_graph_creation,
   run_graph_provisioning,
-  run_user_repository_provisioning,
   run_subgraph_creation,
+  run_user_repository_provisioning,
 )
 
 

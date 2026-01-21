@@ -8,9 +8,9 @@ Assets represent data artifacts that are produced and consumed:
 """
 
 from robosystems.dagster.assets.graphs import (
-  user_repository_provisioning_source,
   user_graph_creation_source,
   user_graph_provisioning_source,
+  user_repository_provisioning_source,
   user_subgraph_creation_source,
 )
 from robosystems.dagster.assets.plaid import (
@@ -55,7 +55,6 @@ __all__ = [
   "qb_accounts",
   "qb_graph_data",
   "qb_transactions",
-  "user_repository_provisioning_source",
   "sec_duckdb_incremental_staged",
   "sec_duckdb_staged",
   "sec_filing_partitions",
@@ -66,5 +65,6 @@ __all__ = [
   "user_graph_creation_source",
   "user_graph_provisioning_source",
   "user_graph_staged_files_source",
+  "user_repository_provisioning_source",
   "user_subgraph_creation_source",
 ]
