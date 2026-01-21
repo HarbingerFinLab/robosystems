@@ -26,11 +26,6 @@ from ...models.api.billing.subscription import (
 from ...models.billing import BillingAuditLog, BillingCustomer, BillingSubscription
 from ...models.billing.audit_log import BillingEventType
 from ...models.iam import User
-from ...models.iam.user_repository import RepositoryPlan, RepositoryType
-from ...operations.graph.repository_subscription_service import (
-  RepositorySubscriptionService,
-)
-from ...operations.graph.subscription_service import generate_subscription_invoice
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +265,7 @@ async def create_repository_subscription(
         or "Valid payment method required to subscribe to repositories.",
       )
 
+    # Create subscription in "provisioning" state
     subscription = BillingSubscription.create_subscription(
       org_id=org_id,
       resource_type="repository",
@@ -296,65 +292,61 @@ async def create_repository_subscription(
       },
     )
 
-    subscription.activate(db)
+    # Store IDs before commit detaches the objects
+    subscription_id = subscription.id
+    user_id = current_user.id
 
-    BillingAuditLog.log_event(
-      session=db,
-      event_type=BillingEventType.SUBSCRIPTION_ACTIVATED,
-      org_id=org_id,
-      subscription_id=subscription.id,
-      description=f"Activated subscription for {graph_id} repository",
-      actor_type="system",
-      event_data={
-        "current_period_start": subscription.current_period_start.isoformat(),
-        "current_period_end": subscription.current_period_end.isoformat(),
-      },
-    )
+    # Commit so run_user_repository_provisioning can see the subscription
+    db.commit()
 
-    generate_subscription_invoice(
-      subscription=subscription,
-      customer=customer,
-      description=f"{graph_id.upper()} Repository Subscription - {request.plan_name}",
-      session=db,
-    )
+    # Delegate to run_user_repository_provisioning for:
+    # - Grant repository access
+    # - Allocate credits
+    # - Activate subscription
+    # - Generate invoice
+    # - Report to Dagster
+    from ...middleware.sse.direct_monitor import run_user_repository_provisioning
 
-    plan_tier = (
-      request.plan_name.split("-")[-1]
-      if "-" in request.plan_name
-      else request.plan_name
-    )
     try:
-      repository_type = RepositoryType(graph_id)
-      repository_plan = RepositoryPlan(plan_tier)
-    except ValueError as e:
-      logger.error(f"Invalid repository type or plan: {e}")
+      result = await run_user_repository_provisioning(
+        operation_id=None,  # No SSE tracking for sync API calls
+        subscription_id=subscription_id,
+        user_id=user_id,
+        repository_name=graph_id,
+      )
+      logger.info(
+        f"Repository provisioning completed for user {user_id} to {graph_id}",
+        extra={
+          "user_id": user_id,
+          "repository": graph_id,
+          "plan_name": request.plan_name,
+          "subscription_id": subscription_id,
+          "credits_allocated": result.get("credits_allocated", 0),
+        },
+      )
+    except Exception as e:
+      logger.error(f"Repository provisioning failed: {e}")
+      # Subscription was created but provisioning failed
+      # The subscription will be in a bad state - mark it as failed
+      failed_sub = db.query(BillingSubscription).filter_by(id=subscription_id).first()
+      if failed_sub:
+        failed_sub.status = "failed"
+        db.commit()
       raise HTTPException(
-        status_code=400,
-        detail=f"Invalid repository type '{graph_id}' or plan '{plan_tier}'",
+        status_code=500,
+        detail=f"Repository provisioning failed: {e}",
       )
 
-    repo_service = RepositorySubscriptionService(db)
-    try:
-      repo_service.create_repository_subscription(
-        user_id=current_user.id,
-        repository_type=repository_type,
-        repository_plan=repository_plan,
-      )
-    except ValueError as e:
-      logger.error(f"Failed to create repository access: {e}")
-      raise HTTPException(status_code=400, detail=str(e))
-
-    logger.info(
-      f"Created repository subscription and access for user {current_user.id} to {graph_id}",
-      extra={
-        "user_id": current_user.id,
-        "repository": graph_id,
-        "plan_name": request.plan_name,
-        "subscription_id": subscription.id,
-      },
+    # Re-fetch subscription to get updated state from provisioning
+    updated_subscription = (
+      db.query(BillingSubscription).filter_by(id=subscription_id).first()
     )
-
-    return subscription_to_response(subscription)
+    if not updated_subscription:
+      raise HTTPException(
+        status_code=500,
+        detail="Subscription not found after provisioning",
+      )
+    return subscription_to_response(updated_subscription)
 
   except HTTPException:
     raise

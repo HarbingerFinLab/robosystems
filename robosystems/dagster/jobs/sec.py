@@ -12,9 +12,8 @@ Pipeline Architecture (3 phases, run independently):
     Parallel processing - one partition per filing.
 
   Phase 3 - Materialize (two-stage pipeline):
-    sec_stage_job: sec_duckdb_staged (Stage 1 - DuckDB staging)
-    sec_materialize_job: sec_graph_materialized (Stage 2 - LadybugDB materialization)
-    sec_incremental_stage_job: sec_duckdb_incremental_staged (Incremental append - manual)
+    sec_stage_job: sec_duckdb_staged (DuckDB staging - full or incremental mode)
+    sec_materialize_job: sec_graph_materialized (LadybugDB materialization)
 
     If LadybugDB materialization fails, just re-run sec_materialize_job.
 
@@ -24,11 +23,11 @@ Workflow:
   just sec-materialize         # Stage to DuckDB + Materialize to LadybugDB
 
   # Decoupled (for checkpointing/retry):
-  just sec-stage               # Stage 1: Stage to DuckDB only
+  just sec-stage               # Stage 1: Stage to DuckDB only (full mode)
   just sec-materialize-graph   # Stage 2: Materialize to LadybugDB (retry-safe)
 
   # Incremental (after initial full staging, via Dagster UI):
-  # Launch sec_incremental_stage job with config: {"filing_date": "2026-01-15"}
+  # Launch sec_stage job with config: {"mode": "incremental", "filing_date": "2026-01-15"}
 
   # Or all-in-one for demos:
   just sec-load NVDA 2024      # Chains all steps for single company
@@ -49,7 +48,6 @@ from dagster import (
 from robosystems.config import env
 from robosystems.dagster.assets import (
   SECDownloadConfig,
-  sec_duckdb_incremental_staged,
   sec_duckdb_staged,
   sec_filing_partitions,
   sec_graph_materialized,
@@ -146,15 +144,6 @@ sec_staged_materialize_job = define_asset_job(
   description="Full SEC pipeline: stage to DuckDB then materialize to LadybugDB.",
   selection=AssetSelection.assets(sec_duckdb_staged, sec_graph_materialized),
   tags={"pipeline": "sec", "phase": "full"},
-)
-
-# Incremental: Append new filings to existing DuckDB staging
-# No schedule - run manually via Dagster UI when needed. Once stable, can add schedule.
-sec_incremental_stage_job = define_asset_job(
-  name="sec_incremental_stage",
-  description="Incremental SEC staging: append new filings to existing DuckDB tables. Manual run only.",
-  selection=AssetSelection.assets(sec_duckdb_incremental_staged),
-  tags={"pipeline": "sec", "phase": "incremental_stage"},
 )
 
 

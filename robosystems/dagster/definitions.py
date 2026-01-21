@@ -28,16 +28,14 @@ from robosystems.dagster.assets import (
   qb_graph_data,
   qb_transactions,
   # SEC pipeline - two-stage materialization
-  sec_duckdb_incremental_staged,
   sec_duckdb_staged,
   sec_graph_materialized,
   # SEC pipeline - dynamic partition processing
   sec_process_filing,
   sec_raw_filings,
-  # User graph operations (observable sources for API direct execution)
+  # User graph operations (external assets for API direct execution)
   user_graph_creation_source,
-  user_graph_provisioning_source,
-  user_graph_staged_files_source,
+  user_graph_file_staging_source,
   # User repository provisioning
   user_repository_provisioning_source,
   user_subgraph_creation_source,
@@ -91,7 +89,6 @@ from robosystems.dagster.jobs.provisioning import (
 from robosystems.dagster.jobs.sec import (
   sec_daily_download_schedule,
   sec_download_job,
-  sec_incremental_stage_job,
   sec_materialize_job,
   sec_nightly_materialize_schedule,
   sec_process_job,
@@ -159,8 +156,7 @@ all_jobs = [
   # SEC pipeline jobs
   sec_download_job,  # Download raw filings to S3
   sec_process_job,  # Per-filing processing (sensor-triggered)
-  sec_stage_job,  # Stage to persistent DuckDB
-  sec_incremental_stage_job,  # Incremental staging (schedule-triggered)
+  sec_stage_job,  # Stage to persistent DuckDB (full or incremental mode)
   sec_materialize_job,  # Materialize from DuckDB to LadybugDB (retry-safe)
   sec_staged_materialize_job,  # Full pipeline: stage + materialize
   # Notification jobs
@@ -207,10 +203,9 @@ all_sensors = [
 # ============================================================================
 
 all_assets = [
-  # User graph operations (observable sources for API direct execution)
-  user_graph_staged_files_source,
+  # User graph operations (external assets for API direct execution)
+  user_graph_file_staging_source,
   user_graph_creation_source,
-  user_graph_provisioning_source,
   user_subgraph_creation_source,
   # User repository provisioning
   user_repository_provisioning_source,
@@ -219,9 +214,8 @@ all_assets = [
   # SEC pipeline - dynamic partition processing (sensor handles discovery)
   sec_process_filing,
   # SEC pipeline - two-stage materialization
-  sec_duckdb_staged,  # Stage 1: DuckDB staging
-  sec_duckdb_incremental_staged,  # Incremental staging (schedule-triggered)
-  sec_graph_materialized,  # Stage 2: LadybugDB materialization (retry-safe)
+  sec_duckdb_staged,  # DuckDB staging (full or incremental mode)
+  sec_graph_materialized,  # LadybugDB materialization (retry-safe)
   # QuickBooks pipeline assets
   qb_accounts,
   qb_transactions,

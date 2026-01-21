@@ -289,15 +289,22 @@ class SECSingleFilingConfig(Config):
 
 
 class SECStageConfig(Config):
-  """Configuration for DuckDB staging (Stage 1).
+  """Configuration for DuckDB staging.
 
-  Use this config with sec_duckdb_staged asset for independent staging control.
+  Supports both full staging (mode="full") and incremental staging (mode="incremental").
+
+  Full mode: Creates tables from scratch, optionally rebuilding graph.
+  Incremental mode: Appends new filings to existing tables (requires initial full staging).
   """
 
   graph_id: str = "sec"  # Target graph ID
-  rebuild_graph: bool = True  # Whether to rebuild LadybugDB before staging
-  year: int | None = None  # Optional year filter
-  reset_staging: bool = False  # Delete DuckDB staging too (fresh start)
+  mode: str = "full"  # "full" or "incremental"
+  rebuild_graph: bool = (
+    True  # Whether to rebuild LadybugDB before staging (full mode only)
+  )
+  year: int | None = None  # Optional year filter (full mode only)
+  reset_staging: bool = False  # Delete DuckDB staging too (full mode only)
+  filing_date: str | None = None  # YYYY-MM-DD date filter (incremental mode)
 
 
 class SECMaterializeConfig(Config):
@@ -310,20 +317,6 @@ class SECMaterializeConfig(Config):
   graph_id: str = "sec"  # Target graph ID
 
 
-class SECIncrementalStageConfig(Config):
-  """Configuration for incremental DuckDB staging.
-
-  Use this config with sec_duckdb_incremental_staged asset for daily
-  incremental updates. Appends new filings to existing DuckDB tables.
-
-  Note: Incremental mode requires existing DuckDB staging tables.
-  If tables don't exist, run sec_duckdb_staged (full staging) first.
-  """
-
-  graph_id: str = "sec"  # Target graph ID
-  filing_date: str | None = None  # YYYY-MM-DD date filter (e.g., "2026-01-15")
-
-
 # ============================================================================
 # Year-Partitioned Assets (download phase)
 # ============================================================================
@@ -332,10 +325,10 @@ class SECIncrementalStageConfig(Config):
 @asset(
   group_name="sec_pipeline",
   description="Download SEC XBRL filings for a specific quarter using EFTS discovery",
-  compute_kind="download",
+  kinds={"download"},
   partitions_def=sec_quarter_partitions,
   metadata={
-    "pipeline": "sec_download",
+    "pipeline": "sec",
     "stage": "extraction",
   },
   # Limit concurrent SEC downloads to avoid rate limiting
@@ -761,7 +754,7 @@ def sec_raw_filings(
 @asset(
   group_name="sec_pipeline",
   description="Process a single SEC filing to parquet format",
-  compute_kind="transform",
+  kinds={"transform"},
   partitions_def=sec_filing_partitions,
   # No deps - sensor handles discovery and triggers runs directly
   metadata={
@@ -952,8 +945,8 @@ def sec_process_filing(
 
 @asset(
   group_name="sec_pipeline",
-  description="Stage SEC processed files to persistent DuckDB (decoupled Stage 1)",
-  compute_kind="duckdb",
+  description="Stage SEC processed files to persistent DuckDB (full or incremental)",
+  kinds={"duckdb"},
   metadata={
     "pipeline": "sec",
     "stage": "staging",
@@ -966,16 +959,23 @@ def sec_duckdb_staged(
 ) -> MaterializeResult:
   """Stage SEC processed files to persistent DuckDB.
 
-  This is Stage 1 of the decoupled pipeline. It discovers processed files,
-  creates DuckDB staging tables, and persists them to disk. The staging
-  result is saved to a manifest for recovery.
+  Supports two modes:
+  - full: Creates tables from scratch, discovers all processed files
+  - incremental: Appends new filings to existing tables (INSERT INTO)
 
-  Key features:
+  Full mode (default):
   - Persists DuckDB to disk (survives job restarts)
   - Writes manifest for tracking staged tables
-  - Can be run independently of materialization
+  - Can optionally rebuild graph and reset staging
 
-  Run with: just dagster-materialize sec_duckdb_staged
+  Incremental mode:
+  - Requires initial full staging to exist
+  - Uses filing_date filter for targeted updates
+  - Records progress to _sec_staging_progress table
+
+  Run with:
+    just dagster-materialize sec_duckdb_staged  # full mode
+    # incremental via Dagster UI with config: {"mode": "incremental", "filing_date": "2026-01-15"}
 
   Returns:
       MaterializeResult with staging statistics
@@ -987,25 +987,36 @@ def sec_duckdb_staged(
     ensure_shared_repository_exists,
   )
 
-  context.log.info(f"Staging SEC data to DuckDB for graph: {config.graph_id}")
+  is_incremental = config.mode == "incremental"
+  mode_str = "incremental" if is_incremental else "full"
+
+  context.log.info(
+    f"Staging SEC data to DuckDB for graph: {config.graph_id} (mode={mode_str})"
+  )
+
+  if is_incremental:
+    context.log.info(f"Filing date filter: {config.filing_date or 'none'}")
 
   processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id)
 
   async def run_staging():
-    # Ensure the SEC repository metadata exists in PostgreSQL
-    context.log.info("Ensuring SEC repository metadata exists...")
-    repo_result = await ensure_shared_repository_exists(
-      repository_name=config.graph_id,
-      created_by="system",
-      instance_id="local-dev" if env.ENVIRONMENT == "dev" else "ladybug-shared-prod",
-    )
-    context.log.info(f"SEC repository status: {repo_result.get('status', 'unknown')}")
+    if not is_incremental:
+      # Full mode: ensure repository exists
+      context.log.info("Ensuring SEC repository metadata exists...")
+      repo_result = await ensure_shared_repository_exists(
+        repository_name=config.graph_id,
+        created_by="system",
+        instance_id="local-dev" if env.ENVIRONMENT == "dev" else "ladybug-shared-prod",
+      )
+      context.log.info(f"SEC repository status: {repo_result.get('status', 'unknown')}")
 
-    # Run staging
+    # Run staging with appropriate parameters
     result = await processor.stage_to_duckdb(
-      rebuild=config.rebuild_graph,
-      year=config.year,
-      reset_staging=config.reset_staging,
+      rebuild=False if is_incremental else config.rebuild_graph,
+      year=None if is_incremental else config.year,
+      reset_staging=False if is_incremental else config.reset_staging,
+      filing_date=config.filing_date if is_incremental else None,
+      incremental=is_incremental,
     )
     return result
 
@@ -1016,94 +1027,7 @@ def sec_duckdb_staged(
     return MaterializeResult(
       metadata={
         "graph_id": config.graph_id,
-        "status": "error",
-        "error": result.error,
-        "duration_seconds": result.duration_seconds,
-      }
-    )
-
-  context.log.info(
-    f"Staging complete: {len(result.table_names)} tables, "
-    f"{result.total_files} files, {result.duration_seconds:.2f}s"
-  )
-
-  return MaterializeResult(
-    metadata={
-      "graph_id": config.graph_id,
-      "status": result.status,
-      "tables_staged": len(result.table_names),
-      "table_names": result.table_names,
-      "total_files": result.total_files,
-      "total_rows": result.total_rows,
-      "duckdb_path": result.duckdb_path,
-      "duration_seconds": result.duration_seconds,
-    }
-  )
-
-
-@asset(
-  group_name="sec_pipeline",
-  description="Incremental staging: append new filings to existing DuckDB tables",
-  compute_kind="duckdb",
-  metadata={
-    "pipeline": "sec",
-    "stage": "incremental_staging",
-    "decoupled": True,
-  },
-)
-def sec_duckdb_incremental_staged(
-  context: AssetExecutionContext,
-  config: SECIncrementalStageConfig,
-) -> MaterializeResult:
-  """Incrementally stage new SEC filings to existing DuckDB tables.
-
-  This asset appends new filings to existing DuckDB staging tables using
-  INSERT INTO rather than CREATE TABLE. It's designed for daily incremental
-  updates after an initial full staging has been completed.
-
-  Prerequisites:
-  - Initial full staging must have been run (sec_duckdb_staged creates tables)
-  - DuckDB staging tables must already exist
-  - Progress table (_sec_staging_progress) tracks staged dates
-
-  Key features:
-  - Uses incremental=True mode (INSERT INTO existing tables)
-  - Optional filing_date filter for targeted updates
-  - Records progress to _sec_staging_progress table for tracking
-  - Schema-driven: table names from RoboLedgerContext (no manifest needed)
-
-  Run via Dagster UI: Launch sec_incremental_stage job with config {"filing_date": "2026-01-15"}
-
-  Returns:
-      MaterializeResult with staging statistics
-  """
-  import asyncio
-
-  from robosystems.adapters.sec import XBRLDuckDBGraphProcessor
-
-  context.log.info(
-    f"Incremental staging for graph: {config.graph_id}, "
-    f"filing_date filter: {config.filing_date or 'none'}"
-  )
-
-  processor = XBRLDuckDBGraphProcessor(graph_id=config.graph_id)
-
-  async def run_incremental_staging():
-    result = await processor.stage_to_duckdb(
-      rebuild=False,  # Never rebuild graph in incremental mode
-      filing_date=config.filing_date,
-      reset_staging=False,  # Never reset in incremental mode
-      incremental=True,  # Key: use INSERT INTO instead of CREATE TABLE
-    )
-    return result
-
-  result = asyncio.run(run_incremental_staging())
-
-  if result.status == "error":
-    context.log.error(f"Incremental staging failed: {result.error}")
-    return MaterializeResult(
-      metadata={
-        "graph_id": config.graph_id,
+        "mode": mode_str,
         "status": "error",
         "error": result.error,
         "duration_seconds": result.duration_seconds,
@@ -1117,6 +1041,7 @@ def sec_duckdb_incremental_staged(
     return MaterializeResult(
       metadata={
         "graph_id": config.graph_id,
+        "mode": mode_str,
         "status": "already_staged",
         "filing_date": config.filing_date,
         "message": "Date already staged, skipped to prevent duplicates",
@@ -1125,16 +1050,16 @@ def sec_duckdb_incremental_staged(
     )
 
   context.log.info(
-    f"Incremental staging complete: {len(result.table_names)} tables, "
+    f"Staging complete ({mode_str}): {len(result.table_names)} tables, "
     f"{result.total_files} files, {result.duration_seconds:.2f}s"
   )
 
   return MaterializeResult(
     metadata={
       "graph_id": config.graph_id,
+      "mode": mode_str,
       "status": result.status,
-      "mode": "incremental",
-      "tables_updated": len(result.table_names),
+      "tables_staged": len(result.table_names),
       "table_names": result.table_names,
       "total_files": result.total_files,
       "total_rows": result.total_rows,
@@ -1147,7 +1072,7 @@ def sec_duckdb_incremental_staged(
 @asset(
   group_name="sec_pipeline",
   description="Materialize LadybugDB graph from staged DuckDB (Stage 2)",
-  compute_kind="ladybug",
+  kinds={"ladybug"},
   deps=["sec_duckdb_staged"],  # Explicit dependency on staging
   metadata={
     "pipeline": "sec",
