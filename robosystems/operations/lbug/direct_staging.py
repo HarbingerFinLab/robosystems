@@ -229,7 +229,7 @@ def _report_staging_materialization_sync(
   # Create the materialization event
   # Use static asset key so it appears in Dagster UI (graph_id in metadata)
   materialization = AssetMaterialization(
-    asset_key=AssetKey("staged_files"),
+    asset_key=AssetKey("user_graph_staged_files"),
     description=f"Direct staging of {files_staged} file(s) to table {table_name}",
     metadata={
       "file_id": MetadataValue.text(file_id),

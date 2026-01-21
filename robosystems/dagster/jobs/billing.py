@@ -479,7 +479,7 @@ async def _trigger_resource_provisioning(
     # Direct provisioning - eliminates sensor delay and second cold start
     from robosystems.middleware.sse.direct_monitor import (
       run_graph_provisioning,
-      run_repository_provisioning,
+      run_repository_access_provisioning,
     )
 
     if resource_type == "graph":
@@ -524,7 +524,7 @@ async def _trigger_resource_provisioning(
       )
 
       try:
-        result = await run_repository_provisioning(
+        result = await run_repository_access_provisioning(
           operation_id=None,
           subscription_id=str(subscription.id),
           user_id=str(user_id),

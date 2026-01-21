@@ -10,32 +10,32 @@ observability.
 
 from dagster import AssetKey, SourceAsset
 
-# Observable source asset for graph creation
+# Observable source asset for user graph creation
 # Materializations are reported from direct_monitor.py
-graphs_source = SourceAsset(
-  key=AssetKey("graphs"),
+user_graph_creation_source = SourceAsset(
+  key=AssetKey("user_graph_creation"),
   description=(
-    "Graph databases created directly via the API. "
+    "User graph databases created directly via the API. "
     "These operations bypass Dagster orchestration for performance but "
     "report materializations here for observability."
   ),
   group_name="graphs",
 )
 
-# Observable source asset for graph provisioning (post-payment)
-graph_provisioning_source = SourceAsset(
-  key=AssetKey("graph_provisioning"),
+# Observable source asset for user graph provisioning (post-payment)
+user_graph_provisioning_source = SourceAsset(
+  key=AssetKey("user_graph_provisioning"),
   description=(
-    "Graph provisioning after payment confirmation. "
+    "User graph provisioning after payment confirmation. "
     "These operations bypass Dagster orchestration for faster "
     "post-payment provisioning."
   ),
   group_name="graphs",
 )
 
-# Observable source asset for repository provisioning
-repository_provisioning_source = SourceAsset(
-  key=AssetKey("repository_provisioning"),
+# Observable source asset for repository access provisioning
+repository_access_provisioning_source = SourceAsset(
+  key=AssetKey("repository_access_provisioning"),
   description=(
     "Repository access provisioning after payment confirmation. "
     "Grants access to shared repositories (SEC, industry, economic)."
@@ -43,11 +43,11 @@ repository_provisioning_source = SourceAsset(
   group_name="graphs",
 )
 
-# Observable source asset for subgraph creation
-subgraphs_source = SourceAsset(
-  key=AssetKey("subgraphs"),
+# Observable source asset for user subgraph creation
+user_subgraph_creation_source = SourceAsset(
+  key=AssetKey("user_subgraph_creation"),
   description=(
-    "Subgraphs created from parent graphs. "
+    "User subgraphs created from parent graphs. "
     "These operations bypass Dagster orchestration for performance."
   ),
   group_name="graphs",
