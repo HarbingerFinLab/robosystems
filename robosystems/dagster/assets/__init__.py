@@ -9,7 +9,6 @@ Assets represent data artifacts that are produced and consumed:
 
 from robosystems.dagster.assets.graphs import (
   user_graph_creation_source,
-  user_graph_provisioning_source,
   user_repository_provisioning_source,
   user_subgraph_creation_source,
 )
@@ -26,12 +25,10 @@ from robosystems.dagster.assets.quickbooks import (
 from robosystems.dagster.assets.sec import (
   # Config classes
   SECDownloadConfig,
-  SECIncrementalStageConfig,
   SECMaterializeConfig,
   SECSingleFilingConfig,
   SECStageConfig,
   # Assets - two-stage materialization
-  sec_duckdb_incremental_staged,
   sec_duckdb_staged,
   # Assets - dynamic partition processing
   sec_filing_partitions,
@@ -41,11 +38,10 @@ from robosystems.dagster.assets.sec import (
   sec_quarter_partitions,
   sec_raw_filings,
 )
-from robosystems.dagster.assets.staged_files import user_graph_staged_files_source
+from robosystems.dagster.assets.staged_files import user_graph_file_staging_source
 
 __all__ = [
   "SECDownloadConfig",
-  "SECIncrementalStageConfig",
   "SECMaterializeConfig",
   "SECSingleFilingConfig",
   "SECStageConfig",
@@ -55,7 +51,6 @@ __all__ = [
   "qb_accounts",
   "qb_graph_data",
   "qb_transactions",
-  "sec_duckdb_incremental_staged",
   "sec_duckdb_staged",
   "sec_filing_partitions",
   "sec_graph_materialized",
@@ -63,8 +58,7 @@ __all__ = [
   "sec_quarter_partitions",
   "sec_raw_filings",
   "user_graph_creation_source",
-  "user_graph_provisioning_source",
-  "user_graph_staged_files_source",
+  "user_graph_file_staging_source",
   "user_repository_provisioning_source",
   "user_subgraph_creation_source",
 ]

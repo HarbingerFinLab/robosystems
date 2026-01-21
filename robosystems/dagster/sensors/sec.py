@@ -34,7 +34,7 @@ from robosystems.config.storage.shared import (
   DataSourceType,
   get_raw_key,
 )
-from robosystems.dagster.jobs.sec import sec_process_job
+from robosystems.dagster.jobs.sec import sec_process_job, sec_stage_job
 
 
 def _get_s3_client():
@@ -354,7 +354,7 @@ SEC_INCREMENTAL_STAGING_SCHEDULE_STATUS = (
 
 
 @schedule(
-  job_name="sec_incremental_stage",
+  job=sec_stage_job,
   cron_schedule="0 5 * * *",  # 5am UTC = 12am EST (after processing, before materialize)
   default_status=SEC_INCREMENTAL_STAGING_SCHEDULE_STATUS,
   execution_timezone="UTC",
@@ -365,13 +365,13 @@ def sec_incremental_staging_schedule(context: ScheduleEvaluationContext):
   Pipeline timing (all UTC):
   - 3am: Download new filings (sec_daily_download_schedule)
   - 3am-5am: Processing sensor processes downloaded filings
-  - 5am: This schedule stages processed parquet to DuckDB
+  - 5am: This schedule stages processed parquet to DuckDB (incremental mode)
   - 6am: Materialization (sec_nightly_materialize_schedule)
 
   Logic:
   1. Lists all filed=YYYY-MM-DD partitions in S3 processed bucket
   2. Queries Graph API for dates already staged (from _sec_staging_progress table)
-  3. Triggers incremental staging job for each unstaged date
+  3. Triggers sec_stage job with mode="incremental" for each unstaged date
 
   Enable via: SEC_INCREMENTAL_STAGING_SCHEDULE_ENABLED=true
   Requires initial full staging to create _sec_staging_progress table.
@@ -433,9 +433,10 @@ def sec_incremental_staging_schedule(context: ScheduleEvaluationContext):
           run_key=f"sec-incremental-stage-{filing_date}",
           run_config={
             "ops": {
-              "sec_duckdb_incremental_staged": {
+              "sec_duckdb_staged": {
                 "config": {
                   "graph_id": graph_id,
+                  "mode": "incremental",
                   "filing_date": filing_date,
                 }
               }

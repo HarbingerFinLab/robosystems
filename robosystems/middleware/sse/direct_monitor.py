@@ -165,7 +165,7 @@ async def run_graph_creation(
         "graph_name": graph_name,
         "user_id": user_id,
         "tier": tier,
-        "method": "direct",
+        "provisioning_method": "direct",
         "duration_ms": duration_ms,
         "schema_extensions": ",".join(schema_extensions) if schema_extensions else "",
       },
@@ -277,7 +277,7 @@ async def run_entity_graph_creation(
           "entity_name": entity_name,
           "user_id": user_id,
           "tier": tier,
-          "method": "direct",
+          "provisioning_method": "direct",
           "duration_ms": duration_ms,
           "graph_type": "entity",
           "create_entity": str(create_entity),
@@ -655,17 +655,17 @@ async def run_graph_provisioning(
           message="Graph provisioned and subscription activated",
         )
 
-      # Report to Dagster for observability
+      # Report to Dagster for observability (unified asset for all graph creation)
       await _report_graph_materialization_async(
-        asset_key="user_graph_provisioning",
-        description=f"Direct provisioning of graph {graph_id}",
+        asset_key="user_graph_creation",
+        description=f"Provisioning of graph {graph_id} for subscription {subscription_id}",
         metadata={
-          "subscription_id": subscription_id,
           "graph_id": graph_id,
           "user_id": user_id,
           "tier": tier,
           "graph_type": graph_type,
-          "method": "direct",
+          "provisioning_method": "subscription",
+          "subscription_id": subscription_id,
           "duration_ms": duration_ms,
         },
       )
@@ -895,14 +895,14 @@ async def run_user_repository_provisioning(
       # Report to Dagster for observability
       await _report_graph_materialization_async(
         asset_key="user_repository_provisioning",
-        description=f"Direct provisioning of {repository_name} access",
+        description=f"Provisioning of {repository_name} access for user {user_id}",
         metadata={
-          "subscription_id": subscription_id,
           "repository_name": repository_name,
           "user_id": user_id,
+          "subscription_id": subscription_id,
           "plan_tier": plan_tier,
           "credits_allocated": credits_allocated,
-          "method": "direct",
+          "provisioning_method": "direct",
           "duration_ms": duration_ms,
         },
       )

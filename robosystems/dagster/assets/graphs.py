@@ -1,4 +1,4 @@
-"""Observable source assets for direct graph operations.
+"""External asset specs for direct graph operations.
 
 These asset definitions allow AssetMaterializations reported from the API
 (via direct execution) to appear in the Dagster UI's Assets tab.
@@ -8,47 +8,52 @@ Direct graph operations bypass Dagster job orchestration for performance
 observability.
 """
 
-from dagster import AssetKey, SourceAsset
+from dagster import AssetSpec
 
-# Observable source asset for user graph creation
+# External asset for user graph creation (unified)
 # Materializations are reported from direct_monitor.py
-user_graph_creation_source = SourceAsset(
-  key=AssetKey("user_graph_creation"),
+# Tracks both direct API creation and subscription-based provisioning
+# via the 'provisioning_method' metadata field ('direct' or 'subscription')
+user_graph_creation_source = AssetSpec(
+  key="user_graph_creation",
   description=(
-    "User graph databases created directly via the API. "
-    "These operations bypass Dagster orchestration for performance but "
-    "report materializations here for observability."
+    "User graph databases created via the API. "
+    "Check 'provisioning_method' metadata for creation context."
   ),
   group_name="graphs",
+  metadata={
+    "pipeline": "graphs",
+    "stage": "creation",
+  },
+  kinds={"provision"},
 )
 
-# Observable source asset for user graph provisioning (post-payment)
-user_graph_provisioning_source = SourceAsset(
-  key=AssetKey("user_graph_provisioning"),
+# External asset for user repository provisioning
+user_repository_provisioning_source = AssetSpec(
+  key="user_repository_provisioning",
   description=(
-    "User graph provisioning after payment confirmation. "
-    "These operations bypass Dagster orchestration for faster "
-    "post-payment provisioning."
+    "User access provisioned to shared repositories. "
+    "Includes credit allocation and access grants."
   ),
   group_name="graphs",
+  metadata={
+    "pipeline": "graphs",
+    "stage": "repository_provisioning",
+  },
+  kinds={"provision"},
 )
 
-# Observable source asset for user repository provisioning
-user_repository_provisioning_source = SourceAsset(
-  key=AssetKey("user_repository_provisioning"),
-  description=(
-    "User repository provisioning after payment confirmation."
-    "Grants access to shared repositories (SEC, industry, economic)."
-  ),
-  group_name="graphs",
-)
-
-# Observable source asset for user subgraph creation
-user_subgraph_creation_source = SourceAsset(
-  key=AssetKey("user_subgraph_creation"),
+# External asset for user subgraph creation
+user_subgraph_creation_source = AssetSpec(
+  key="user_subgraph_creation",
   description=(
     "User subgraphs created from parent graphs. "
     "These operations bypass Dagster orchestration for performance."
   ),
   group_name="graphs",
+  metadata={
+    "pipeline": "graphs",
+    "stage": "subgraph_creation",
+  },
+  kinds={"provision"},
 )
