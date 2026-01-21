@@ -27,8 +27,6 @@ from robosystems.dagster.assets import (
   qb_accounts,
   qb_graph_data,
   qb_transactions,
-  # Repository access provisioning
-  repository_access_provisioning_source,
   # SEC pipeline - two-stage materialization
   sec_duckdb_incremental_staged,
   sec_duckdb_staged,
@@ -40,6 +38,8 @@ from robosystems.dagster.assets import (
   user_graph_creation_source,
   user_graph_provisioning_source,
   user_graph_staged_files_source,
+  # User repository provisioning
+  user_repository_provisioning_source,
   user_subgraph_creation_source,
 )
 
@@ -212,8 +212,8 @@ all_assets = [
   user_graph_creation_source,
   user_graph_provisioning_source,
   user_subgraph_creation_source,
-  # Repository access provisioning
-  repository_access_provisioning_source,
+  # User repository provisioning
+  user_repository_provisioning_source,
   # SEC pipeline - download phase (EFTS-based discovery)
   sec_raw_filings,
   # SEC pipeline - dynamic partition processing (sensor handles discovery)

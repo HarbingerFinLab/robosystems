@@ -102,10 +102,13 @@ telemetry:
 
 # Run monitoring for long-running jobs
 # Note: max_resume_run_attempts must be 0 because EcsRunLauncher doesn't support resuming runs
+# Timeouts increased to handle ECS deployment gaps (daemon replacement can take several minutes)
 run_monitoring:
   enabled: true
   poll_interval_seconds: 30
   max_resume_run_attempts: 0
+  start_timeout_seconds: 600   # 10 minutes - accounts for deployment gap + Fargate provisioning
+  cancel_timeout_seconds: 300  # 5 minutes
 
 # Compute log storage - capture stdout/stderr from ECS run tasks
 # Logs are stored in S3 and viewable in the Dagster webserver UI
