@@ -945,7 +945,27 @@ Resources:
       Certificates:
         - CertificateArn: !Ref ApiCertificate
 
-  # Admin API Block Rule - Deny ALL public access to admin endpoints
+  # Webhooks Allow Rule - Allow external webhook providers (Stripe, etc.) to reach webhook endpoints
+  # These endpoints are secured via signature verification, not network-level blocking
+  # Must have higher priority (lower number) than AdminApiDenyRule
+  WebhooksAllowRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: IsPublicWithDomain
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      ListenerArn: !Ref ApiHttpsListener
+      Priority: 1
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/admin/v1/webhooks/*"
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ApiTargetGroup
+
+  # Admin API Block Rule - Deny ALL other public access to admin endpoints
   # Admin access is only available via SSM tunnel to Service Discovery endpoint
   # Usage: ./bin/tools/tunnels.sh <env> api-internal
   AdminApiDenyRule:
