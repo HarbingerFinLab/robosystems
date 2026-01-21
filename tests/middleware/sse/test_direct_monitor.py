@@ -13,7 +13,7 @@ from robosystems.middleware.sse.direct_monitor import (
   run_entity_graph_creation,
   run_graph_creation,
   run_graph_provisioning,
-  run_repository_access_provisioning,
+  run_user_repository_provisioning,
   run_subgraph_creation,
 )
 
@@ -431,12 +431,12 @@ class TestRunGraphProvisioning:
           mock_manager.fail_operation.assert_called_once()
 
 
-class TestRunRepositoryAccessProvisioning:
-  """Test run_repository_access_provisioning function."""
+class TestRunUserRepositoryProvisioning:
+  """Tests for run_user_repository_provisioning function."""
 
   @pytest.mark.asyncio
-  async def test_successful_repository_access_provisioning(self):
-    """Test successful repository access provisioning."""
+  async def test_successful_user_repository_provisioning(self):
+    """Test successful user repository provisioning."""
     with patch(
       "robosystems.middleware.sse.direct_monitor.get_operation_manager"
     ) as mock_get_manager:
@@ -485,7 +485,7 @@ class TestRunRepositoryAccessProvisioning:
                 with patch(
                   "robosystems.middleware.sse.direct_monitor._report_graph_materialization_async"
                 ):
-                  result = await run_repository_access_provisioning(
+                  result = await run_user_repository_provisioning(
                     operation_id="op123",
                     subscription_id="sub123",
                     user_id="user456",
@@ -499,8 +499,8 @@ class TestRunRepositoryAccessProvisioning:
                   mock_subscription.activate.assert_called_once()
 
   @pytest.mark.asyncio
-  async def test_repository_access_provisioning_invalid_type(self):
-    """Test repository access provisioning with invalid repository type."""
+  async def test_user_repository_provisioning_invalid_type(self):
+    """Test user repository provisioning with invalid repository type."""
     with patch(
       "robosystems.middleware.sse.direct_monitor.get_operation_manager"
     ) as mock_get_manager:
@@ -529,7 +529,7 @@ class TestRunRepositoryAccessProvisioning:
           mock_billing_customer.get_by_user_id.return_value = mock_customer
 
           with pytest.raises(ValueError, match="Invalid repository type"):
-            await run_repository_access_provisioning(
+            await run_user_repository_provisioning(
               operation_id="op123",
               subscription_id="sub123",
               user_id="user456",

@@ -727,14 +727,14 @@ async def run_graph_provisioning(
     raise
 
 
-async def run_repository_access_provisioning(
+async def run_user_repository_provisioning(
   operation_id: str | None,
   subscription_id: str,
   user_id: str,
   repository_name: str,
 ) -> dict[str, Any]:
   """
-  Direct repository access provisioning after payment confirmation.
+  Direct user repository provisioning after payment confirmation.
 
   Replaces: provision_repository_job triggered by pending_repository_sensor
 
@@ -894,7 +894,7 @@ async def run_repository_access_provisioning(
 
       # Report to Dagster for observability
       await _report_graph_materialization_async(
-        asset_key="repository_access_provisioning",
+        asset_key="user_repository_provisioning",
         description=f"Direct provisioning of {repository_name} access",
         metadata={
           "subscription_id": subscription_id,

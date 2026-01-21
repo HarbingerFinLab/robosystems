@@ -33,11 +33,11 @@ user_graph_provisioning_source = SourceAsset(
   group_name="graphs",
 )
 
-# Observable source asset for repository access provisioning
-repository_access_provisioning_source = SourceAsset(
-  key=AssetKey("repository_access_provisioning"),
+# Observable source asset for user repository provisioning
+user_repository_provisioning_source = SourceAsset(
+  key=AssetKey("user_repository_provisioning"),
   description=(
-    "Repository access provisioning after payment confirmation. "
+    "User repository provisioning after payment confirmation."
     "Grants access to shared repositories (SEC, industry, economic)."
   ),
   group_name="graphs",
