@@ -363,18 +363,13 @@ class EnvConfig:
     bool(get_secret_value("SEC_PARALLEL_SENSOR_ENABLED", "false").lower() == "true"),
   )
 
-  # SEC incremental staging schedule: runs at specific time daily
-  # Cron format: minute hour day month weekday (e.g., "0 2 * * *" = 2am UTC daily)
+  # SEC incremental staging schedule: runs at 5am UTC daily (after processing, before materialize)
   SEC_INCREMENTAL_STAGING_SCHEDULE_ENABLED = get_bool_env(
     "SEC_INCREMENTAL_STAGING_SCHEDULE_ENABLED",
     bool(
       get_secret_value("SEC_INCREMENTAL_STAGING_SCHEDULE_ENABLED", "false").lower()
       == "true"
     ),
-  )
-  SEC_INCREMENTAL_STAGING_CRON = os.getenv(
-    "SEC_INCREMENTAL_STAGING_CRON",
-    get_secret_value("SEC_INCREMENTAL_STAGING_CRON", "0 2 * * *"),  # Default: 2am UTC
   )
 
   # Shared repository schedule: weekly snapshot + replica refresh

@@ -154,6 +154,26 @@ class XBRLDuckDBGraphProcessor:
           duration_seconds=time.time() - start_time,
         )
 
+      # Step 0: Check if already staged (incremental mode only)
+      # This prevents duplicate inserts if the same date is re-run
+      if incremental and filing_date:
+        try:
+          staged_dates = await client.get_staged_dates(self.graph_id)
+          if filing_date in staged_dates:
+            logger.info(
+              f"Filing date {filing_date} already staged - skipping to prevent duplicates"
+            )
+            return StagingResult(
+              status="already_staged",
+              table_names=[],
+              total_files=0,
+              total_rows=0,
+              duration_seconds=time.time() - start_time,
+            )
+        except Exception as e:
+          # If we can't check progress, continue anyway (table might not exist yet)
+          logger.warning(f"Could not check staging progress (continuing): {e}")
+
       # Step 1: Get table names from schema (no S3 discovery needed for glob mode)
       # Initialize variables for type checker
       tables_by_type: dict[str, str] = {}
@@ -218,7 +238,7 @@ class XBRLDuckDBGraphProcessor:
       # Determine expected table count based on mode
       expected_table_count = len(tables_by_type) if use_glob else len(tables_info)
       status = (
-        "complete" if len(successful_tables) == expected_table_count else "partial"
+        "success" if len(successful_tables) == expected_table_count else "partial"
       )
 
       logger.info(
@@ -227,7 +247,7 @@ class XBRLDuckDBGraphProcessor:
 
       # Step 4: Record staging progress
       total_rows = sum(info.row_count for info in table_infos.values())
-      if status == "complete":
+      if status == "success":
         await self._record_staging_progress(
           client=client,
           filing_date=filing_date,

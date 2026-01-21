@@ -160,7 +160,7 @@ all_jobs = [
   sec_download_job,  # Download raw filings to S3
   sec_process_job,  # Per-filing processing (sensor-triggered)
   sec_stage_job,  # Stage to persistent DuckDB
-  sec_incremental_stage_job,  # Incremental staging (sensor-triggered)
+  sec_incremental_stage_job,  # Incremental staging (schedule-triggered)
   sec_materialize_job,  # Materialize from DuckDB to LadybugDB (retry-safe)
   sec_staged_materialize_job,  # Full pipeline: stage + materialize
   # Notification jobs
@@ -220,7 +220,7 @@ all_assets = [
   sec_process_filing,
   # SEC pipeline - two-stage materialization
   sec_duckdb_staged,  # Stage 1: DuckDB staging
-  sec_duckdb_incremental_staged,  # Incremental staging (sensor-triggered)
+  sec_duckdb_incremental_staged,  # Incremental staging (schedule-triggered)
   sec_graph_materialized,  # Stage 2: LadybugDB materialization (retry-safe)
   # QuickBooks pipeline assets
   qb_accounts,

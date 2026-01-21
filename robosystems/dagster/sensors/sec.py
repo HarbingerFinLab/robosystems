@@ -355,22 +355,25 @@ SEC_INCREMENTAL_STAGING_SCHEDULE_STATUS = (
 
 @schedule(
   job_name="sec_incremental_stage",
-  cron_schedule=env.SEC_INCREMENTAL_STAGING_CRON,
+  cron_schedule="0 5 * * *",  # 5am UTC = 12am EST (after processing, before materialize)
   default_status=SEC_INCREMENTAL_STAGING_SCHEDULE_STATUS,
   execution_timezone="UTC",
 )
 def sec_incremental_staging_schedule(context: ScheduleEvaluationContext):
-  """Run SEC incremental staging at a scheduled time.
+  """Run SEC incremental staging at 5am UTC daily.
 
-  Same logic as the sensor but with predictable cron timing:
+  Pipeline timing (all UTC):
+  - 3am: Download new filings (sec_daily_download_schedule)
+  - 3am-5am: Processing sensor processes downloaded filings
+  - 5am: This schedule stages processed parquet to DuckDB
+  - 6am: Materialization (sec_nightly_materialize_schedule)
+
+  Logic:
   1. Lists all filed=YYYY-MM-DD partitions in S3 processed bucket
   2. Queries Graph API for dates already staged (from _sec_staging_progress table)
   3. Triggers incremental staging job for each unstaged date
 
-  Configure via environment:
-  - SEC_INCREMENTAL_STAGING_SCHEDULE_ENABLED=true  # Enable the schedule
-  - SEC_INCREMENTAL_STAGING_CRON="0 2 * * *"       # Run at 2am UTC daily
-
+  Enable via: SEC_INCREMENTAL_STAGING_SCHEDULE_ENABLED=true
   Requires initial full staging to create _sec_staging_progress table.
   """
   import asyncio
