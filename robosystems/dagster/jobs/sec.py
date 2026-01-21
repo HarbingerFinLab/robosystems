@@ -211,12 +211,13 @@ def _get_quarters_to_scan() -> list[str]:
 
 @schedule(
   job=sec_download_job,
-  cron_schedule="0 6 * * *",
+  cron_schedule="0 3 * * *",  # 3am UTC = 10pm EST (after last daily filings)
   default_status=SEC_DOWNLOAD_SCHEDULE_STATUS,
 )
 def sec_daily_download_schedule(context):
-  """Daily SEC download at 6 AM UTC via EFTS.
+  """Daily SEC download at 3 AM UTC (10 PM EST) via EFTS.
 
+  Runs after SEC's typical last filing cutoff (8-9 PM EST).
   Scans current quarter + previous quarter to catch late filings
   at quarter boundaries. Sensor triggers parallel processing.
   """
@@ -240,8 +241,8 @@ def sec_daily_download_schedule(context):
 
 sec_nightly_materialize_schedule = ScheduleDefinition(
   name="sec_nightly_materialize",
-  description="Nightly SEC graph materialization at 2 AM UTC. OFF by default.",
+  description="Nightly SEC graph materialization at 6 AM UTC. OFF by default.",
   job=sec_materialize_job,
-  cron_schedule="0 2 * * *",
+  cron_schedule="0 6 * * *",  # 6am UTC = 1am EST (after incremental staging)
   default_status=SEC_MATERIALIZE_SCHEDULE_STATUS,
 )

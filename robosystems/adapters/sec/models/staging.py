@@ -51,7 +51,7 @@ class StagingResult:
   tables that were successfully staged.
   """
 
-  status: str  # "success", "partial", "error"
+  status: str  # "success", "partial", "error", "no_data", "already_staged"
   table_names: list[str]  # Successfully staged tables
   tables: dict[str, TableInfo] = field(default_factory=dict)
   total_files: int = 0
@@ -81,7 +81,7 @@ class MaterializeResult:
   Contains statistics about the materialization (ingestion) operation.
   """
 
-  status: str  # "success", "partial", "error"
+  status: str  # "success", "error", "no_data"
   total_rows_ingested: int = 0
   total_time_ms: float = 0.0
   tables: list[dict[str, Any]] = field(default_factory=list)

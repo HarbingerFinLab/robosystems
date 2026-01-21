@@ -1110,6 +1110,20 @@ def sec_duckdb_incremental_staged(
       }
     )
 
+  if result.status == "already_staged":
+    context.log.info(
+      f"Filing date {config.filing_date} already staged - skipped to prevent duplicates"
+    )
+    return MaterializeResult(
+      metadata={
+        "graph_id": config.graph_id,
+        "status": "already_staged",
+        "filing_date": config.filing_date,
+        "message": "Date already staged, skipped to prevent duplicates",
+        "duration_seconds": result.duration_seconds,
+      }
+    )
+
   context.log.info(
     f"Incremental staging complete: {len(result.table_names)} tables, "
     f"{result.total_files} files, {result.duration_seconds:.2f}s"

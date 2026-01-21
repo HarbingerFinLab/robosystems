@@ -19,10 +19,13 @@ import boto3
 from botocore.exceptions import ClientError
 from dagster import (
   AssetKey,
+  DefaultScheduleStatus,
   DefaultSensorStatus,
   RunRequest,
+  ScheduleEvaluationContext,
   SensorEvaluationContext,
   SkipReason,
+  schedule,
   sensor,
 )
 
@@ -283,15 +286,8 @@ def sec_processing_sensor(context: SensorEvaluationContext):
 
 
 # ============================================================================
-# SEC Incremental Staging Sensor
+# SEC Incremental Staging Schedule
 # ============================================================================
-
-# Sensor status controlled by environment variable (default: STOPPED)
-SEC_INCREMENTAL_STAGING_SENSOR_STATUS = (
-  DefaultSensorStatus.RUNNING
-  if env.SEC_INCREMENTAL_STAGING_SENSOR_ENABLED
-  else DefaultSensorStatus.STOPPED
-)
 
 
 def _list_s3_filed_dates(s3_client, bucket: str, prefix: str) -> list[str]:
@@ -350,41 +346,46 @@ async def _get_staged_dates_from_graph_api(graph_id: str) -> list[str]:
     raise
 
 
-@sensor(
-  job_name="sec_incremental_stage",
-  minimum_interval_seconds=86400,  # Daily (24 hours)
-  default_status=SEC_INCREMENTAL_STAGING_SENSOR_STATUS,
-  description="Watch for new filed= partitions in S3 and trigger incremental staging",
+SEC_INCREMENTAL_STAGING_SCHEDULE_STATUS = (
+  DefaultScheduleStatus.RUNNING
+  if env.SEC_INCREMENTAL_STAGING_SCHEDULE_ENABLED
+  else DefaultScheduleStatus.STOPPED
 )
-def sec_incremental_staging_sensor(context: SensorEvaluationContext):
-  """Watch for new SEC filings in S3 and trigger incremental DuckDB staging.
 
-  This sensor:
+
+@schedule(
+  job_name="sec_incremental_stage",
+  cron_schedule="0 5 * * *",  # 5am UTC = 12am EST (after processing, before materialize)
+  default_status=SEC_INCREMENTAL_STAGING_SCHEDULE_STATUS,
+  execution_timezone="UTC",
+)
+def sec_incremental_staging_schedule(context: ScheduleEvaluationContext):
+  """Run SEC incremental staging at 5am UTC daily.
+
+  Pipeline timing (all UTC):
+  - 3am: Download new filings (sec_daily_download_schedule)
+  - 3am-5am: Processing sensor processes downloaded filings
+  - 5am: This schedule stages processed parquet to DuckDB
+  - 6am: Materialization (sec_nightly_materialize_schedule)
+
+  Logic:
   1. Lists all filed=YYYY-MM-DD partitions in S3 processed bucket
   2. Queries Graph API for dates already staged (from _sec_staging_progress table)
-  3. Triggers incremental staging job for each unstaged date (oldest first)
+  3. Triggers incremental staging job for each unstaged date
 
-  Requires:
-  - Initial full staging must have been run (creates _sec_staging_progress table)
-  - Graph API must be accessible from Dagster
-
-  Enable via: SEC_INCREMENTAL_STAGING_SENSOR_ENABLED=true
+  Enable via: SEC_INCREMENTAL_STAGING_SCHEDULE_ENABLED=true
+  Requires initial full staging to create _sec_staging_progress table.
   """
   import asyncio
 
-  if env.ENVIRONMENT == "dev":
-    yield SkipReason(
-      "Skipped in dev environment - use manual job launch for local testing"
-    )
-    return
-
   processed_bucket = env.SHARED_PROCESSED_BUCKET
   if not processed_bucket:
-    yield SkipReason("Missing SHARED_PROCESSED_BUCKET configuration")
-    return
+    context.log.warning("Missing SHARED_PROCESSED_BUCKET configuration")
+    return []
 
   graph_id = "sec"
   s3_prefix = "sec/processed"
+  run_requests = []
 
   try:
     s3_client = _get_s3_client()
@@ -394,8 +395,8 @@ def sec_incremental_staging_sensor(context: SensorEvaluationContext):
     context.log.info(f"Found {len(s3_dates)} filing dates in S3")
 
     if not s3_dates:
-      yield SkipReason("No filed= partitions found in S3")
-      return
+      context.log.info("No filed= partitions found in S3")
+      return []
 
     # Step 2: Get already-staged dates from Graph API
     try:
@@ -403,49 +404,48 @@ def sec_incremental_staging_sensor(context: SensorEvaluationContext):
         _get_staged_dates_from_graph_api(graph_id)
       )
     except RuntimeError:
-      # No event loop running, create one
       staged_dates = asyncio.run(_get_staged_dates_from_graph_api(graph_id))
 
     staged_dates_set = set(staged_dates)
     context.log.info(f"Found {len(staged_dates_set)} dates already staged")
 
     if not staged_dates_set:
-      yield SkipReason(
-        "No staging progress found. Run full sec_duckdb_staged job first to initialize."
+      context.log.warning(
+        "No staging progress found. Run full sec_duckdb_staged job first."
       )
-      return
+      return []
 
     # Step 3: Find unstaged dates
-    unstaged_dates = [d for d in s3_dates if d not in staged_dates_set]
+    unstaged_dates = sorted([d for d in s3_dates if d not in staged_dates_set])
 
     if not unstaged_dates:
-      yield SkipReason(
+      context.log.info(
         f"All {len(s3_dates)} S3 filing dates already staged (up to {max(s3_dates)})"
       )
-      return
+      return []
 
-    context.log.info(
-      f"Found {len(unstaged_dates)} unstaged dates: {unstaged_dates[:5]}..."
-    )
+    context.log.info(f"Found {len(unstaged_dates)} unstaged dates to process")
 
-    # Step 4: Trigger job for oldest unstaged date (one at a time)
-    # This ensures we stage in chronological order and don't overwhelm the system
-    oldest_unstaged = min(unstaged_dates)
-    context.log.info(f"Triggering incremental staging for {oldest_unstaged}")
-
-    yield RunRequest(
-      run_key=f"sec-incremental-stage-{oldest_unstaged}",
-      run_config={
-        "ops": {
-          "sec_duckdb_incremental_staged": {
-            "config": {
-              "graph_id": graph_id,
-              "filing_date": oldest_unstaged,
+    # Step 4: Create run request for each unstaged date (chronological order)
+    for filing_date in unstaged_dates:
+      run_requests.append(
+        RunRequest(
+          run_key=f"sec-incremental-stage-{filing_date}",
+          run_config={
+            "ops": {
+              "sec_duckdb_incremental_staged": {
+                "config": {
+                  "graph_id": graph_id,
+                  "filing_date": filing_date,
+                }
+              }
             }
-          }
-        }
-      },
-    )
+          },
+        )
+      )
+
+    context.log.info(f"Yielding {len(run_requests)} incremental staging runs")
+    return run_requests
 
   except ClientError as e:
     error_code = e.response.get("Error", {}).get("Code", "Unknown")
@@ -453,6 +453,6 @@ def sec_incremental_staging_sensor(context: SensorEvaluationContext):
     raise
   except Exception as e:
     context.log.error(
-      f"Error in SEC incremental staging sensor: {type(e).__name__}: {e}"
+      f"Error in SEC incremental staging schedule: {type(e).__name__}: {e}"
     )
     raise
